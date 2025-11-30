@@ -3,7 +3,7 @@ use tracing::debug;
 use super::action::Action;
 use super::component::Effect;
 use super::component_store::ComponentStateStore;
-use super::state::{AppState, DocumentStackEntry};
+use super::state::AppState;
 use super::types::StackedDocument;
 
 // Import sub-reducers from the parent framework module
@@ -68,11 +68,8 @@ pub fn reduce(
 
         // Scores: SelectGame pushes boxscore document onto stack
         Action::SelectGame(game_id) => {
-            let mut new_state = state;
-            new_state.navigation.document_stack.push(
-                DocumentStackEntry::new(StackedDocument::Boxscore { game_id }),
-            );
-            (new_state, Effect::None)
+            reduce_document_stack(state, &Action::PushDocument(StackedDocument::Boxscore { game_id }))
+                .unwrap_or_else(|s| (s, Effect::None))
         }
 
         // Standings: Rebuild focusable metadata after view change
@@ -142,7 +139,7 @@ mod tests {
     }
 
     #[test]
-    fn test_select_game_pushes_boxscore_document() {
+    fn test_select_game_pushes_boxscore_document_and_fetches() {
         let state = AppState::default();
         let action = Action::SelectGame(12345);
         let (new_state, effect) = test_reduce(state, action);
@@ -155,7 +152,8 @@ mod tests {
             }
             _ => panic!("Expected Boxscore document"),
         }
-        assert!(matches!(effect, Effect::None));
+        // Should return fetch effect to load the boxscore data
+        assert!(matches!(effect, Effect::FetchBoxscore(12345)));
     }
 
     #[test]
