@@ -132,8 +132,7 @@ impl BoxscoreDocumentContent {
     fn build_forwards_table(
         &self,
         forwards: &[SkaterStats],
-        team_abbrev: &str,
-        label: &str,
+        team_name: &str,
         table_id: &str,
         focus: &FocusContext,
     ) -> Option<DocumentElement> {
@@ -141,13 +140,13 @@ impl BoxscoreDocumentContent {
             return None;
         }
 
-        let title = format!("{} {} - Forwards ({})", team_abbrev, label, forwards.len());
+        let title = format!("{} - Forwards", team_name);
         let columns = game_skater_columns();
         let table = TableWidget::from_data(&columns, forwards.to_vec())
             .with_focused_row(focus.focused_table_row(table_id));
 
         Some(DocumentElement::group(vec![
-            DocumentElement::section_title(title, true),
+            DocumentElement::indented(DocumentElement::section_title(title, false), 2),
             DocumentElement::table(table_id, table),
         ]))
     }
@@ -156,8 +155,7 @@ impl BoxscoreDocumentContent {
     fn build_defense_table(
         &self,
         defense: &[SkaterStats],
-        team_abbrev: &str,
-        label: &str,
+        team_name: &str,
         table_id: &str,
         focus: &FocusContext,
     ) -> Option<DocumentElement> {
@@ -165,13 +163,13 @@ impl BoxscoreDocumentContent {
             return None;
         }
 
-        let title = format!("{} {} - Defense ({})", team_abbrev, label, defense.len());
+        let title = format!("{} - Defense", team_name);
         let columns = game_skater_columns();
         let table = TableWidget::from_data(&columns, defense.to_vec())
             .with_focused_row(focus.focused_table_row(table_id));
 
         Some(DocumentElement::group(vec![
-            DocumentElement::section_title(title, true),
+            DocumentElement::indented(DocumentElement::section_title(title, false), 2),
             DocumentElement::table(table_id, table),
         ]))
     }
@@ -180,8 +178,7 @@ impl BoxscoreDocumentContent {
     fn build_goalies_table(
         &self,
         goalies: &[GoalieStats],
-        team_abbrev: &str,
-        label: &str,
+        team_name: &str,
         table_id: &str,
         focus: &FocusContext,
     ) -> Option<DocumentElement> {
@@ -189,13 +186,13 @@ impl BoxscoreDocumentContent {
             return None;
         }
 
-        let title = format!("{} {} - Goalies ({})", team_abbrev, label, goalies.len());
+        let title = format!("{} - Goalies", team_name);
         let columns = game_goalie_columns();
         let table = TableWidget::from_data(&columns, goalies.to_vec())
             .with_focused_row(focus.focused_table_row(table_id));
 
         Some(DocumentElement::group(vec![
-            DocumentElement::section_title(title, true),
+            DocumentElement::indented(DocumentElement::section_title(title, false), 2),
             DocumentElement::table(table_id, table),
         ]))
     }
@@ -203,18 +200,16 @@ impl BoxscoreDocumentContent {
     /// Build player stats section for one team
     fn build_team_stats(&self, focus: &FocusContext, is_away: bool) -> Vec<DocumentElement> {
         let boxscore = &self.boxscore;
-        let (team_stats, team_abbrev, label, prefix) = if is_away {
+        let (team_stats, team_name, prefix) = if is_away {
             (
                 &boxscore.player_by_game_stats.away_team,
-                &boxscore.away_team.abbrev,
-                "Away",
+                &boxscore.away_team.common_name.default,
                 "away",
             )
         } else {
             (
                 &boxscore.player_by_game_stats.home_team,
-                &boxscore.home_team.abbrev,
-                "Home",
+                &boxscore.home_team.common_name.default,
                 "home",
             )
         };
@@ -224,8 +219,7 @@ impl BoxscoreDocumentContent {
         // Forwards
         if let Some(table) = self.build_forwards_table(
             &team_stats.forwards,
-            team_abbrev,
-            label,
+            team_name,
             &format!("{}_forwards", prefix),
             focus,
         ) {
@@ -236,8 +230,7 @@ impl BoxscoreDocumentContent {
         // Defense
         if let Some(table) = self.build_defense_table(
             &team_stats.defense,
-            team_abbrev,
-            label,
+            team_name,
             &format!("{}_defense", prefix),
             focus,
         ) {
@@ -248,8 +241,7 @@ impl BoxscoreDocumentContent {
         // Goalies
         if let Some(table) = self.build_goalies_table(
             &team_stats.goalies,
-            team_abbrev,
-            label,
+            team_name,
             &format!("{}_goalies", prefix),
             focus,
         ) {
@@ -276,17 +268,14 @@ impl Document for BoxscoreDocumentContent {
         }
         builder = builder.spacer(1);
 
-        // Player stats - show based on team_view (tabbed mode for narrow terminals)
-        // For now, show both teams stacked vertically
+        // Player stats - show both teams stacked vertically
         // Away team
-        builder = builder.heading(2, &format!("{} (Away)", self.boxscore.away_team.abbrev));
         for elem in self.build_team_stats(focus, true) {
             builder = builder.element(elem);
         }
         builder = builder.spacer(1);
 
         // Home team
-        builder = builder.heading(2, &format!("{} (Home)", self.boxscore.home_team.abbrev));
         for elem in self.build_team_stats(focus, false) {
             builder = builder.element(elem);
         }
