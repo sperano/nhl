@@ -168,6 +168,7 @@ mod tests {
             status_message: None,
             status_is_error: false,
             terminal_width: 80,
+            animation_frame: 0,
         };
 
         let element = status_bar.view(&system_state, &());
@@ -198,6 +199,7 @@ mod tests {
             status_message: None,
             status_is_error: false,
             terminal_width: 80,
+            animation_frame: 0,
         };
 
         let element = status_bar.view(&system_state, &());

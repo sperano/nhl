@@ -190,8 +190,34 @@ pub async fn run(client: Arc<dyn NHLDataProvider>, config: Config) -> Result<(),
             continue;
         }
 
-        // Poll for keyboard events
-        if event::poll(Duration::from_millis(100))? {
+        // Check if we need animation (loading or waiting for data)
+        let state = runtime.state();
+        let needs_animation = !state.data.loading.is_empty()
+            || state.data.standings.is_none()
+            || state.data.schedule.is_none()
+            || state.navigation.document_stack.iter().any(|doc| {
+                use crate::tui::types::StackedDocument;
+                match &doc.document {
+                    StackedDocument::Boxscore { game_id } => {
+                        state.data.boxscores.get(game_id).is_none()
+                    }
+                    StackedDocument::TeamDetail { abbrev } => {
+                        state.data.team_roster_stats.get(abbrev).is_none()
+                    }
+                    StackedDocument::PlayerDetail { player_id } => {
+                        state.data.player_data.get(player_id).is_none()
+                    }
+                }
+            });
+
+        // Dispatch Tick for loading animation
+        if needs_animation {
+            runtime.dispatch(Action::Tick);
+        }
+
+        // Poll for keyboard events - use shorter timeout when animating for smoother animation
+        let poll_timeout = if needs_animation { 50 } else { 100 };
+        if event::poll(Duration::from_millis(poll_timeout))? {
             if let Event::Key(key) = event::read()? {
                 #[cfg(feature = "development")]
                 {

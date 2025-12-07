@@ -1,10 +1,6 @@
 use std::sync::Arc;
 
-use ratatui::{
-    buffer::Buffer,
-    layout::Rect,
-    widgets::Paragraph,
-};
+use ratatui::{buffer::Buffer, layout::Rect};
 
 use nhl_api::{Boxscore, GoalieStats, SkaterStats};
 
@@ -12,6 +8,7 @@ use super::table::TableWidget;
 use crate::config::DisplayConfig;
 use crate::tui::component::{Component, Element, ElementWidget};
 use crate::tui::document::{Document, DocumentBuilder, DocumentElement, DocumentView, FocusContext};
+use crate::tui::widgets::{LoadingAnimation, StandaloneWidget};
 use crate::tui::{Alignment, CellValue, ColumnDef};
 
 /// View mode for boxscore panel
@@ -31,6 +28,7 @@ pub struct BoxscoreDocumentProps {
     pub selected_index: Option<usize>,
     pub scroll_offset: u16,
     pub focused: bool,
+    pub animation_frame: u8,
 }
 
 /// BoxscoreDocument component - displays detailed game statistics
@@ -50,6 +48,7 @@ impl Component for BoxscoreDocument {
             selected_index: props.selected_index,
             scroll_offset: props.scroll_offset,
             focused: props.focused,
+            animation_frame: props.animation_frame,
         }))
     }
 }
@@ -412,23 +411,19 @@ struct BoxscoreDocumentWidget {
     selected_index: Option<usize>,
     scroll_offset: u16,
     focused: bool,
+    animation_frame: u8,
 }
 
 impl ElementWidget for BoxscoreDocumentWidget {
     fn render(&self, area: Rect, buf: &mut Buffer, config: &DisplayConfig) {
-        if self.loading {
-            let text = format!("Loading boxscore for game {}...", self.game_id);
-            let widget = Paragraph::new(text);
-            ratatui::widgets::Widget::render(widget, area, buf);
+        // Show animation if loading or data hasn't arrived yet
+        if self.loading || self.boxscore.is_none() {
+            LoadingAnimation::new(self.animation_frame).render(area, buf, config);
             return;
         }
 
-        let Some(boxscore) = &self.boxscore else {
-            let text = format!("Boxscore not available for game {}", self.game_id);
-            let widget = Paragraph::new(text);
-            ratatui::widgets::Widget::render(widget, area, buf);
-            return;
-        };
+        // Safe to unwrap since we checked is_none() above
+        let boxscore = self.boxscore.as_ref().unwrap();
 
         if area.width == 0 || area.height == 0 {
             return;
@@ -464,6 +459,7 @@ impl ElementWidget for BoxscoreDocumentWidget {
             selected_index: self.selected_index,
             scroll_offset: self.scroll_offset,
             focused: self.focused,
+            animation_frame: self.animation_frame,
         })
     }
 }
@@ -668,6 +664,7 @@ mod tests {
             selected_index: None,
             scroll_offset: 0,
             focused: true,
+            animation_frame: 0,
         };
 
         let area = Rect::new(0, 0, 80, 30);
@@ -690,6 +687,7 @@ mod tests {
             selected_index: None,
             scroll_offset: 0,
             focused: true,
+            animation_frame: 0,
         };
 
         let area = Rect::new(0, 0, 80, 30);
@@ -713,6 +711,7 @@ mod tests {
             selected_index: None,
             scroll_offset: 0,
             focused: true,
+            animation_frame: 0,
         };
 
         let area = Rect::new(0, 0, 100, 50);

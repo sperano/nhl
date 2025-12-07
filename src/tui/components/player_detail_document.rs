@@ -1,10 +1,6 @@
 use std::sync::Arc;
 
-use ratatui::{
-    buffer::Buffer,
-    layout::Rect,
-    widgets::{Block, Borders, Paragraph},
-};
+use ratatui::{buffer::Buffer, layout::Rect};
 
 use nhl_api::{PlayerLanding, Position, SeasonTotal};
 
@@ -14,6 +10,7 @@ use crate::team_abbrev::common_name_to_abbrev;
 use crate::tui::component::{Component, Element, ElementWidget};
 use crate::tui::document::{Document, DocumentBuilder, DocumentElement, DocumentView, FocusContext};
 use crate::tui::helpers::SeasonSorting;
+use crate::tui::widgets::{LoadingAnimation, StandaloneWidget};
 use crate::tui::{Alignment, CellValue, ColumnDef};
 
 /// Props for PlayerDetailDocument component
@@ -24,6 +21,7 @@ pub struct PlayerDetailDocumentProps {
     pub loading: bool,
     pub selected_index: Option<usize>,
     pub scroll_offset: u16,
+    pub animation_frame: u8,
 }
 
 /// PlayerDetailDocument component - renders player info and career stats
@@ -41,6 +39,7 @@ impl Component for PlayerDetailDocument {
             loading: props.loading,
             focus_index: props.selected_index,
             scroll_offset: props.scroll_offset,
+            animation_frame: props.animation_frame,
         }))
     }
 }
@@ -294,19 +293,14 @@ pub struct PlayerDetailDocumentWidget {
     loading: bool,
     focus_index: Option<usize>,
     scroll_offset: u16,
+    animation_frame: u8,
 }
 
 impl ElementWidget for PlayerDetailDocumentWidget {
     fn render(&self, area: Rect, buf: &mut Buffer, config: &DisplayConfig) {
-        // Handle loading state
-        if self.loading {
-            let text = format!("Loading player {} details...", self.player_id);
-            let widget = Paragraph::new(text).block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title("Player Detail"),
-            );
-            ratatui::widgets::Widget::render(widget, area, buf);
+        // Handle loading state - show animation if loading or data hasn't arrived yet
+        if self.loading || self.player_data.is_none() {
+            LoadingAnimation::new(self.animation_frame).render(area, buf, config);
             return;
         }
 
@@ -531,6 +525,7 @@ mod tests {
             loading: false,
             focus_index: None,
             scroll_offset: 0,
+            animation_frame: 0,
         };
 
         let area = Rect::new(0, 0, 80, 30);
@@ -551,6 +546,7 @@ mod tests {
             loading: true,
             focus_index: None,
             scroll_offset: 0,
+            animation_frame: 0,
         };
 
         let area = Rect::new(0, 0, 80, 10);
@@ -570,6 +566,7 @@ mod tests {
             loading: false,
             focus_index: None,
             scroll_offset: 0,
+            animation_frame: 0,
         };
 
         let area = Rect::new(0, 0, 80, 10);
@@ -591,6 +588,7 @@ mod tests {
             loading: false,
             focus_index: Some(0), // Focus on first focusable element
             scroll_offset: 0,
+            animation_frame: 0,
         };
 
         let area = Rect::new(0, 0, 80, 30);
@@ -613,6 +611,7 @@ mod tests {
             loading: false,
             focus_index: None,
             scroll_offset: 5, // Scroll down 5 lines
+            animation_frame: 0,
         };
 
         let area = Rect::new(0, 0, 80, 30);

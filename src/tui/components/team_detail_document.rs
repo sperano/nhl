@@ -1,16 +1,13 @@
 use std::sync::Arc;
 
-use ratatui::{
-    buffer::Buffer,
-    layout::Rect,
-    widgets::Paragraph,
-};
+use ratatui::{buffer::Buffer, layout::Rect};
 
 use nhl_api::{ClubGoalieStats, ClubSkaterStats, ClubStats, Standing};
 
 use super::table::TableWidget;
 use crate::config::DisplayConfig;
 use crate::tui::helpers::{ClubGoalieStatsSorting, ClubSkaterStatsSorting};
+use crate::tui::widgets::{LoadingAnimation, StandaloneWidget};
 use crate::tui::{
     component::{Component, Element, ElementWidget},
     document::{Document, DocumentBuilder, DocumentElement, DocumentView, FocusContext},
@@ -26,6 +23,7 @@ pub struct TeamDetailDocumentProps {
     pub loading: bool,
     pub selected_index: Option<usize>,
     pub scroll_offset: u16,
+    pub animation_frame: u8,
 }
 
 /// TeamDetailDocument component - renders team info and season player stats
@@ -44,6 +42,7 @@ impl Component for TeamDetailDocument {
             loading: props.loading,
             selected_index: props.selected_index,
             scroll_offset: props.scroll_offset,
+            animation_frame: props.animation_frame,
         }))
     }
 }
@@ -245,21 +244,14 @@ struct TeamDetailDocumentWidget {
     loading: bool,
     selected_index: Option<usize>,
     scroll_offset: u16,
+    animation_frame: u8,
 }
 
 impl ElementWidget for TeamDetailDocumentWidget {
     fn render(&self, area: Rect, buf: &mut Buffer, config: &DisplayConfig) {
-        if self.loading {
-            let text = format!("Loading {} team details...", self.team_abbrev);
-            let widget = Paragraph::new(text);
-            ratatui::widgets::Widget::render(widget, area, buf);
-            return;
-        }
-
-        if self.club_stats.is_none() {
-            let text = format!("No stats available for {}", self.team_abbrev);
-            let widget = Paragraph::new(text);
-            ratatui::widgets::Widget::render(widget, area, buf);
+        // Show animation if loading or data hasn't arrived yet
+        if self.loading || self.club_stats.is_none() {
+            LoadingAnimation::new(self.animation_frame).render(area, buf, config);
             return;
         }
 
@@ -296,6 +288,7 @@ impl ElementWidget for TeamDetailDocumentWidget {
             loading: self.loading,
             selected_index: self.selected_index,
             scroll_offset: self.scroll_offset,
+            animation_frame: self.animation_frame,
         })
     }
 }
@@ -539,6 +532,7 @@ mod tests {
             loading: false,
             selected_index: None,
             scroll_offset: 0,
+            animation_frame: 0,
         };
 
         // Create a small area that is definitely smaller than the preferred height
@@ -582,6 +576,7 @@ mod tests {
             loading: false,
             selected_index: None,
             scroll_offset: 0,
+            animation_frame: 0,
         };
 
         let area = Rect::new(0, 0, 80, 15);
@@ -602,6 +597,7 @@ mod tests {
             loading: true,
             selected_index: None,
             scroll_offset: 0,
+            animation_frame: 0,
         };
 
         let area = Rect::new(0, 0, 80, 20);
@@ -623,6 +619,7 @@ mod tests {
             loading: false,
             selected_index: None,
             scroll_offset: 0,
+            animation_frame: 0,
         };
 
         let area = Rect::new(0, 0, 80, 20);

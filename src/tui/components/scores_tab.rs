@@ -104,6 +104,9 @@ pub struct ScoresTabProps {
 
     // Navigation state
     pub focused: bool,
+
+    // Animation frame for loading indicator
+    pub animation_frame: u8,
 }
 //
 /// ScoresTab component - renders scores with date selector
@@ -261,6 +264,7 @@ impl ScoresTab {
             game_date: state.game_date.clone(),
             focus_index: state.doc_nav.focus_index,
             scroll_offset: state.doc_nav.scroll_offset,
+            animation_frame: props.animation_frame,
         }))
     }
 
@@ -327,6 +331,7 @@ struct ScoreBoxesDocumentWidget {
     game_date: GameDate,
     focus_index: Option<usize>,
     scroll_offset: u16,
+    animation_frame: u8,
 }
 
 impl ElementWidget for ScoreBoxesDocumentWidget {
@@ -340,6 +345,7 @@ impl ElementWidget for ScoreBoxesDocumentWidget {
             self.game_info.clone(),
             boxes_per_row,
             self.game_date.clone(),
+            self.animation_frame,
         );
 
         // Create DocumentView with viewport height
@@ -364,6 +370,7 @@ impl ElementWidget for ScoreBoxesDocumentWidget {
             game_date: self.game_date.clone(),
             focus_index: self.focus_index,
             scroll_offset: self.scroll_offset,
+            animation_frame: self.animation_frame,
         })
     }
 
@@ -384,6 +391,7 @@ mod tests {
             game_info: Arc::new(HashMap::new()),
             period_scores: Arc::new(HashMap::new()),
             focused: false,
+            animation_frame: 0,
         };
         //
         let state = ScoresTabState::default();

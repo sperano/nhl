@@ -162,6 +162,8 @@ pub struct SystemState {
     /// Cached terminal width for calculating game grid layout
     /// Updated during render, used by key handlers
     pub terminal_width: u16,
+    /// Animation frame counter for loading animations (0-8, wraps)
+    pub animation_frame: u8,
 }
 
 impl SystemState {

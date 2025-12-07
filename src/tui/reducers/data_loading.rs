@@ -137,11 +137,13 @@ fn handle_schedule_loaded(
                 let boxes_per_row = ScoreBoxesDocument::boxes_per_row_for_width(new_state.system.terminal_width);
 
                 // Create the document to extract focusable metadata
+                // animation_frame doesn't affect focusable positions, so use 0
                 let doc = ScoreBoxesDocument::new(
                     Arc::new(Some(schedule.clone())),
                     new_state.data.game_info.clone(),
                     boxes_per_row,
                     scores_state.game_date.clone(),
+                    0,
                 );
 
                 // Use document methods to get focusable metadata

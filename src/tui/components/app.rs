@@ -199,6 +199,7 @@ impl App {
                     selected_index: doc_entry.nav.focus_index,
                     scroll_offset: doc_entry.nav.scroll_offset,
                     focused: true, // Document has focus when it's on the stack
+                    animation_frame: state.system.animation_frame,
                 };
                 BoxscoreDocument.view(&props, &())
             }
@@ -226,6 +227,7 @@ impl App {
                         .contains(&LoadingKey::TeamRosterStats(abbrev.clone())),
                     selected_index: doc_entry.nav.focus_index,
                     scroll_offset: doc_entry.nav.scroll_offset,
+                    animation_frame: state.system.animation_frame,
                 };
                 TeamDetailDocument.view(&props, &())
             }
@@ -239,6 +241,7 @@ impl App {
                         .contains(&LoadingKey::PlayerStats(*player_id)),
                     selected_index: doc_entry.nav.focus_index,
                     scroll_offset: doc_entry.nav.scroll_offset,
+                    animation_frame: state.system.animation_frame,
                 };
                 PlayerDetailDocument.view(&props, &())
             }
@@ -257,6 +260,7 @@ impl App {
             game_info: state.data.game_info.clone(),
             period_scores: state.data.period_scores.clone(),
             focused: state.navigation.content_focused,
+            animation_frame: state.system.animation_frame,
         };
 
         // Get or initialize component state from the component store
@@ -275,6 +279,7 @@ impl App {
             game_info: state.data.game_info.clone(),
             period_scores: state.data.period_scores.clone(),
             focused: state.navigation.content_focused,
+            animation_frame: state.system.animation_frame,
         };
         let component_state = ScoresTabState::default();
         ScoresTab.view(&props, &component_state)
@@ -292,6 +297,7 @@ impl App {
             document_stack: state.navigation.document_stack.clone(),
             focused: state.navigation.content_focused,
             config: state.system.config.clone(),
+            animation_frame: state.system.animation_frame,
         };
 
         let standings_state =
@@ -309,6 +315,7 @@ impl App {
             document_stack: state.navigation.document_stack.clone(),
             focused: state.navigation.content_focused,
             config: state.system.config.clone(),
+            animation_frame: state.system.animation_frame,
         };
         let component_state = StandingsTabState::default();
         StandingsTab.view(&props, &component_state)

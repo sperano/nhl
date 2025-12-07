@@ -14,6 +14,7 @@ use crate::config::DisplayConfig;
 use crate::tui::{
     component::{Component, Element, ElementWidget},
     state::DocumentStackEntry,
+    widgets::{LoadingAnimation, StandaloneWidget},
 };
 
 use super::{TabItem, TabbedPanel, TabbedPanelProps};
@@ -105,6 +106,8 @@ pub struct StandingsTabProps {
     pub focused: bool,
     // Config
     pub config: Config,
+    // Animation frame for loading indicator
+    pub animation_frame: u8,
 }
 
 /// StandingsTab component - renders standings with view selector
@@ -267,10 +270,10 @@ impl StandingsTab {
     }
 
     fn render_standings_table(&self, props: &StandingsTabProps, state: &StandingsTabState, view: &GroupBy) -> Element {
-        // If no standings data, show loading message
+        // If no standings data, show loading animation
         let Some(standings) = props.standings.as_ref().as_ref() else {
-            return Element::Widget(Box::new(LoadingWidget {
-                message: "Loading standings...".to_string(),
+            return Element::Widget(Box::new(AnimatedLoadingWidget {
+                animation_frame: props.animation_frame,
             }));
         };
 
@@ -362,6 +365,23 @@ impl StandingsTab {
     }
 }
 
+/// Animated loading widget - shows the pulsing dots animation
+struct AnimatedLoadingWidget {
+    animation_frame: u8,
+}
+
+impl ElementWidget for AnimatedLoadingWidget {
+    fn render(&self, area: Rect, buf: &mut Buffer, config: &DisplayConfig) {
+        LoadingAnimation::new(self.animation_frame).render(area, buf, config);
+    }
+
+    fn clone_box(&self) -> Box<dyn ElementWidget> {
+        Box::new(AnimatedLoadingWidget {
+            animation_frame: self.animation_frame,
+        })
+    }
+}
+
 /// Loading widget - shows a simple loading or error message
 struct LoadingWidget {
     message: String,
@@ -417,6 +437,7 @@ mod tests {
             document_stack: Vec::new(),
             focused: false,
             config: Config::default(),
+            animation_frame: 0,
         };
 
         let element = standings_tab.view(&props, &StandingsTabState::default());
@@ -439,6 +460,7 @@ mod tests {
             document_stack: Vec::new(),
             focused: false,
             config: Config::default(),
+            animation_frame: 0,
         };
 
         // This should not panic - verifies TableWidget can be created
@@ -477,6 +499,7 @@ mod tests {
             document_stack: Vec::new(),
             focused: false,
             config: Config::default(),
+            animation_frame: 0,
         };
 
         let state = StandingsTabState {
@@ -542,6 +565,7 @@ mod tests {
             document_stack: Vec::new(),
             focused: false,
             config: Config::default(),
+            animation_frame: 0,
         };
 
         let state = StandingsTabState {
@@ -611,6 +635,7 @@ mod tests {
             document_stack: Vec::new(),
             focused: false,
             config: Config::default(),
+            animation_frame: 0,
         };
 
         let state = StandingsTabState {
@@ -676,6 +701,7 @@ mod tests {
             document_stack: Vec::new(),
             focused: false,
             config: Config::default(),
+            animation_frame: 0,
         };
 
         let element = standings_tab.view(&props, &StandingsTabState::default());

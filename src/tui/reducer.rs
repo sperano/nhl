@@ -94,6 +94,13 @@ pub fn reduce(
             (new_state, Effect::None)
         }
 
+        Action::Tick => {
+            let mut new_state = state;
+            // Wrap at 4 to match the 4-frame animation
+            new_state.system.animation_frame = (new_state.system.animation_frame + 1) % 4;
+            (new_state, Effect::None)
+        }
+
         Action::Quit | Action::Error(_) => (state, Effect::None),
 
         _ => (state, Effect::None),

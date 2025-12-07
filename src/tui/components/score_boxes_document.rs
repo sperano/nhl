@@ -11,7 +11,7 @@ use nhl_api::{DailySchedule, GameDate, GameMatchup};
 use crate::commands::scores_format::format_period_text;
 use crate::layout_constants::SCORE_BOX_WIDTH;
 use crate::tui::document::{Document, DocumentBuilder, DocumentElement, FocusContext, FocusableId};
-use crate::tui::widgets::{ScoreBox, ScoreBoxStatus};
+use crate::tui::widgets::{ScoreBox, ScoreBoxStatus, loading_animation::loading_animation_text};
 
 /// Gap between score boxes in characters
 const SCORE_BOX_GAP: u16 = 8;
@@ -25,6 +25,7 @@ pub struct ScoreBoxesDocument {
     pub game_info: Arc<HashMap<i64, GameMatchup>>,
     pub boxes_per_row: u16,
     pub game_date: GameDate,
+    pub animation_frame: u8,
 }
 
 impl ScoreBoxesDocument {
@@ -33,12 +34,14 @@ impl ScoreBoxesDocument {
         game_info: Arc<HashMap<i64, GameMatchup>>,
         boxes_per_row: u16,
         game_date: GameDate,
+        animation_frame: u8,
     ) -> Self {
         Self {
             schedule,
             game_info,
             boxes_per_row,
             game_date,
+            animation_frame,
         }
     }
 
@@ -137,10 +140,10 @@ impl ScoreBoxesDocument {
 
 impl Document for ScoreBoxesDocument {
     fn build(&self, focus: &FocusContext) -> Vec<DocumentElement> {
-        // Return empty if no schedule
+        // Return loading animation if no schedule data yet
         let Some(schedule) = self.schedule.as_ref() else {
             return DocumentBuilder::new()
-                .text("No games scheduled for this date")
+                .text(loading_animation_text(self.animation_frame))
                 .build();
         };
 
@@ -222,18 +225,19 @@ mod tests {
     }
 
     #[test]
-    fn test_empty_schedule_returns_empty_document() {
+    fn test_empty_schedule_returns_loading_animation() {
         let doc = ScoreBoxesDocument::new(
             Arc::new(None),
             Arc::new(HashMap::new()),
             2,
             GameDate::today(),
+            0,
         );
 
         let focus = FocusContext { focused_id: None };
         let elements = doc.build(&focus);
 
-        // Should return a text element saying no games
+        // Should return a text element with loading animation
         assert_eq!(elements.len(), 1);
     }
 
@@ -253,6 +257,7 @@ mod tests {
             Arc::new(HashMap::new()),
             2,
             GameDate::today(),
+            0,
         );
 
         let focus = FocusContext { focused_id: None };
@@ -279,6 +284,7 @@ mod tests {
             Arc::new(HashMap::new()),
             2, // 2 boxes per row
             GameDate::today(),
+            0,
         );
 
         let focus = FocusContext { focused_id: None };
@@ -306,6 +312,7 @@ mod tests {
             Arc::new(HashMap::new()),
             2, // 2 boxes per row
             GameDate::today(),
+            0,
         );
 
         let focus = FocusContext { focused_id: None };
@@ -322,6 +329,7 @@ mod tests {
             Arc::new(HashMap::new()),
             2,
             GameDate::today(),
+            0,
         );
 
         assert!(doc.title().contains("Scores for"));

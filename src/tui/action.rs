@@ -96,6 +96,8 @@ pub enum Action {
     Error(String),
     SetStatusMessage { message: String, is_error: bool },
     UpdateTerminalWidth(u16),
+    /// Tick action for animation frame advancement
+    Tick,
 }
 
 /// Tab-specific actions for Settings
@@ -148,6 +150,7 @@ impl Clone for Action {
                 is_error: *is_error,
             },
             Self::UpdateTerminalWidth(width) => Self::UpdateTerminalWidth(*width),
+            Self::Tick => Self::Tick,
         }
     }
 }
