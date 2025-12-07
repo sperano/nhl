@@ -150,7 +150,7 @@ mod tests {
         assert_buffer(
             &buf,
             &[
-                "  Team                        GP    W     L    OT   PTS",
+                "  Team                          GP     W    L   OT    PTS",
                 "  ───────────────────────────────────────────────────────",
                 "  Panthers                      19    14    3    2     30",
                 "  Bruins                        18    13    4    1     27",

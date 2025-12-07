@@ -233,7 +233,7 @@ impl TableWidget {
     /// Format a cell with alignment
     pub(super) fn format_cell(&self, text: &str, width: usize, align: Alignment) -> String {
         let text_len = text.chars().count(); // Unicode-aware length
-        if text_len >= width {
+        if text_len > width {
             // Truncate
             if width > 3 {
                 let truncated: String = text.chars().take(width - 3).collect();
@@ -241,6 +241,9 @@ impl TableWidget {
             } else {
                 text.chars().take(width).collect()
             }
+        } else if text_len == width {
+            // Exact fit - no padding needed
+            text.to_string()
         } else {
             // Pad
             match align {
@@ -468,7 +471,7 @@ mod tests {
         assert_buffer(
             &buf,
             &[
-                "  Name        Val",
+                "  Name          Val",
                 "  ─────────────────",
                 "  Row1           10",
                 "  Row2           20",
@@ -504,7 +507,7 @@ mod tests {
         assert_buffer(
             &buf,
             &[
-                "  Left        Right       Center",
+                "  Left             Right    Center",
                 "  ──────────────────────────────────",
                 "  L                    R      C",
             ],

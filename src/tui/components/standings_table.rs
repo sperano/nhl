@@ -112,7 +112,7 @@ mod tests {
         let buf = render_widget(&table, 60, height);
 
         assert_buffer(&buf, &[
-            "  Team                        GP    W     L    OT   PTS",
+            "  Team                          GP     W    L   OT    PTS",
             "  ───────────────────────────────────────────────────────",
             "  Panthers                      19    14    3    2     30",
             "  Bruins                        18    13    4    1     27",
@@ -132,7 +132,7 @@ mod tests {
 
         // Row 1 should show the selector
         assert_buffer(&buf, &[
-            "  Team                        GP    W     L    OT   PTS",
+            "  Team                          GP     W    L   OT    PTS",
             "  ───────────────────────────────────────────────────────",
             "  Panthers                      19    14    3    2     30",
             "▶ Bruins                        18    13    4    1     27",

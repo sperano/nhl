@@ -7,7 +7,7 @@ use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 
 use crate::config::DisplayConfig;
-use crate::tui::{Alignment, CellValue};
+use crate::tui::CellValue;
 
 use super::{TableWidget, SELECTOR_WIDTH};
 
@@ -63,7 +63,8 @@ impl TableWidget {
 
             for (col_idx, header) in self.column_headers.iter().enumerate() {
                 let width = self.column_widths[col_idx];
-                let formatted = self.format_cell(header, width, Alignment::Left);
+                let align = self.column_aligns[col_idx];
+                let formatted = self.format_cell(header, width, align);
                 buf.set_string(x, y, &formatted, col_header_style);
                 x += width as u16 + 2;
             }
