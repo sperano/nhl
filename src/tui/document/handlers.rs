@@ -28,15 +28,29 @@ impl StackedDocumentHandler for BoxscoreDocumentHandler {
         Effect::None
     }
 
-    fn populate_focusable_metadata(&self, nav: &mut DocumentNavState, data: &DataState) {
+    fn populate_focusable_metadata(&self, nav: &mut DocumentNavState, data: &DataState, width: u16) {
         use crate::tui::components::boxscore_document::{BoxscoreDocumentContent, TeamView};
+        use crate::tui::document::FocusContext;
 
         if let Some(boxscore) = data.boxscores.get(&self.game_id) {
             let doc = BoxscoreDocumentContent::new(self.game_id, boxscore.clone(), TeamView::Away);
-            nav.focusable_positions = doc.focusable_positions();
-            nav.focusable_heights = doc.focusable_heights();
-            nav.focusable_ids = doc.focusable_ids();
-            nav.link_targets = doc.focusable_link_targets();
+            // Build with width so layout (side-by-side vs stacked) is correct
+            let focus = FocusContext::default().with_width(width);
+            let elements = doc.build(&focus);
+
+            // Extract metadata from built elements
+            let mut focusable = Vec::new();
+            let mut y_offset = 0u16;
+            for elem in &elements {
+                elem.collect_focusable(&mut focusable, y_offset);
+                y_offset += elem.height();
+            }
+
+            nav.focusable_positions = focusable.iter().map(|f| f.y).collect();
+            nav.focusable_heights = focusable.iter().map(|f| f.height).collect();
+            nav.focusable_ids = focusable.iter().map(|f| f.id.clone()).collect();
+            nav.link_targets = focusable.iter().map(|f| f.link_target.clone()).collect();
+            nav.focusable_row_positions = focusable.iter().map(|f| f.row_position).collect();
         }
     }
 }
@@ -118,7 +132,7 @@ impl StackedDocumentHandler for TeamDetailDocumentHandler {
         }
     }
 
-    fn populate_focusable_metadata(&self, nav: &mut DocumentNavState, data: &DataState) {
+    fn populate_focusable_metadata(&self, nav: &mut DocumentNavState, data: &DataState, _width: u16) {
         use crate::tui::components::team_detail_document::TeamDetailDocumentContent;
 
         let roster = data.team_roster_stats.get(&self.abbrev);
@@ -184,7 +198,7 @@ impl StackedDocumentHandler for PlayerDetailDocumentHandler {
         }))
     }
 
-    fn populate_focusable_metadata(&self, nav: &mut DocumentNavState, data: &DataState) {
+    fn populate_focusable_metadata(&self, nav: &mut DocumentNavState, data: &DataState, _width: u16) {
         use crate::tui::components::player_detail_document::PlayerDetailDocumentContent;
 
         let player_data = data.player_data.get(&self.player_id).cloned();

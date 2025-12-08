@@ -16,6 +16,12 @@ use super::DocumentElement;
 /// Fixed width for team boxscore
 pub const TEAM_BOXSCORE_WIDTH: u16 = 85;
 
+/// Gap between two team boxscores when displayed side by side
+pub const TEAM_BOXSCORE_GAP: u16 = 2;
+
+/// Minimum width needed to display two team boxscores side by side
+pub const TEAM_BOXSCORE_SIDE_BY_SIDE_WIDTH: u16 = TEAM_BOXSCORE_WIDTH * 2 + TEAM_BOXSCORE_GAP;
+
 /// Render a horizontal row of elements
 pub(super) fn render_row(
     children: &[DocumentElement],
@@ -61,6 +67,7 @@ pub(super) fn render_row(
 pub(super) fn get_preferred_width(element: &DocumentElement) -> Option<u16> {
     match element {
         DocumentElement::ScoreBoxElement { score_box, .. } => score_box.preferred_width(),
+        DocumentElement::TeamBoxscore { .. } => Some(TEAM_BOXSCORE_WIDTH),
         _ => None,
     }
 }

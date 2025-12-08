@@ -209,20 +209,41 @@ pub fn find_row_sibling(state: &DocumentNavState, direction: RowDirection) -> Op
         }
     };
 
-    // Find element with matching row_y, target child_idx, and same idx_within_child
-    row_positions
+    // Find element with matching row_y and target child_idx
+    // Try exact idx_within_child match first, then fall back to closest
+    let candidates: Vec<_> = row_positions
         .iter()
         .enumerate()
-        .find(|(_, r)| {
-            if let Some(row) = r.as_ref() {
-                row.row_y == current_row.row_y
-                    && row.child_idx == target_child_idx
-                    && row.idx_within_child == current_row.idx_within_child
-            } else {
-                false
-            }
+        .filter_map(|(idx, r)| {
+            r.as_ref().and_then(|row| {
+                if row.row_y == current_row.row_y && row.child_idx == target_child_idx {
+                    Some((idx, row.idx_within_child))
+                } else {
+                    None
+                }
+            })
         })
-        .map(|(idx, _)| idx)
+        .collect();
+
+    if candidates.is_empty() {
+        return None;
+    }
+
+    // Try exact match first
+    if let Some((idx, _)) = candidates
+        .iter()
+        .find(|(_, inner_idx)| *inner_idx == current_row.idx_within_child)
+    {
+        return Some(*idx);
+    }
+
+    // Fall back to closest idx_within_child (handles different player counts)
+    candidates
+        .iter()
+        .min_by_key(|(_, inner_idx)| {
+            (*inner_idx as i32 - current_row.idx_within_child as i32).abs()
+        })
+        .map(|(idx, _)| *idx)
 }
 
 // ============================================================================

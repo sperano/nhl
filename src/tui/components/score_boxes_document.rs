@@ -234,7 +234,7 @@ mod tests {
             0,
         );
 
-        let focus = FocusContext { focused_id: None };
+        let focus = FocusContext::default();
         let elements = doc.build(&focus);
 
         // Should return a text element with loading animation
@@ -260,7 +260,7 @@ mod tests {
             0,
         );
 
-        let focus = FocusContext { focused_id: None };
+        let focus = FocusContext::default();
         let elements = doc.build(&focus);
 
         // Should have 1 spacer + 1 row with 1 game = 2 elements
@@ -287,7 +287,7 @@ mod tests {
             0,
         );
 
-        let focus = FocusContext { focused_id: None };
+        let focus = FocusContext::default();
         let elements = doc.build(&focus);
 
         // Should have 1 spacer + 1 row with 2 games = 2 elements
@@ -315,7 +315,7 @@ mod tests {
             0,
         );
 
-        let focus = FocusContext { focused_id: None };
+        let focus = FocusContext::default();
         let elements = doc.build(&focus);
 
         // Should have 2 spacers + 2 rows = 4 elements

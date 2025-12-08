@@ -4,3 +4,5 @@
 - would boxchar be better as single chars instead of string
 - scorebox: postponed game?
 - rename boxscore stuff to gamedetail?
+- team_boxscore should have versions for 80 to 84 char width
+

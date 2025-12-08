@@ -30,7 +30,7 @@ use crate::tui::state::DataState;
 use crate::tui::types::StackedDocument;
 
 pub use builder::DocumentBuilder;
-pub use elements::DocumentElement;
+pub use elements::{DocumentElement, TEAM_BOXSCORE_SIDE_BY_SIDE_WIDTH};
 pub use focus::{FocusManager, FocusableElement, FocusableId, RowPosition};
 pub use link::{DocumentLink, DocumentType, LinkParams, LinkTarget};
 pub use viewport::Viewport;
@@ -41,6 +41,8 @@ pub use widget::DocumentElementWidget;
 pub struct FocusContext {
     /// The currently focused element (if any)
     pub focused_id: Option<FocusableId>,
+    /// Available width for layout decisions (if known)
+    pub available_width: Option<u16>,
 }
 
 impl FocusContext {
@@ -48,6 +50,7 @@ impl FocusContext {
     pub fn from_id(id: &FocusableId) -> Self {
         Self {
             focused_id: Some(id.clone()),
+            available_width: None,
         }
     }
 
@@ -55,6 +58,7 @@ impl FocusContext {
     pub fn with_link(id: impl Into<String>) -> Self {
         Self {
             focused_id: Some(FocusableId::link(id)),
+            available_width: None,
         }
     }
 
@@ -62,7 +66,14 @@ impl FocusContext {
     pub fn with_table_cell(table_name: impl Into<String>, row: usize, col: usize) -> Self {
         Self {
             focused_id: Some(FocusableId::table_cell(table_name, row, col)),
+            available_width: None,
         }
+    }
+
+    /// Set the available width for layout decisions
+    pub fn with_width(mut self, width: u16) -> Self {
+        self.available_width = Some(width);
+        self
     }
 
     /// Get the focused table row (if focus is on a table cell)
@@ -193,15 +204,16 @@ pub trait StackedDocumentHandler: Send + Sync {
     ///
     /// Called before navigation to ensure metadata is current.
     /// Builds the document from data and extracts focusable positions/heights.
-    fn populate_focusable_metadata(&self, nav: &mut DocumentNavState, data: &DataState);
+    /// Width is used to determine layout (e.g., side-by-side vs stacked).
+    fn populate_focusable_metadata(&self, nav: &mut DocumentNavState, data: &DataState, width: u16);
 
     /// Handle a key event for this document
     ///
     /// Default implementation populates focusable metadata on-demand, then handles
     /// navigation via `key_to_nav_msg` and delegates Enter to `activate()`.
-    fn handle_key(&self, key: KeyEvent, nav: &mut DocumentNavState, data: &DataState) -> Effect {
+    fn handle_key(&self, key: KeyEvent, nav: &mut DocumentNavState, data: &DataState, width: u16) -> Effect {
         // Populate focusable metadata on-demand before navigation
-        self.populate_focusable_metadata(nav, data);
+        self.populate_focusable_metadata(nav, data, width);
 
         // Try navigation first (Tab, arrows, Page keys, etc.)
         if let Some(nav_msg) = key_to_nav_msg(key) {
@@ -438,12 +450,13 @@ impl DocumentView {
 
     /// Render the visible portion of the document
     pub fn render(&mut self, area: Rect, buf: &mut Buffer, config: &DisplayConfig) {
-        // Build focus context from current focus state
+        // Build focus context from current focus state, including available width
         let focus = self
             .focus_manager
             .get_current_id()
-            .map(|id| FocusContext::from_id(id))
-            .unwrap_or_default();
+            .map(|id| FocusContext::from_id(id).with_width(area.width))
+            .unwrap_or_default()
+            .with_width(area.width);
 
         let (full_buf, height) = self.document.render_full(area.width, config, &focus);
         self.full_buffer = Some(full_buf);

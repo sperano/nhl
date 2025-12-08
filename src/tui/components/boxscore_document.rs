@@ -7,7 +7,7 @@ use nhl_api::{Boxscore, GoalieStats, SkaterStats};
 use super::table::TableWidget;
 use crate::config::DisplayConfig;
 use crate::tui::component::{Component, Element, ElementWidget};
-use crate::tui::document::{Document, DocumentBuilder, DocumentElement, DocumentView, FocusContext};
+use crate::tui::document::{Document, DocumentBuilder, DocumentElement, DocumentView, FocusContext, TEAM_BOXSCORE_SIDE_BY_SIDE_WIDTH};
 use crate::tui::widgets::{LoadingAnimation, StandaloneWidget};
 use crate::tui::{Alignment, CellValue, ColumnDef};
 
@@ -210,13 +210,22 @@ impl Document for BoxscoreDocumentContent {
         }
         builder = builder.spacer(1);
 
-        // Player stats - show both teams stacked vertically with decorative borders
-        // Away team
-        builder = builder.element(self.build_team_boxscore(focus, true));
-        builder = builder.spacer(1);
+        // Player stats - side by side if wide enough, otherwise stacked
+        let away_boxscore = self.build_team_boxscore(focus, true);
+        let home_boxscore = self.build_team_boxscore(focus, false);
 
-        // Home team
-        builder = builder.element(self.build_team_boxscore(focus, false));
+        let wide_enough = focus
+            .available_width
+            .map(|w| w >= TEAM_BOXSCORE_SIDE_BY_SIDE_WIDTH)
+            .unwrap_or(false);
+
+        if wide_enough {
+            builder = builder.element(DocumentElement::row(vec![away_boxscore, home_boxscore]));
+        } else {
+            builder = builder.element(away_boxscore);
+            builder = builder.spacer(1);
+            builder = builder.element(home_boxscore);
+        }
 
         builder.build()
     }

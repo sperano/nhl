@@ -22,10 +22,11 @@ pub fn reduce_document_stack(state: AppState, action: &Action) -> Result<(AppSta
 /// Handle key events routed to stacked documents
 fn stacked_document_key(state: AppState, key: crossterm::event::KeyEvent) -> (AppState, Effect) {
     let mut new_state = state;
+    let width = new_state.system.terminal_width;
 
     if let Some(entry) = new_state.navigation.document_stack.last_mut() {
         let handler = get_stacked_document_handler(&entry.document);
-        let effect = handler.handle_key(key, &mut entry.nav, &new_state.data);
+        let effect = handler.handle_key(key, &mut entry.nav, &new_state.data, width);
         return (new_state, effect);
     }
 

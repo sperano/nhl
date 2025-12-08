@@ -19,6 +19,8 @@ use super::link::LinkTarget;
 
 use render::{render_group, render_heading, render_link, render_row, render_section_title, render_separator, render_team_boxscore, render_text};
 
+pub use render::TEAM_BOXSCORE_SIDE_BY_SIDE_WIDTH;
+
 /// Height of column headers section (column names + separator)
 pub(crate) const TABLE_COLUMN_HEADER_HEIGHT: u16 = 2;
 
