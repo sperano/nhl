@@ -30,6 +30,14 @@ pub struct BoxChars {
     pub mixed_left_junction: String,
     pub mixed_right_junction: String,
 
+    // Mixed double-horizontal/single-vertical (for TeamBoxscore borders)
+    pub mixed_dh_top_left: String,
+    pub mixed_dh_top_right: String,
+    pub mixed_dh_bottom_left: String,
+    pub mixed_dh_bottom_right: String,
+    pub mixed_dh_left_t: String,
+    pub mixed_dh_right_t: String,
+
     // Other characters
     pub connector2: String,
     pub connector3: String,
@@ -67,6 +75,14 @@ impl BoxChars {
             mixed_left_junction: "╟".to_string(),
             mixed_right_junction: "╢".to_string(),
 
+            // Mixed (double horizontal, single vertical)
+            mixed_dh_top_left: "╒".to_string(),
+            mixed_dh_top_right: "╕".to_string(),
+            mixed_dh_bottom_left: "╘".to_string(),
+            mixed_dh_bottom_right: "╛".to_string(),
+            mixed_dh_left_t: "╞".to_string(),
+            mixed_dh_right_t: "╡".to_string(),
+
             // Other
             connector2: "┴".to_string(),
             connector3: "┬".to_string(),
@@ -103,6 +119,14 @@ impl BoxChars {
             // Mixed
             mixed_left_junction: "+".to_string(),
             mixed_right_junction: "+".to_string(),
+
+            // Mixed (double horizontal, single vertical)
+            mixed_dh_top_left: "+".to_string(),
+            mixed_dh_top_right: "+".to_string(),
+            mixed_dh_bottom_left: "+".to_string(),
+            mixed_dh_bottom_right: "+".to_string(),
+            mixed_dh_left_t: "+".to_string(),
+            mixed_dh_right_t: "+".to_string(),
 
             // Other
             connector2: "-".to_string(),

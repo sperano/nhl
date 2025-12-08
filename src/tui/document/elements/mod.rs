@@ -17,7 +17,7 @@ use crate::tui::widgets::{ScoreBox, StandaloneWidget};
 use super::focus::{FocusableElement, FocusableId, RowPosition};
 use super::link::LinkTarget;
 
-use render::{render_group, render_heading, render_link, render_row, render_section_title, render_separator, render_text};
+use render::{render_group, render_heading, render_link, render_row, render_section_title, render_separator, render_team_boxscore, render_text};
 
 /// Height of column headers section (column names + separator)
 pub(crate) const TABLE_COLUMN_HEADER_HEIGHT: u16 = 2;
@@ -132,6 +132,23 @@ pub enum DocumentElement {
         /// Left margin in characters
         margin: u16,
     },
+
+    /// Team boxscore with decorative borders
+    ///
+    /// Wraps three tables (forwards, defense, goalies) with section headers
+    /// and decorative box borders. Fixed width of 85 characters.
+    TeamBoxscore {
+        /// Team name for section headers
+        team_name: String,
+        /// Forwards table
+        forwards_table: TableWidget,
+        /// Defense table
+        defense_table: TableWidget,
+        /// Goalies table
+        goalies_table: TableWidget,
+        /// Focusable elements collected from all three tables
+        focusable: Vec<FocusableElement>,
+    },
 }
 
 impl std::fmt::Debug for DocumentElement {
@@ -198,6 +215,11 @@ impl std::fmt::Debug for DocumentElement {
                 .field("element", element)
                 .field("margin", margin)
                 .finish(),
+            Self::TeamBoxscore { team_name, focusable, .. } => f
+                .debug_struct("TeamBoxscore")
+                .field("team_name", team_name)
+                .field("focusable_count", &focusable.len())
+                .finish(),
         }
     }
 }
@@ -239,6 +261,34 @@ impl DocumentElement {
             Self::Indented { element, .. } => {
                 // Same height as inner element
                 element.height()
+            }
+            Self::TeamBoxscore {
+                forwards_table,
+                defense_table,
+                goalies_table,
+                ..
+            } => {
+                // Height = section headers + tables + spacing + bottom border
+                // Each section: 1 (header) + 1 (blank) + table_height + 1 (blank before next)
+                // Final section has bottom border instead of blank
+                let section_chrome = 3; // header + blank after header + blank before next section
+                let forwards_height = if forwards_table.row_count() > 0 {
+                    section_chrome + forwards_table.preferred_height().unwrap_or(0)
+                } else {
+                    0
+                };
+                let defense_height = if defense_table.row_count() > 0 {
+                    section_chrome + defense_table.preferred_height().unwrap_or(0)
+                } else {
+                    0
+                };
+                let goalies_height = if goalies_table.row_count() > 0 {
+                    section_chrome + goalies_table.preferred_height().unwrap_or(0)
+                } else {
+                    0
+                };
+                let bottom_border_height = 1;
+                forwards_height + defense_height + goalies_height + bottom_border_height
             }
         }
     }
@@ -322,6 +372,15 @@ impl DocumentElement {
                 // Delegate to inner element (margin doesn't affect focusable collection)
                 element.collect_focusable(out, y_offset);
             }
+            Self::TeamBoxscore { focusable, .. } => {
+                // Add focusable elements with adjusted y positions
+                for elem in focusable {
+                    let mut adjusted = elem.clone();
+                    adjusted.y += y_offset;
+                    adjusted.rect.y += y_offset;
+                    out.push(adjusted);
+                }
+            }
             _ => {}
         }
     }
@@ -358,6 +417,11 @@ impl DocumentElement {
             }
             Self::Indented { element, .. } => {
                 element.collect_focusable_ids(out, y_offset);
+            }
+            Self::TeamBoxscore { focusable, .. } => {
+                for elem in focusable {
+                    out.push(elem.id.clone());
+                }
             }
             _ => {}
         }
@@ -415,6 +479,23 @@ impl DocumentElement {
                     );
                     element.render(indented_area, buf, config);
                 }
+            }
+            Self::TeamBoxscore {
+                team_name,
+                forwards_table,
+                defense_table,
+                goalies_table,
+                ..
+            } => {
+                render_team_boxscore(
+                    team_name,
+                    forwards_table,
+                    defense_table,
+                    goalies_table,
+                    area,
+                    buf,
+                    config,
+                );
             }
         }
     }
@@ -591,6 +672,131 @@ impl DocumentElement {
             game_id,
             score_box,
             focused,
+        }
+    }
+
+    /// Create a team boxscore element with decorative borders
+    ///
+    /// Wraps three tables (forwards, defense, goalies) with section headers
+    /// and decorative box borders.
+    ///
+    /// # Arguments
+    /// - `table_prefix`: Prefix for table names (e.g., "away" or "home")
+    /// - `team_name`: Team name for section headers (e.g., "Avalanche")
+    /// - `forwards_table`: TableWidget for forwards stats
+    /// - `defense_table`: TableWidget for defense stats
+    /// - `goalies_table`: TableWidget for goalies stats
+    pub fn team_boxscore(
+        table_prefix: &str,
+        team_name: impl Into<String>,
+        forwards_table: TableWidget,
+        defense_table: TableWidget,
+        goalies_table: TableWidget,
+    ) -> Self {
+        use crate::tui::CellValue;
+
+        let team_name = team_name.into();
+        let mut focusable = Vec::new();
+
+        // Calculate y offset for each section's focusable elements
+        // Each section: 1 (header) + 1 (blank) + table_height + 1 (blank before next)
+        let mut current_y: u16 = 0;
+
+        // Forwards section
+        if forwards_table.row_count() > 0 {
+            let table_name = format!("{}_forwards", table_prefix);
+            current_y += 2; // header + blank after header
+            let data_start_y = current_y + TABLE_COLUMN_HEADER_HEIGHT;
+
+            for row_idx in 0..forwards_table.row_count() {
+                for col_idx in 0..forwards_table.column_count() {
+                    if let Some(cell) = forwards_table.get_cell_value(row_idx, col_idx) {
+                        let y = data_start_y + row_idx as u16;
+                        let link_target = match &cell {
+                            CellValue::PlayerLink { player_id, .. } => {
+                                Some(LinkTarget::Action(format!("player:{}", player_id)))
+                            }
+                            _ => continue,
+                        };
+                        focusable.push(FocusableElement {
+                            id: FocusableId::table_cell(&table_name, row_idx, col_idx),
+                            y,
+                            height: 1,
+                            rect: Rect::new(0, y, cell.display_text().len() as u16, 1),
+                            link_target,
+                            row_position: None,
+                        });
+                    }
+                }
+            }
+            current_y += forwards_table.preferred_height().unwrap_or(0) + 1; // table + blank before next
+        }
+
+        // Defense section
+        if defense_table.row_count() > 0 {
+            let table_name = format!("{}_defense", table_prefix);
+            current_y += 2; // header + blank after header
+            let data_start_y = current_y + TABLE_COLUMN_HEADER_HEIGHT;
+
+            for row_idx in 0..defense_table.row_count() {
+                for col_idx in 0..defense_table.column_count() {
+                    if let Some(cell) = defense_table.get_cell_value(row_idx, col_idx) {
+                        let y = data_start_y + row_idx as u16;
+                        let link_target = match &cell {
+                            CellValue::PlayerLink { player_id, .. } => {
+                                Some(LinkTarget::Action(format!("player:{}", player_id)))
+                            }
+                            _ => continue,
+                        };
+                        focusable.push(FocusableElement {
+                            id: FocusableId::table_cell(&table_name, row_idx, col_idx),
+                            y,
+                            height: 1,
+                            rect: Rect::new(0, y, cell.display_text().len() as u16, 1),
+                            link_target,
+                            row_position: None,
+                        });
+                    }
+                }
+            }
+            current_y += defense_table.preferred_height().unwrap_or(0) + 1;
+        }
+
+        // Goalies section
+        if goalies_table.row_count() > 0 {
+            let table_name = format!("{}_goalies", table_prefix);
+            current_y += 2; // header + blank after header
+            let data_start_y = current_y + TABLE_COLUMN_HEADER_HEIGHT;
+
+            for row_idx in 0..goalies_table.row_count() {
+                for col_idx in 0..goalies_table.column_count() {
+                    if let Some(cell) = goalies_table.get_cell_value(row_idx, col_idx) {
+                        let y = data_start_y + row_idx as u16;
+                        let link_target = match &cell {
+                            CellValue::PlayerLink { player_id, .. } => {
+                                Some(LinkTarget::Action(format!("player:{}", player_id)))
+                            }
+                            _ => continue,
+                        };
+                        focusable.push(FocusableElement {
+                            id: FocusableId::table_cell(&table_name, row_idx, col_idx),
+                            y,
+                            height: 1,
+                            rect: Rect::new(0, y, cell.display_text().len() as u16, 1),
+                            link_target,
+                            row_position: None,
+                        });
+                    }
+                }
+            }
+        }
+
+        Self::TeamBoxscore {
+            team_name,
+            forwards_table,
+            defense_table,
+            goalies_table,
+            focusable,
         }
     }
 }

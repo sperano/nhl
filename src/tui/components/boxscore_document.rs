@@ -127,77 +127,32 @@ impl BoxscoreDocumentContent {
         ]
     }
 
-    /// Build forwards table for a team
-    fn build_forwards_table(
+    /// Build a skater table (forwards or defense)
+    fn build_skater_table(
         &self,
-        forwards: &[SkaterStats],
-        team_name: &str,
+        skaters: &[SkaterStats],
         table_id: &str,
         focus: &FocusContext,
-    ) -> Option<DocumentElement> {
-        if forwards.is_empty() {
-            return None;
-        }
-
-        let title = format!("{} - Forwards", team_name);
+    ) -> TableWidget {
         let columns = game_skater_columns();
-        let table = TableWidget::from_data(&columns, forwards.to_vec())
-            .with_focused_row(focus.focused_table_row(table_id));
-
-        Some(DocumentElement::group(vec![
-            DocumentElement::indented(DocumentElement::section_title(title, false), 2),
-            DocumentElement::table(table_id, table),
-        ]))
+        TableWidget::from_data(&columns, skaters.to_vec())
+            .with_focused_row(focus.focused_table_row(table_id))
     }
 
-    /// Build defense table for a team
-    fn build_defense_table(
-        &self,
-        defense: &[SkaterStats],
-        team_name: &str,
-        table_id: &str,
-        focus: &FocusContext,
-    ) -> Option<DocumentElement> {
-        if defense.is_empty() {
-            return None;
-        }
-
-        let title = format!("{} - Defense", team_name);
-        let columns = game_skater_columns();
-        let table = TableWidget::from_data(&columns, defense.to_vec())
-            .with_focused_row(focus.focused_table_row(table_id));
-
-        Some(DocumentElement::group(vec![
-            DocumentElement::indented(DocumentElement::section_title(title, false), 2),
-            DocumentElement::table(table_id, table),
-        ]))
-    }
-
-    /// Build goalies table for a team
+    /// Build a goalies table
     fn build_goalies_table(
         &self,
         goalies: &[GoalieStats],
-        team_name: &str,
         table_id: &str,
         focus: &FocusContext,
-    ) -> Option<DocumentElement> {
-        if goalies.is_empty() {
-            return None;
-        }
-
-        let title = format!("{} - Goalies", team_name);
+    ) -> TableWidget {
         let columns = game_goalie_columns();
-        let table = TableWidget::from_data(&columns, goalies.to_vec())
-            .with_focused_row(focus.focused_table_row(table_id));
-
-        Some(DocumentElement::group(vec![
-            DocumentElement::indented(DocumentElement::section_title(title, false), 2),
-            DocumentElement::table(table_id, table),
-        ]))
+        TableWidget::from_data(&columns, goalies.to_vec())
+            .with_focused_row(focus.focused_table_row(table_id))
     }
 
-    /// Build player stats section for one team
-    fn build_team_stats(&self, focus: &FocusContext, is_away: bool) -> Vec<DocumentElement> {
+    /// Build player stats section for one team using TeamBoxscore element
+    fn build_team_boxscore(&self, focus: &FocusContext, is_away: bool) -> DocumentElement {
         let boxscore = &self.boxscore;
         let (team_stats, team_name, prefix) = if is_away {
             (
@@ -213,41 +168,29 @@ impl BoxscoreDocumentContent {
             )
         };
 
-        let mut elements = Vec::new();
-
-        // Forwards
-        if let Some(table) = self.build_forwards_table(
+        let forwards_table = self.build_skater_table(
             &team_stats.forwards,
-            team_name,
             &format!("{}_forwards", prefix),
             focus,
-        ) {
-            elements.push(table);
-            elements.push(DocumentElement::spacer(1));
-        }
-
-        // Defense
-        if let Some(table) = self.build_defense_table(
+        );
+        let defense_table = self.build_skater_table(
             &team_stats.defense,
-            team_name,
             &format!("{}_defense", prefix),
             focus,
-        ) {
-            elements.push(table);
-            elements.push(DocumentElement::spacer(1));
-        }
-
-        // Goalies
-        if let Some(table) = self.build_goalies_table(
+        );
+        let goalies_table = self.build_goalies_table(
             &team_stats.goalies,
-            team_name,
             &format!("{}_goalies", prefix),
             focus,
-        ) {
-            elements.push(table);
-        }
+        );
 
-        elements
+        DocumentElement::team_boxscore(
+            prefix,
+            team_name,
+            forwards_table,
+            defense_table,
+            goalies_table,
+        )
     }
 }
 
@@ -267,17 +210,13 @@ impl Document for BoxscoreDocumentContent {
         }
         builder = builder.spacer(1);
 
-        // Player stats - show both teams stacked vertically
+        // Player stats - show both teams stacked vertically with decorative borders
         // Away team
-        for elem in self.build_team_stats(focus, true) {
-            builder = builder.element(elem);
-        }
+        builder = builder.element(self.build_team_boxscore(focus, true));
         builder = builder.spacer(1);
 
         // Home team
-        for elem in self.build_team_stats(focus, false) {
-            builder = builder.element(elem);
-        }
+        builder = builder.element(self.build_team_boxscore(focus, false));
 
         builder.build()
     }

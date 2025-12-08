@@ -7,9 +7,14 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 
 use crate::config::DisplayConfig;
+use crate::tui::component::ElementWidget;
+use crate::tui::components::TableWidget;
 use crate::tui::widgets::StandaloneWidget;
 
 use super::DocumentElement;
+
+/// Fixed width for team boxscore
+pub const TEAM_BOXSCORE_WIDTH: u16 = 85;
 
 /// Render a horizontal row of elements
 pub(super) fn render_row(
@@ -223,5 +228,184 @@ pub(super) fn render_group(
                 }
             }
         }
+    }
+}
+
+/// Render a team boxscore with decorative borders
+///
+/// Renders section headers with embedded titles and box borders around tables:
+/// ```text
+/// ╒══╡ Team - Forwards ╞═══════════════════════════════╕
+/// │                                                    │
+/// │  (table content)                                   │
+/// │                                                    │
+/// ╞══╡ Team - Defense ╞════════════════════════════════╡
+/// ...
+/// ╘════════════════════════════════════════════════════╛
+/// ```
+pub(super) fn render_team_boxscore(
+    team_name: &str,
+    forwards_table: &TableWidget,
+    defense_table: &TableWidget,
+    goalies_table: &TableWidget,
+    area: Rect,
+    buf: &mut Buffer,
+    config: &DisplayConfig,
+) {
+    let bc = &config.box_chars;
+    let border_style = config.muted_style();
+
+    // Use fixed width but respect area constraints
+    let width = TEAM_BOXSCORE_WIDTH.min(area.width);
+    let inner_width = width.saturating_sub(2); // Subtract 2 for side borders
+
+    let mut y = area.y;
+    let mut is_first_section = true;
+
+    // Helper to render an empty bordered line
+    let render_empty_bordered_line = |y: u16, buf: &mut Buffer| {
+        buf.set_string(area.x, y, &bc.vertical, border_style);
+        if width > 1 {
+            buf.set_string(area.x + width - 1, y, &bc.vertical, border_style);
+        }
+    };
+
+    // Render sections
+    let sections: Vec<(&str, &TableWidget)> = vec![
+        ("Forwards", forwards_table),
+        ("Defense", defense_table),
+        ("Goalies", goalies_table),
+    ];
+
+    for (section_name, table) in sections {
+        if table.row_count() == 0 {
+            continue;
+        }
+
+        // Section header with embedded title
+        let title = format!("{} - {}", team_name, section_name);
+        render_section_header(
+            area.x,
+            y,
+            width,
+            &title,
+            is_first_section,
+            buf,
+            config,
+        );
+        y += 1;
+        is_first_section = false;
+
+        // Blank line after header
+        render_empty_bordered_line(y, buf);
+        y += 1;
+
+        // Table content - render with side borders
+        let table_height = table.preferred_height().unwrap_or(0);
+        for row in 0..table_height {
+            // Left border
+            buf.set_string(area.x, y + row, &bc.vertical, border_style);
+            // Right border
+            if width > 1 {
+                buf.set_string(area.x + width - 1, y + row, &bc.vertical, border_style);
+            }
+        }
+
+        // Render table content inside borders
+        let table_area = Rect::new(area.x + 1, y, inner_width, table_height);
+        table.render(table_area, buf, config);
+        y += table_height;
+
+        // Blank line after table (before next section or bottom border)
+        render_empty_bordered_line(y, buf);
+        y += 1;
+    }
+
+    // Bottom border
+    render_bottom_border(area.x, y, width, buf, config);
+}
+
+/// Render section header with embedded title
+///
+/// First section: ╒══╡ Title ╞═══════════════════════════════════╕
+/// Later sections: ╞══╡ Title ╞═══════════════════════════════════╡
+fn render_section_header(
+    x: u16,
+    y: u16,
+    width: u16,
+    title: &str,
+    is_first: bool,
+    buf: &mut Buffer,
+    config: &DisplayConfig,
+) {
+    let bc = &config.box_chars;
+    let border_style = config.muted_style();
+    let title_style = config.text_style();
+
+    // Choose corner characters based on whether this is first section
+    let (left_corner, right_corner) = if is_first {
+        (&bc.mixed_dh_top_left, &bc.mixed_dh_top_right)
+    } else {
+        (&bc.mixed_dh_left_t, &bc.mixed_dh_right_t)
+    };
+
+    // Build the header line: corner + == + ╡ + title + ╞ + === + corner
+    let title_prefix = format!("{}{}{}",
+        left_corner,
+        bc.double_horizontal.repeat(2),
+        &bc.mixed_dh_right_t,
+    );
+    let title_suffix = format!("{}",
+        &bc.mixed_dh_left_t,
+    );
+
+    // Calculate remaining space for trailing ═
+    let prefix_len = 4; // corner + 2x═ + ╡
+    let suffix_len = 2; // ╞ + corner
+    let title_len = title.chars().count();
+    let used = prefix_len + title_len + suffix_len;
+    let remaining = (width as usize).saturating_sub(used);
+
+    // Render prefix
+    buf.set_string(x, y, &title_prefix, border_style);
+
+    // Render title (with space padding)
+    let title_with_space = format!(" {} ", title);
+    buf.set_string(x + 4, y, &title_with_space, title_style);
+
+    // Render suffix (╞ + trailing ═ + corner)
+    let suffix_x = x + 4 + title_with_space.chars().count() as u16;
+    buf.set_string(suffix_x, y, &title_suffix, border_style);
+
+    // Trailing ═
+    let trailing = bc.double_horizontal.repeat(remaining.saturating_sub(1));
+    buf.set_string(suffix_x + 1, y, &trailing, border_style);
+
+    // Right corner
+    buf.set_string(x + width - 1, y, right_corner, border_style);
+}
+
+/// Render bottom border: ╘═══════════════════════════════════════════════╛
+fn render_bottom_border(
+    x: u16,
+    y: u16,
+    width: u16,
+    buf: &mut Buffer,
+    config: &DisplayConfig,
+) {
+    let bc = &config.box_chars;
+    let border_style = config.muted_style();
+
+    // Left corner
+    buf.set_string(x, y, &bc.mixed_dh_bottom_left, border_style);
+
+    // Middle ═
+    let middle_width = width.saturating_sub(2) as usize;
+    let middle = bc.double_horizontal.repeat(middle_width);
+    buf.set_string(x + 1, y, &middle, border_style);
+
+    // Right corner
+    if width > 1 {
+        buf.set_string(x + width - 1, y, &bc.mixed_dh_bottom_right, border_style);
     }
 }
