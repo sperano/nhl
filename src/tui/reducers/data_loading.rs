@@ -4,7 +4,10 @@ use tracing::debug;
 
 use crate::tui::action::Action;
 use crate::tui::component::Effect;
-use crate::tui::constants::{DEMO_TAB_PATH, SCORES_TAB_PATH, STANDINGS_TAB_PATH};
+#[cfg(feature = "development")]
+use crate::tui::constants::DEMO_TAB_PATH;
+use crate::tui::constants::{SCORES_TAB_PATH, STANDINGS_TAB_PATH};
+#[cfg(feature = "development")]
 use crate::tui::document::Document;
 use crate::tui::reducers::standings::rebuild_standings_focusable_metadata;
 use crate::tui::state::{AppState, LoadingKey};
@@ -68,14 +71,19 @@ fn handle_standings_loaded(
             new_state.data.loading.remove(&LoadingKey::Standings);
 
             // Rebuild demo document focusable data in component state
-            use crate::tui::components::demo_tab::DemoDocument;
-            use crate::tui::document_nav::DocumentNavState;
-            if let Some(demo_state) = component_states.get_mut::<DocumentNavState>(DEMO_TAB_PATH) {
-                let demo_doc = DemoDocument::new(Some(standings.clone()));
-                demo_state.focusable_positions = demo_doc.focusable_positions();
-                demo_state.focusable_ids = demo_doc.focusable_ids();
-                demo_state.focusable_row_positions = demo_doc.focusable_row_positions();
-                demo_state.link_targets = demo_doc.focusable_link_targets();
+            #[cfg(feature = "development")]
+            {
+                use crate::tui::components::demo_tab::DemoDocument;
+                use crate::tui::document_nav::DocumentNavState;
+                if let Some(demo_state) =
+                    component_states.get_mut::<DocumentNavState>(DEMO_TAB_PATH)
+                {
+                    let demo_doc = DemoDocument::new(Some(standings.clone()));
+                    demo_state.focusable_positions = demo_doc.focusable_positions();
+                    demo_state.focusable_ids = demo_doc.focusable_ids();
+                    demo_state.focusable_row_positions = demo_doc.focusable_row_positions();
+                    demo_state.link_targets = demo_doc.focusable_link_targets();
+                }
             }
 
             // Rebuild standings document focusable data in component state
@@ -90,14 +98,19 @@ fn handle_standings_loaded(
             new_state.data.loading.remove(&LoadingKey::Standings);
 
             // Rebuild demo focusable data for empty standings case
-            use crate::tui::components::demo_tab::DemoDocument;
-            use crate::tui::document_nav::DocumentNavState;
-            if let Some(demo_state) = component_states.get_mut::<DocumentNavState>(DEMO_TAB_PATH) {
-                let demo_doc = DemoDocument::new(None);
-                demo_state.focusable_positions = demo_doc.focusable_positions();
-                demo_state.focusable_ids = demo_doc.focusable_ids();
-                demo_state.focusable_row_positions = demo_doc.focusable_row_positions();
-                demo_state.link_targets = demo_doc.focusable_link_targets();
+            #[cfg(feature = "development")]
+            {
+                use crate::tui::components::demo_tab::DemoDocument;
+                use crate::tui::document_nav::DocumentNavState;
+                if let Some(demo_state) =
+                    component_states.get_mut::<DocumentNavState>(DEMO_TAB_PATH)
+                {
+                    let demo_doc = DemoDocument::new(None);
+                    demo_state.focusable_positions = demo_doc.focusable_positions();
+                    demo_state.focusable_ids = demo_doc.focusable_ids();
+                    demo_state.focusable_row_positions = demo_doc.focusable_row_positions();
+                    demo_state.link_targets = demo_doc.focusable_link_targets();
+                }
             }
 
             // Clear standings focusable data in component state on error

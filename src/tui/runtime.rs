@@ -5,7 +5,9 @@ use tracing::{debug, trace};
 use super::action::Action;
 use super::component::{Effect, Element};
 use super::component_store::ComponentStateStore;
-use super::constants::{DEMO_TAB_PATH, SCORES_TAB_PATH, SETTINGS_TAB_PATH, STANDINGS_TAB_PATH};
+#[cfg(feature = "development")]
+use super::constants::DEMO_TAB_PATH;
+use super::constants::{SCORES_TAB_PATH, SETTINGS_TAB_PATH, STANDINGS_TAB_PATH};
 use super::effects::DataEffects;
 use super::reducer::reduce;
 use super::state::AppState;
@@ -208,6 +210,7 @@ impl Runtime {
         use crate::tui::components::scores_tab::ScoresTabState;
         use crate::tui::components::settings_tab::SettingsTabState;
         use crate::tui::components::standings_tab::StandingsTabState;
+        #[cfg(feature = "development")]
         use crate::tui::document_nav::DocumentNavState;
 
         // Base chrome = main tab bar (2 lines) + status bar (2 lines) = 4 lines
@@ -215,6 +218,7 @@ impl Runtime {
         const BASE_CHROME_LINES: u16 = 4;
         const SUBTAB_CHROME_LINES: u16 = 2;
 
+        #[cfg(feature = "development")]
         let base_viewport = terminal_height.saturating_sub(BASE_CHROME_LINES);
         let subtab_viewport =
             terminal_height.saturating_sub(BASE_CHROME_LINES + SUBTAB_CHROME_LINES);
@@ -251,6 +255,7 @@ impl Runtime {
 
         // Update DemoTab viewport (no subtabs, uses base chrome)
         // DemoTab uses DocumentNavState directly as its state type
+        #[cfg(feature = "development")]
         if let Some(state) = self
             .component_states
             .get_mut::<DocumentNavState>(DEMO_TAB_PATH)
@@ -535,7 +540,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_tab_cycling() {
+    #[cfg(feature = "development")]
+    async fn test_tab_cycling_with_demo() {
         let mut runtime = create_test_runtime();
 
         // Start on Scores, go right to Standings
@@ -557,6 +563,33 @@ mod tests {
         assert_eq!(
             runtime.state().navigation.current_tab,
             crate::tui::Tab::Demo
+        );
+
+        // Go right to wrap around to Scores
+        runtime.dispatch(Action::NavigateTabRight);
+        assert_eq!(
+            runtime.state().navigation.current_tab,
+            crate::tui::Tab::Scores
+        );
+    }
+
+    #[tokio::test]
+    #[cfg(not(feature = "development"))]
+    async fn test_tab_cycling() {
+        let mut runtime = create_test_runtime();
+
+        // Start on Scores, go right to Standings
+        runtime.dispatch(Action::NavigateTabRight);
+        assert_eq!(
+            runtime.state().navigation.current_tab,
+            crate::tui::Tab::Standings
+        );
+
+        // Go right to Settings
+        runtime.dispatch(Action::NavigateTabRight);
+        assert_eq!(
+            runtime.state().navigation.current_tab,
+            crate::tui::Tab::Settings
         );
 
         // Go right to wrap around to Scores

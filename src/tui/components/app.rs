@@ -1,21 +1,24 @@
 use crate::tui::component::{vertical, Component, Constraint, Element};
 use crate::tui::component_store::ComponentStateStore;
-use crate::tui::constants::{
-    DEMO_TAB_PATH, SCORES_TAB_PATH, SETTINGS_TAB_PATH, STANDINGS_TAB_PATH,
-};
+#[cfg(feature = "development")]
+use crate::tui::constants::DEMO_TAB_PATH;
+use crate::tui::constants::{SCORES_TAB_PATH, SETTINGS_TAB_PATH, STANDINGS_TAB_PATH};
 use crate::tui::state::{AppState, LoadingKey};
 
+#[cfg(feature = "development")]
+use super::demo_tab::DemoTabProps;
 use super::{
     boxscore_document::{BoxscoreDocument, BoxscoreDocumentProps, TeamView},
-    demo_tab::DemoTabProps,
     player_detail_document::PlayerDetailDocumentProps,
     scores_tab::ScoresTabProps,
     settings_tab::SettingsTabProps,
     standings_tab::StandingsTabProps,
     team_detail_document::TeamDetailDocumentProps,
-    BreadcrumbWidget, DemoTab, PlayerDetailDocument, ScoresTab, SettingsTab, StandingsTab,
-    StatusBar, TabItem, TabbedPanel, TabbedPanelProps, TeamDetailDocument,
+    BreadcrumbWidget, PlayerDetailDocument, ScoresTab, SettingsTab, StandingsTab, StatusBar,
+    TabItem, TabbedPanel, TabbedPanelProps, TeamDetailDocument,
 };
+#[cfg(feature = "development")]
+use super::DemoTab;
 use crate::tui::state::DocumentStackEntry;
 use crate::tui::types::StackedDocument;
 
@@ -63,65 +66,60 @@ impl App {
             Tab::Scores => "scores",
             Tab::Standings => "standings",
             Tab::Settings => "settings",
+            #[cfg(feature = "development")]
             Tab::Demo => "demo",
         };
 
-        let (scores_content, standings_content, settings_content, demo_content) =
-            if let Some(doc_entry) = state.navigation.document_stack.last() {
-                let doc_element = self.render_stacked_document(state, doc_entry);
-                let breadcrumb_element = self.render_breadcrumb(state);
+        let mut scores_content = Element::None;
+        let mut standings_content = Element::None;
+        let mut settings_content = Element::None;
+        #[cfg(feature = "development")]
+        let mut demo_content = Element::None;
 
-                let content_with_breadcrumb = vertical(
-                    [Constraint::Length(2), Constraint::Min(0)],
-                    vec![breadcrumb_element, doc_element],
+        if let Some(doc_entry) = state.navigation.document_stack.last() {
+            let doc_element = self.render_stacked_document(state, doc_entry);
+            let breadcrumb_element = self.render_breadcrumb(state);
+
+            let content_with_breadcrumb = vertical(
+                [Constraint::Length(2), Constraint::Min(0)],
+                vec![breadcrumb_element, doc_element],
+            );
+
+            match state.navigation.current_tab {
+                Tab::Scores => scores_content = content_with_breadcrumb,
+                Tab::Standings => standings_content = content_with_breadcrumb,
+                Tab::Settings => settings_content = content_with_breadcrumb,
+                #[cfg(feature = "development")]
+                Tab::Demo => demo_content = content_with_breadcrumb,
+            }
+        } else {
+            scores_content = self.render_scores_tab(state);
+            standings_content = self.render_standings_tab(state);
+            settings_content = self.render_settings_tab(state);
+            #[cfg(feature = "development")]
+            {
+                demo_content = DemoTab.view(
+                    &DemoTabProps {
+                        content_focused: state.navigation.content_focused,
+                        standings: state.data.standings.clone(),
+                    },
+                    &Default::default(),
                 );
+            }
+        }
 
-                match state.navigation.current_tab {
-                    Tab::Scores => (
-                        content_with_breadcrumb,
-                        Element::None,
-                        Element::None,
-                        Element::None,
-                    ),
-                    Tab::Standings => (
-                        Element::None,
-                        content_with_breadcrumb,
-                        Element::None,
-                        Element::None,
-                    ),
-                    Tab::Settings => (
-                        Element::None,
-                        Element::None,
-                        content_with_breadcrumb,
-                        Element::None,
-                    ),
-                    Tab::Demo => (
-                        Element::None,
-                        Element::None,
-                        Element::None,
-                        content_with_breadcrumb,
-                    ),
-                }
-            } else {
-                (
-                    self.render_scores_tab(state),
-                    self.render_standings_tab(state),
-                    self.render_settings_tab(state),
-                    DemoTab.view(
-                        &DemoTabProps {
-                            content_focused: state.navigation.content_focused,
-                            standings: state.data.standings.clone(),
-                        },
-                        &Default::default(),
-                    ),
-                )
-            };
-
+        #[cfg(feature = "development")]
         let tabs = vec![
             TabItem::new("scores", "Scores", scores_content),
             TabItem::new("standings", "Standings", standings_content),
             TabItem::new("settings", "Settings", settings_content),
             TabItem::new("demo", "Demo", demo_content),
+        ];
+        #[cfg(not(feature = "development"))]
+        let tabs = vec![
+            TabItem::new("scores", "Scores", scores_content),
+            TabItem::new("standings", "Standings", standings_content),
+            TabItem::new("settings", "Settings", settings_content),
         ];
 
         TabbedPanel.view(
@@ -142,62 +140,51 @@ impl App {
         component_states: &mut ComponentStateStore,
     ) -> Element {
         use crate::tui::Tab;
-        //
+
         // Convert Tab enum to string key
         let active_key = match state.navigation.current_tab {
             Tab::Scores => "scores",
             Tab::Standings => "standings",
             Tab::Settings => "settings",
+            #[cfg(feature = "development")]
             Tab::Demo => "demo",
         };
-        //
+
+        let mut scores_content = Element::None;
+        let mut standings_content = Element::None;
+        let mut settings_content = Element::None;
+        #[cfg(feature = "development")]
+        let mut demo_content = Element::None;
+
         // Determine content for active tab - if document is open, show document instead
-        let (scores_content, standings_content, settings_content, demo_content) =
-            if let Some(doc_entry) = state.navigation.document_stack.last() {
-                // Document is open - render it with breadcrumb in the active tab's content area
-                let doc_element = self.render_stacked_document(state, doc_entry);
-                let breadcrumb_element = self.render_breadcrumb(state);
+        if let Some(doc_entry) = state.navigation.document_stack.last() {
+            // Document is open - render it with breadcrumb in the active tab's content area
+            let doc_element = self.render_stacked_document(state, doc_entry);
+            let breadcrumb_element = self.render_breadcrumb(state);
 
-                // Wrap document with breadcrumb
-                let content_with_breadcrumb = vertical(
-                    [
-                        Constraint::Length(2), // Breadcrumb (2 lines: text + divider)
-                        Constraint::Min(0),    // Document content
-                    ],
-                    vec![breadcrumb_element, doc_element],
-                );
+            // Wrap document with breadcrumb
+            let content_with_breadcrumb = vertical(
+                [
+                    Constraint::Length(2), // Breadcrumb (2 lines: text + divider)
+                    Constraint::Min(0),    // Document content
+                ],
+                vec![breadcrumb_element, doc_element],
+            );
 
-                match state.navigation.current_tab {
-                    Tab::Scores => (
-                        content_with_breadcrumb,
-                        Element::None,
-                        Element::None,
-                        Element::None,
-                    ),
-                    Tab::Standings => (
-                        Element::None,
-                        content_with_breadcrumb,
-                        Element::None,
-                        Element::None,
-                    ),
-                    Tab::Settings => (
-                        Element::None,
-                        Element::None,
-                        content_with_breadcrumb,
-                        Element::None,
-                    ),
-                    Tab::Demo => (
-                        Element::None,
-                        Element::None,
-                        Element::None,
-                        content_with_breadcrumb,
-                    ),
-                }
-            } else {
-                // No panel - render normal tab content
-                let scores = self.render_scores_tab_with_states(state, component_states);
-                let standings = self.render_standings_tab_with_states(state, component_states);
-                let settings = self.render_settings_tab_with_states(state, component_states);
+            match state.navigation.current_tab {
+                Tab::Scores => scores_content = content_with_breadcrumb,
+                Tab::Standings => standings_content = content_with_breadcrumb,
+                Tab::Settings => settings_content = content_with_breadcrumb,
+                #[cfg(feature = "development")]
+                Tab::Demo => demo_content = content_with_breadcrumb,
+            }
+        } else {
+            // No panel - render normal tab content
+            scores_content = self.render_scores_tab_with_states(state, component_states);
+            standings_content = self.render_standings_tab_with_states(state, component_states);
+            settings_content = self.render_settings_tab_with_states(state, component_states);
+            #[cfg(feature = "development")]
+            {
                 // Build Demo tab content
                 let demo_props = DemoTabProps {
                     content_focused: state.navigation.content_focused,
@@ -205,15 +192,22 @@ impl App {
                 };
                 let demo_state =
                     component_states.get_or_init::<DemoTab>(DEMO_TAB_PATH, &demo_props);
-                let demo = DemoTab.view(&demo_props, demo_state);
-                (scores, standings, settings, demo)
-            };
+                demo_content = DemoTab.view(&demo_props, demo_state);
+            }
+        }
 
+        #[cfg(feature = "development")]
         let tabs = vec![
             TabItem::new("scores", "Scores", scores_content),
             TabItem::new("standings", "Standings", standings_content),
             TabItem::new("settings", "Settings", settings_content),
             TabItem::new("demo", "Demo", demo_content),
+        ];
+        #[cfg(not(feature = "development"))]
+        let tabs = vec![
+            TabItem::new("scores", "Scores", scores_content),
+            TabItem::new("standings", "Standings", standings_content),
+            TabItem::new("settings", "Settings", settings_content),
         ];
 
         TabbedPanel.view(

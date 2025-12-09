@@ -13,7 +13,9 @@ use super::components::scores_tab::ScoresTabMsg;
 use super::components::scores_tab::ScoresTabState;
 use super::components::standings_tab::StandingsTabMsg;
 use super::components::standings_tab::StandingsTabState;
-use super::constants::{DEMO_TAB_PATH, SCORES_TAB_PATH, SETTINGS_TAB_PATH, STANDINGS_TAB_PATH};
+#[cfg(feature = "development")]
+use super::constants::DEMO_TAB_PATH;
+use super::constants::{SCORES_TAB_PATH, SETTINGS_TAB_PATH, STANDINGS_TAB_PATH};
 use super::state::AppState;
 use super::tab_component::TabState;
 use super::types::Tab;
@@ -100,12 +102,13 @@ fn handle_esc_key(state: &AppState, component_states: &ComponentStateStore) -> O
     None
 }
 
-/// Handle direct tab switching via number keys (1-4)
+/// Handle direct tab switching via number keys (1-3, or 1-4 with development feature)
 fn handle_number_keys(key_code: KeyCode) -> Option<Action> {
     match key_code {
         KeyCode::Char('1') => Some(Action::NavigateTab(Tab::Scores)),
         KeyCode::Char('2') => Some(Action::NavigateTab(Tab::Standings)),
         KeyCode::Char('3') => Some(Action::NavigateTab(Tab::Settings)),
+        #[cfg(feature = "development")]
         KeyCode::Char('4') => Some(Action::NavigateTab(Tab::Demo)),
         _ => None,
     }
@@ -362,6 +365,7 @@ fn handle_settings_tab_keys(
 }
 
 /// Handle Demo tab navigation
+#[cfg(feature = "development")]
 fn handle_demo_tab_keys(key: KeyEvent, _state: &AppState) -> Option<Action> {
     use crate::tui::components::demo_tab::DemoTabMsg;
     use crate::tui::document_nav::DocumentNavMsg;
@@ -497,9 +501,22 @@ pub fn key_to_action(
                 path: SCORES_TAB_PATH.to_string(),
                 message: Box::new(ScoresTabMsg::DocNav(DocumentNavMsg::FocusPrev)),
             });
-        } else if current_tab == Tab::Demo {
+        }
+        #[cfg(feature = "development")]
+        if current_tab == Tab::Demo {
             // Demo tab - Up handled by handle_demo_tab_keys (both plain and Shift)
         } else if current_tab == Tab::Settings {
+            // Settings tab - Up handled by handle_settings_tab_keys (both plain and Shift)
+        } else if current_tab == Tab::Standings && is_standings_browse_mode_active(component_states)
+        {
+            // Standings browse mode - Up handled by handle_standings_league_keys (both plain and Shift)
+        } else {
+            // Not in nested mode - Up returns to tab bar
+            debug!("KEY: Up pressed in content - returning to tab bar");
+            return Some(Action::ExitContentFocus);
+        }
+        #[cfg(not(feature = "development"))]
+        if current_tab == Tab::Settings {
             // Settings tab - Up handled by handle_settings_tab_keys (both plain and Shift)
         } else if current_tab == Tab::Standings && is_standings_browse_mode_active(component_states)
         {
@@ -529,6 +546,7 @@ pub fn key_to_action(
             }
         }
         Tab::Settings => handle_settings_tab_keys(key, state, component_states),
+        #[cfg(feature = "development")]
         Tab::Demo => handle_demo_tab_keys(key, state),
     }
 }

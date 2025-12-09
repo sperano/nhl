@@ -51,6 +51,7 @@ impl BreadcrumbWidget {
             Tab::Scores => "Scores",
             Tab::Standings => "Standings",
             Tab::Settings => "Settings",
+            #[cfg(feature = "development")]
             Tab::Demo => "Demo",
         };
 
@@ -253,6 +254,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "development")]
     fn test_breadcrumb_browser_tab() {
         let widget = BreadcrumbWidget::new(Tab::Demo, Vec::new());
         let config = DisplayConfig::default();

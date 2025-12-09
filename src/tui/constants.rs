@@ -13,4 +13,5 @@ pub const STANDINGS_TAB_PATH: &str = "app/standings_tab";
 pub const SETTINGS_TAB_PATH: &str = "app/settings_tab";
 
 /// Path for the DemoTab component
+#[cfg(feature = "development")]
 pub const DEMO_TAB_PATH: &str = "app/demo_tab";

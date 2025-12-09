@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::OnceLock;
-use xdg::BaseDirectories;
 
 const DARKENING_FACTOR: f32 = 0.5;
 
@@ -406,9 +405,16 @@ fn parse_color(s: &str) -> Option<Color> {
 
 pub fn get_config_path() -> Option<PathBuf> {
     let pgm = env!("CARGO_PKG_NAME");
-    let xdg_dirs = BaseDirectories::with_prefix(pgm);
-    let config_home = xdg_dirs.get_config_home()?;
-    Some(config_home.join("config.toml"))
+
+    // On Unix, use XDG-style ~/.config for backward compatibility
+    // On Windows, use the native config directory
+    #[cfg(unix)]
+    let config_dir = dirs::home_dir()?.join(".config");
+
+    #[cfg(windows)]
+    let config_dir = dirs::config_dir()?;
+
+    Some(config_dir.join(pgm).join("config.toml"))
 }
 
 pub fn read() -> Config {

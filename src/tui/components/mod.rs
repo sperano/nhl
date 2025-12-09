@@ -3,6 +3,7 @@
 pub mod app;
 pub mod boxscore_document;
 pub mod breadcrumb;
+#[cfg(feature = "development")]
 pub mod demo_tab;
 pub mod player_detail_document;
 pub mod score_boxes_document;
@@ -20,6 +21,7 @@ pub mod team_detail_document;
 pub use app::App;
 pub use boxscore_document::{BoxscoreDocument, BoxscoreDocumentProps};
 pub use breadcrumb::BreadcrumbWidget;
+#[cfg(feature = "development")]
 pub use demo_tab::{DemoTab, DemoTabProps};
 pub use player_detail_document::{PlayerDetailDocument, PlayerDetailDocumentProps};
 pub use score_boxes_document::ScoreBoxesDocument;

@@ -9,6 +9,7 @@ pub enum Tab {
     Scores,
     Standings,
     Settings,
+    #[cfg(feature = "development")]
     Demo,
 }
 

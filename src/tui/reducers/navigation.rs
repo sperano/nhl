@@ -36,9 +36,13 @@ fn navigate_to_tab(state: AppState, tab: Tab) -> (AppState, Effect) {
 fn navigate_tab_left(state: AppState) -> (AppState, Effect) {
     let mut new_state = state;
     new_state.navigation.current_tab = match new_state.navigation.current_tab {
+        #[cfg(feature = "development")]
         Tab::Scores => Tab::Demo,
+        #[cfg(not(feature = "development"))]
+        Tab::Scores => Tab::Settings,
         Tab::Standings => Tab::Scores,
         Tab::Settings => Tab::Standings,
+        #[cfg(feature = "development")]
         Tab::Demo => Tab::Settings,
     };
     new_state.navigation.document_stack.clear();
@@ -51,7 +55,11 @@ fn navigate_tab_right(state: AppState) -> (AppState, Effect) {
     new_state.navigation.current_tab = match new_state.navigation.current_tab {
         Tab::Scores => Tab::Standings,
         Tab::Standings => Tab::Settings,
+        #[cfg(feature = "development")]
         Tab::Settings => Tab::Demo,
+        #[cfg(not(feature = "development"))]
+        Tab::Settings => Tab::Scores,
+        #[cfg(feature = "development")]
         Tab::Demo => Tab::Scores,
     };
     new_state.navigation.document_stack.clear();
@@ -65,6 +73,7 @@ fn enter_content_focus(state: AppState) -> (AppState, Effect) {
     new_state.navigation.content_focused = true;
 
     // Set tab-specific status message and initialize focus for Demo tab
+    #[cfg(feature = "development")]
     if new_state.navigation.current_tab == Tab::Demo {
         new_state
             .system
@@ -82,6 +91,7 @@ fn exit_content_focus(state: AppState) -> (AppState, Effect) {
     let mut new_state = state;
 
     // Reset status message if exiting from Demo tab
+    #[cfg(feature = "development")]
     if new_state.navigation.current_tab == Tab::Demo {
         new_state.system.reset_status_message();
     }
@@ -115,6 +125,7 @@ fn navigate_up(state: AppState) -> (AppState, Effect) {
         debug!("NAVIGATE_UP: Exiting content focus");
 
         // Reset status message if exiting from Demo tab
+        #[cfg(feature = "development")]
         if new_state.navigation.current_tab == Tab::Demo {
             new_state.system.reset_status_message();
         }
@@ -143,7 +154,8 @@ mod tests {
     }
 
     #[test]
-    fn test_tab_left_navigation_cycles() {
+    #[cfg(feature = "development")]
+    fn test_tab_left_navigation_cycles_with_demo() {
         let mut state = AppState::default();
         state.navigation.current_tab = Tab::Scores;
 
@@ -155,9 +167,36 @@ mod tests {
     }
 
     #[test]
-    fn test_tab_right_navigation_cycles() {
+    #[cfg(not(feature = "development"))]
+    fn test_tab_left_navigation_cycles() {
+        let mut state = AppState::default();
+        state.navigation.current_tab = Tab::Scores;
+
+        let (state, _) = navigate_tab_left(state);
+        assert_eq!(state.navigation.current_tab, Tab::Settings);
+
+        let (state, _) = navigate_tab_left(state);
+        assert_eq!(state.navigation.current_tab, Tab::Standings);
+    }
+
+    #[test]
+    #[cfg(feature = "development")]
+    fn test_tab_right_navigation_cycles_with_demo() {
         let mut state = AppState::default();
         state.navigation.current_tab = Tab::Demo;
+
+        let (state, _) = navigate_tab_right(state);
+        assert_eq!(state.navigation.current_tab, Tab::Scores);
+
+        let (state, _) = navigate_tab_right(state);
+        assert_eq!(state.navigation.current_tab, Tab::Standings);
+    }
+
+    #[test]
+    #[cfg(not(feature = "development"))]
+    fn test_tab_right_navigation_cycles() {
+        let mut state = AppState::default();
+        state.navigation.current_tab = Tab::Settings;
 
         let (state, _) = navigate_tab_right(state);
         assert_eq!(state.navigation.current_tab, Tab::Scores);
