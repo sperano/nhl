@@ -11,7 +11,7 @@ use crate::tui::component::ElementWidget;
 use crate::tui::components::TableWidget;
 use crate::tui::widgets::StandaloneWidget;
 
-use super::DocumentElement;
+use super::{DocumentElement, RowAlignment};
 
 /// Fixed width for team boxscore
 pub const TEAM_BOXSCORE_WIDTH: u16 = 85;
@@ -26,6 +26,7 @@ pub const TEAM_BOXSCORE_SIDE_BY_SIDE_WIDTH: u16 = TEAM_BOXSCORE_WIDTH * 2 + TEAM
 pub(super) fn render_row(
     children: &[DocumentElement],
     gap: u16,
+    align: RowAlignment,
     area: Rect,
     buf: &mut Buffer,
     config: &DisplayConfig,
@@ -34,19 +35,37 @@ pub(super) fn render_row(
         return;
     }
 
-    // Check if children have preferred widths (e.g., ScoreBoxElement, GameBoxElement)
-    // If so, use preferred width; otherwise distribute space equally
+    // Check if children have preferred widths (e.g., ScoreBoxElement, TeamBoxscore)
     let has_preferred_widths = children.iter().all(|c| get_preferred_width(c).is_some());
 
-    let mut x_offset = area.x;
-
     if has_preferred_widths {
-        // Use preferred widths for fixed-size widgets
+        // Calculate total width of all children
+        let total_children_width: u16 = children
+            .iter()
+            .filter_map(|c| get_preferred_width(c))
+            .sum();
+
+        // Calculate gap based on alignment
+        let actual_gap = match align {
+            RowAlignment::Left => gap,
+            RowAlignment::Spread => {
+                // Calculate maximum gap to spread children across available width
+                let num_gaps = children.len().saturating_sub(1) as u16;
+                if num_gaps > 0 {
+                    let remaining_space = area.width.saturating_sub(total_children_width);
+                    (remaining_space / num_gaps).max(gap)
+                } else {
+                    0
+                }
+            }
+        };
+
+        let mut x_offset = area.x;
         for child in children {
             let child_width = get_preferred_width(child).unwrap_or(0);
             let child_area = Rect::new(x_offset, area.y, child_width, area.height);
             child.render(child_area, buf, config);
-            x_offset += child_width + gap;
+            x_offset += child_width + actual_gap;
         }
     } else {
         // Distribute space equally for flexible elements
@@ -55,6 +74,7 @@ pub(super) fn render_row(
         let available_width = area.width.saturating_sub(total_gap);
         let child_width = available_width / num_children;
 
+        let mut x_offset = area.x;
         for child in children {
             let child_area = Rect::new(x_offset, area.y, child_width, area.height);
             child.render(child_area, buf, config);

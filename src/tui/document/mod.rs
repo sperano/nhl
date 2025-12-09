@@ -30,7 +30,7 @@ use crate::tui::state::DataState;
 use crate::tui::types::StackedDocument;
 
 pub use builder::DocumentBuilder;
-pub use elements::{DocumentElement, TEAM_BOXSCORE_SIDE_BY_SIDE_WIDTH};
+pub use elements::{DocumentElement, RowAlignment, TEAM_BOXSCORE_SIDE_BY_SIDE_WIDTH};
 pub use focus::{FocusManager, FocusableElement, FocusableId, RowPosition};
 pub use link::{DocumentLink, DocumentType, LinkParams, LinkTarget};
 pub use viewport::Viewport;
