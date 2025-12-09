@@ -78,11 +78,17 @@ impl Document for ConferenceStandingsDocument {
         DocumentBuilder::new()
             .row(vec![
                 DocumentElement::group(vec![
-                    DocumentElement::indented(DocumentElement::section_title(left_header, false), MARGIN),
+                    DocumentElement::indented(
+                        DocumentElement::section_title(left_header, false),
+                        MARGIN,
+                    ),
                     DocumentElement::table(LEFT_TABLE, left_table),
                 ]),
                 DocumentElement::group(vec![
-                    DocumentElement::indented(DocumentElement::section_title(right_header, false), MARGIN),
+                    DocumentElement::indented(
+                        DocumentElement::section_title(right_header, false),
+                        MARGIN,
+                    ),
                     DocumentElement::table(RIGHT_TABLE, right_table),
                 ]),
             ])

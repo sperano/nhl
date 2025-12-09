@@ -48,7 +48,11 @@ impl DocumentElementWidget {
     /// - `document`: The document to render
     /// - `focus_index`: Index of the currently focused element (None = no focus)
     /// - `scroll_offset`: Current scroll offset in lines
-    pub fn new(document: Arc<dyn Document>, focus_index: Option<usize>, scroll_offset: u16) -> Self {
+    pub fn new(
+        document: Arc<dyn Document>,
+        focus_index: Option<usize>,
+        scroll_offset: u16,
+    ) -> Self {
         Self {
             document,
             focus_index,
@@ -132,15 +136,7 @@ mod tests {
 
         widget.render(area, &mut buf, &config);
 
-        assert_buffer(
-            &buf,
-            &[
-                "Hello",
-                "═════",
-                "Line 1",
-                "Line 2",
-            ],
-        );
+        assert_buffer(&buf, &["Hello", "═════", "Line 1", "Line 2"]);
     }
 
     #[test]
@@ -155,14 +151,7 @@ mod tests {
         widget.render(area, &mut buf, &config);
 
         // Scrolled past title + underline, showing lines A, B, C
-        assert_buffer(
-            &buf,
-            &[
-                "A",
-                "B",
-                "C",
-            ],
-        );
+        assert_buffer(&buf, &["A", "B", "C"]);
     }
 
     #[test]

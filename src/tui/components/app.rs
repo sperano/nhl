@@ -1,6 +1,8 @@
 use crate::tui::component::{vertical, Component, Constraint, Element};
 use crate::tui::component_store::ComponentStateStore;
-use crate::tui::constants::{DEMO_TAB_PATH, SCORES_TAB_PATH, SETTINGS_TAB_PATH, STANDINGS_TAB_PATH};
+use crate::tui::constants::{
+    DEMO_TAB_PATH, SCORES_TAB_PATH, SETTINGS_TAB_PATH, STANDINGS_TAB_PATH,
+};
 use crate::tui::state::{AppState, LoadingKey};
 
 use super::{
@@ -11,8 +13,8 @@ use super::{
     settings_tab::SettingsTabProps,
     standings_tab::StandingsTabProps,
     team_detail_document::TeamDetailDocumentProps,
-    BreadcrumbWidget, DemoTab, PlayerDetailDocument, ScoresTab, SettingsTab, StandingsTab, StatusBar,
-    TabItem, TabbedPanel, TabbedPanelProps, TeamDetailDocument,
+    BreadcrumbWidget, DemoTab, PlayerDetailDocument, ScoresTab, SettingsTab, StandingsTab,
+    StatusBar, TabItem, TabbedPanel, TabbedPanelProps, TeamDetailDocument,
 };
 use crate::tui::state::DocumentStackEntry;
 use crate::tui::types::StackedDocument;
@@ -75,10 +77,30 @@ impl App {
                 );
 
                 match state.navigation.current_tab {
-                    Tab::Scores => (content_with_breadcrumb, Element::None, Element::None, Element::None),
-                    Tab::Standings => (Element::None, content_with_breadcrumb, Element::None, Element::None),
-                    Tab::Settings => (Element::None, Element::None, content_with_breadcrumb, Element::None),
-                    Tab::Demo => (Element::None, Element::None, Element::None, content_with_breadcrumb),
+                    Tab::Scores => (
+                        content_with_breadcrumb,
+                        Element::None,
+                        Element::None,
+                        Element::None,
+                    ),
+                    Tab::Standings => (
+                        Element::None,
+                        content_with_breadcrumb,
+                        Element::None,
+                        Element::None,
+                    ),
+                    Tab::Settings => (
+                        Element::None,
+                        Element::None,
+                        content_with_breadcrumb,
+                        Element::None,
+                    ),
+                    Tab::Demo => (
+                        Element::None,
+                        Element::None,
+                        Element::None,
+                        content_with_breadcrumb,
+                    ),
                 }
             } else {
                 (
@@ -146,10 +168,30 @@ impl App {
                 );
 
                 match state.navigation.current_tab {
-                    Tab::Scores => (content_with_breadcrumb, Element::None, Element::None, Element::None),
-                    Tab::Standings => (Element::None, content_with_breadcrumb, Element::None, Element::None),
-                    Tab::Settings => (Element::None, Element::None, content_with_breadcrumb, Element::None),
-                    Tab::Demo => (Element::None, Element::None, Element::None, content_with_breadcrumb),
+                    Tab::Scores => (
+                        content_with_breadcrumb,
+                        Element::None,
+                        Element::None,
+                        Element::None,
+                    ),
+                    Tab::Standings => (
+                        Element::None,
+                        content_with_breadcrumb,
+                        Element::None,
+                        Element::None,
+                    ),
+                    Tab::Settings => (
+                        Element::None,
+                        Element::None,
+                        content_with_breadcrumb,
+                        Element::None,
+                    ),
+                    Tab::Demo => (
+                        Element::None,
+                        Element::None,
+                        Element::None,
+                        content_with_breadcrumb,
+                    ),
                 }
             } else {
                 // No panel - render normal tab content
@@ -161,7 +203,8 @@ impl App {
                     content_focused: state.navigation.content_focused,
                     standings: state.data.standings.clone(),
                 };
-                let demo_state = component_states.get_or_init::<DemoTab>(DEMO_TAB_PATH, &demo_props);
+                let demo_state =
+                    component_states.get_or_init::<DemoTab>(DEMO_TAB_PATH, &demo_props);
                 let demo = DemoTab.view(&demo_props, demo_state);
                 (scores, standings, settings, demo)
             };
@@ -184,11 +227,7 @@ impl App {
         )
     }
 
-    fn render_stacked_document(
-        &self,
-        state: &AppState,
-        doc_entry: &DocumentStackEntry,
-    ) -> Element {
+    fn render_stacked_document(&self, state: &AppState, doc_entry: &DocumentStackEntry) -> Element {
         match &doc_entry.document {
             StackedDocument::Boxscore { game_id } => {
                 let props = BoxscoreDocumentProps {
@@ -264,8 +303,7 @@ impl App {
         };
 
         // Get or initialize component state from the component store
-        let scores_state =
-            component_states.get_or_init::<ScoresTab>(SCORES_TAB_PATH, &props);
+        let scores_state = component_states.get_or_init::<ScoresTab>(SCORES_TAB_PATH, &props);
         ScoresTab.view(&props, scores_state)
     }
 

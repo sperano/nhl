@@ -370,7 +370,10 @@ impl FocusManager {
     ///
     /// Returns None for elements without link targets.
     pub fn link_targets(&self) -> Vec<Option<LinkTarget>> {
-        self.elements.iter().map(|e| e.link_target.clone()).collect()
+        self.elements
+            .iter()
+            .map(|e| e.link_target.clone())
+            .collect()
     }
 }
 

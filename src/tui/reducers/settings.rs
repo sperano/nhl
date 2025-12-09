@@ -25,8 +25,13 @@ pub fn reduce_settings(
                 SettingsCategory::Data => SettingsCategory::Display,
             };
 
-            if let Some(settings_state) = component_states.get_mut::<SettingsTabState>(SETTINGS_TAB_PATH) {
-                let doc = SettingsDocument::new(new_state.ui.settings.selected_category, new_state.system.config.clone());
+            if let Some(settings_state) =
+                component_states.get_mut::<SettingsTabState>(SETTINGS_TAB_PATH)
+            {
+                let doc = SettingsDocument::new(
+                    new_state.ui.settings.selected_category,
+                    new_state.system.config.clone(),
+                );
                 settings_state.doc_nav = Default::default();
                 settings_state.doc_nav.focusable_positions = doc.focusable_positions();
                 settings_state.doc_nav.focusable_ids = doc.focusable_ids();
@@ -47,8 +52,13 @@ pub fn reduce_settings(
                 SettingsCategory::Data => SettingsCategory::Logging,
             };
 
-            if let Some(settings_state) = component_states.get_mut::<SettingsTabState>(SETTINGS_TAB_PATH) {
-                let doc = SettingsDocument::new(new_state.ui.settings.selected_category, new_state.system.config.clone());
+            if let Some(settings_state) =
+                component_states.get_mut::<SettingsTabState>(SETTINGS_TAB_PATH)
+            {
+                let doc = SettingsDocument::new(
+                    new_state.ui.settings.selected_category,
+                    new_state.system.config.clone(),
+                );
                 settings_state.doc_nav = Default::default();
                 settings_state.doc_nav.focusable_positions = doc.focusable_positions();
                 settings_state.doc_nav.focusable_ids = doc.focusable_ids();

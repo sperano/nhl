@@ -8,8 +8,8 @@ use super::types::StackedDocument;
 
 // Import sub-reducers from the parent framework module
 use crate::tui::reducers::{
-    reduce_data_loading, reduce_document_stack, reduce_navigation, reduce_settings,
-    rebuild_standings_focusable_metadata,
+    rebuild_standings_focusable_metadata, reduce_data_loading, reduce_document_stack,
+    reduce_navigation, reduce_settings,
 };
 
 /// Pure state reducer - like Redux reducer
@@ -64,13 +64,16 @@ pub fn reduce(
 
     // Tab-specific action delegation
     match action {
-        Action::SettingsAction(settings_action) => reduce_settings(state, settings_action, component_states),
+        Action::SettingsAction(settings_action) => {
+            reduce_settings(state, settings_action, component_states)
+        }
 
         // Scores: SelectGame pushes boxscore document onto stack
-        Action::SelectGame(game_id) => {
-            reduce_document_stack(state, &Action::PushDocument(StackedDocument::Boxscore { game_id }))
-                .unwrap_or_else(|s| (s, Effect::None))
-        }
+        Action::SelectGame(game_id) => reduce_document_stack(
+            state,
+            &Action::PushDocument(StackedDocument::Boxscore { game_id }),
+        )
+        .unwrap_or_else(|s| (s, Effect::None)),
 
         // Standings: Rebuild focusable metadata after view change
         Action::RebuildStandingsFocusable => {
@@ -106,7 +109,6 @@ pub fn reduce(
         _ => (state, Effect::None),
     }
 }
-
 
 #[cfg(test)]
 mod tests {

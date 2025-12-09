@@ -173,11 +173,12 @@ mod tests {
 
         let mut state = AppState::default();
         state.navigation.content_focused = true;
-        state.navigation.document_stack.push(DocumentStackEntry::new(
-            StackedDocument::TeamDetail {
+        state
+            .navigation
+            .document_stack
+            .push(DocumentStackEntry::new(StackedDocument::TeamDetail {
                 abbrev: "BOS".to_string(),
-            },
-        ));
+            }));
 
         let (new_state, _) = navigate_up(state);
 

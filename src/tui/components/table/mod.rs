@@ -159,10 +159,7 @@ mod rendering;
 use crate::config::DisplayConfig;
 use crate::tui::component::ElementWidget;
 use crate::tui::{Alignment, CellValue, ColumnDef, Component, Element};
-use ratatui::{
-    buffer::Buffer,
-    layout::Rect,
-};
+use ratatui::{buffer::Buffer, layout::Rect};
 
 /// Table component
 ///
@@ -344,8 +341,16 @@ impl ElementWidget for TableWidget {
     }
 
     fn preferred_height(&self) -> Option<u16> {
-        let col_header_height = if !self.column_headers.is_empty() { 1 } else { 0 };
-        let separator_height = if !self.column_headers.is_empty() { 1 } else { 0 };
+        let col_header_height = if !self.column_headers.is_empty() {
+            1
+        } else {
+            0
+        };
+        let separator_height = if !self.column_headers.is_empty() {
+            1
+        } else {
+            0
+        };
         let rows_height = self.cell_data.len() as u16;
         Some(col_header_height + separator_height + rows_height)
     }
@@ -573,8 +578,7 @@ mod tests {
             |r: &TestRow| CellValue::Text(r.name.clone()),
         )];
 
-        let widget = TableWidget::from_data(&columns, rows)
-            .with_focused_row(Some(1)); // Select row 1
+        let widget = TableWidget::from_data(&columns, rows).with_focused_row(Some(1)); // Select row 1
 
         let config = test_config();
         let height = widget.preferred_height().unwrap();

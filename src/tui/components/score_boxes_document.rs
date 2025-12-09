@@ -11,7 +11,7 @@ use nhl_api::{DailySchedule, GameDate, GameMatchup};
 use crate::commands::scores_format::format_period_text;
 use crate::layout_constants::SCORE_BOX_WIDTH;
 use crate::tui::document::{Document, DocumentBuilder, DocumentElement, FocusContext, FocusableId};
-use crate::tui::widgets::{ScoreBox, ScoreBoxStatus, loading_animation::loading_animation_text};
+use crate::tui::widgets::{loading_animation::loading_animation_text, ScoreBox, ScoreBoxStatus};
 
 /// Gap between score boxes in characters
 const SCORE_BOX_GAP: u16 = 8;

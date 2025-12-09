@@ -22,22 +22,22 @@ pub fn reduce_data_loading(
     component_states: &mut crate::tui::component_store::ComponentStateStore,
 ) -> Result<(AppState, Effect), AppState> {
     match action {
-        Action::StandingsLoaded(result) => {
-            Ok(handle_standings_loaded(state, result.clone(), component_states))
-        }
-        Action::ScheduleLoaded(result) => {
-            Ok(handle_schedule_loaded(state, result.clone(), component_states))
-        }
-        Action::GameDetailsLoaded(game_id, result) => Ok(handle_game_details_loaded(
+        Action::StandingsLoaded(result) => Ok(handle_standings_loaded(
             state,
-            *game_id,
             result.clone(),
+            component_states,
         )),
-        Action::BoxscoreLoaded(game_id, result) => Ok(handle_boxscore_loaded(
+        Action::ScheduleLoaded(result) => Ok(handle_schedule_loaded(
             state,
-            *game_id,
             result.clone(),
+            component_states,
         )),
+        Action::GameDetailsLoaded(game_id, result) => {
+            Ok(handle_game_details_loaded(state, *game_id, result.clone()))
+        }
+        Action::BoxscoreLoaded(game_id, result) => {
+            Ok(handle_boxscore_loaded(state, *game_id, result.clone()))
+        }
         Action::TeamRosterStatsLoaded(team_abbrev, result) => Ok(handle_team_roster_loaded(
             state,
             team_abbrev.clone(),
@@ -102,7 +102,9 @@ fn handle_standings_loaded(
 
             // Clear standings focusable data in component state on error
             use crate::tui::components::standings_tab::StandingsTabState;
-            if let Some(standings_state) = component_states.get_mut::<StandingsTabState>(STANDINGS_TAB_PATH) {
+            if let Some(standings_state) =
+                component_states.get_mut::<StandingsTabState>(STANDINGS_TAB_PATH)
+            {
                 standings_state.doc_nav.focusable_positions = Vec::new();
                 standings_state.doc_nav.focusable_ids = Vec::new();
                 standings_state.doc_nav.focusable_row_positions = Vec::new();
@@ -133,9 +135,11 @@ fn handle_schedule_loaded(
             use crate::tui::components::scores_tab::ScoresTabState;
             use crate::tui::document::Document;
 
-            if let Some(scores_state) = component_states.get_mut::<ScoresTabState>(SCORES_TAB_PATH) {
+            if let Some(scores_state) = component_states.get_mut::<ScoresTabState>(SCORES_TAB_PATH)
+            {
                 // Calculate boxes_per_row from terminal width
-                let boxes_per_row = ScoreBoxesDocument::boxes_per_row_for_width(new_state.system.terminal_width);
+                let boxes_per_row =
+                    ScoreBoxesDocument::boxes_per_row_for_width(new_state.system.terminal_width);
 
                 // Create the document to extract focusable metadata
                 // animation_frame doesn't affect focusable positions, so use 0
@@ -162,7 +166,10 @@ fn handle_schedule_loaded(
                 if game.game_state != nhl_api::GameState::Future
                     && game.game_state != nhl_api::GameState::PreGame
                 {
-                    debug!("DATA: Requesting game details fetch for game_id={}", game.id);
+                    debug!(
+                        "DATA: Requesting game details fetch for game_id={}",
+                        game.id
+                    );
                     effects.push(Effect::FetchGameDetails(game.id));
                 }
             }

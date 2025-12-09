@@ -37,7 +37,12 @@ pub struct StandingsDocumentWidget {
 
 impl StandingsDocumentWidget {
     /// Create widget for League standings
-    pub fn league(standings: Arc<Vec<Standing>>, config: Config, focus_index: Option<usize>, scroll_offset: u16) -> Self {
+    pub fn league(
+        standings: Arc<Vec<Standing>>,
+        config: Config,
+        focus_index: Option<usize>,
+        scroll_offset: u16,
+    ) -> Self {
         Self {
             doc: Arc::new(LeagueStandingsDocument::new(standings, config)),
             focus_index,
@@ -46,7 +51,12 @@ impl StandingsDocumentWidget {
     }
 
     /// Create widget for Conference standings
-    pub fn conference(standings: Arc<Vec<Standing>>, config: Config, focus_index: Option<usize>, scroll_offset: u16) -> Self {
+    pub fn conference(
+        standings: Arc<Vec<Standing>>,
+        config: Config,
+        focus_index: Option<usize>,
+        scroll_offset: u16,
+    ) -> Self {
         Self {
             doc: Arc::new(ConferenceStandingsDocument::new(standings, config)),
             focus_index,
@@ -55,7 +65,12 @@ impl StandingsDocumentWidget {
     }
 
     /// Create widget for Division standings
-    pub fn division(standings: Arc<Vec<Standing>>, config: Config, focus_index: Option<usize>, scroll_offset: u16) -> Self {
+    pub fn division(
+        standings: Arc<Vec<Standing>>,
+        config: Config,
+        focus_index: Option<usize>,
+        scroll_offset: u16,
+    ) -> Self {
         Self {
             doc: Arc::new(DivisionStandingsDocument::new(standings, config)),
             focus_index,
@@ -64,7 +79,12 @@ impl StandingsDocumentWidget {
     }
 
     /// Create widget for Wildcard standings
-    pub fn wildcard(standings: Arc<Vec<Standing>>, config: Config, focus_index: Option<usize>, scroll_offset: u16) -> Self {
+    pub fn wildcard(
+        standings: Arc<Vec<Standing>>,
+        config: Config,
+        focus_index: Option<usize>,
+        scroll_offset: u16,
+    ) -> Self {
         Self {
             doc: Arc::new(WildcardStandingsDocument::new(standings, config)),
             focus_index,
@@ -127,7 +147,7 @@ mod tests {
         match &elements[0] {
             DocumentElement::Table { widget, focusable } => {
                 assert_eq!(widget.row_count(), 32); // 32 teams
-                // Should have 32 focusable elements (one per team row, col 0 is the team link)
+                                                    // Should have 32 focusable elements (one per team row, col 0 is the team link)
                 assert_eq!(focusable.len(), 32);
             }
             _ => panic!("Expected Table element"),
@@ -312,11 +332,23 @@ mod tests {
 
         // First 16 positions are left column
         for i in 0..16 {
-            assert_eq!(positions[i], 4 + i as u16, "Left column position {} should be {}", i, 4 + i);
+            assert_eq!(
+                positions[i],
+                4 + i as u16,
+                "Left column position {} should be {}",
+                i,
+                4 + i
+            );
         }
         // Second 16 positions are right column - SAME y values as left
         for i in 0..16 {
-            assert_eq!(positions[16 + i], 4 + i as u16, "Right column position {} should be {}", i, 4 + i);
+            assert_eq!(
+                positions[16 + i],
+                4 + i as u16,
+                "Right column position {} should be {}",
+                i,
+                4 + i
+            );
         }
     }
 
@@ -335,12 +367,14 @@ mod tests {
         assert!(row_positions.iter().all(|rp| rp.is_some()));
 
         // Check that we have elements from both columns (0 and 1)
-        let column_0_count = row_positions.iter().filter(|rp| {
-            rp.as_ref().map_or(false, |p| p.child_idx == 0)
-        }).count();
-        let column_1_count = row_positions.iter().filter(|rp| {
-            rp.as_ref().map_or(false, |p| p.child_idx == 1)
-        }).count();
+        let column_0_count = row_positions
+            .iter()
+            .filter(|rp| rp.as_ref().map_or(false, |p| p.child_idx == 0))
+            .count();
+        let column_1_count = row_positions
+            .iter()
+            .filter(|rp| rp.as_ref().map_or(false, |p| p.child_idx == 1))
+            .count();
 
         // Should have 16 teams in each column
         assert_eq!(column_0_count, 16);
@@ -410,14 +444,23 @@ mod tests {
                 // [Indented(SectionTitle), Table, Spacer, Indented(SectionTitle), Table]
                 for child in children {
                     match child {
-                        DocumentElement::Group { children: group_children, .. } => {
+                        DocumentElement::Group {
+                            children: group_children,
+                            ..
+                        } => {
                             // Each group should have 5 children:
                             // Indented(SectionTitle), Table, Spacer, Indented(SectionTitle), Table
                             assert_eq!(group_children.len(), 5);
-                            assert!(matches!(group_children[0], DocumentElement::Indented { .. }));
+                            assert!(matches!(
+                                group_children[0],
+                                DocumentElement::Indented { .. }
+                            ));
                             assert!(matches!(group_children[1], DocumentElement::Table { .. }));
                             assert!(matches!(group_children[2], DocumentElement::Spacer { .. }));
-                            assert!(matches!(group_children[3], DocumentElement::Indented { .. }));
+                            assert!(matches!(
+                                group_children[3],
+                                DocumentElement::Indented { .. }
+                            ));
                             assert!(matches!(group_children[4], DocumentElement::Table { .. }));
                         }
                         _ => panic!("Expected Group element in Row"),
@@ -465,12 +508,14 @@ mod tests {
         assert!(row_positions.iter().all(|rp| rp.is_some()));
 
         // Check that we have elements from both columns (0 and 1)
-        let column_0_count = row_positions.iter().filter(|rp| {
-            rp.as_ref().map_or(false, |p| p.child_idx == 0)
-        }).count();
-        let column_1_count = row_positions.iter().filter(|rp| {
-            rp.as_ref().map_or(false, |p| p.child_idx == 1)
-        }).count();
+        let column_0_count = row_positions
+            .iter()
+            .filter(|rp| rp.as_ref().map_or(false, |p| p.child_idx == 0))
+            .count();
+        let column_1_count = row_positions
+            .iter()
+            .filter(|rp| rp.as_ref().map_or(false, |p| p.child_idx == 1))
+            .count();
 
         // Should have 16 teams in each column (2 divisions x 8 teams)
         assert_eq!(column_0_count, 16);

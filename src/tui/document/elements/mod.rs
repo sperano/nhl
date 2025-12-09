@@ -27,7 +27,10 @@ pub enum RowAlignment {
     Spread,
 }
 
-use render::{render_group, render_heading, render_link, render_row, render_section_title, render_separator, render_team_boxscore, render_text};
+use render::{
+    render_group, render_heading, render_link, render_row, render_section_title, render_separator,
+    render_team_boxscore, render_text,
+};
 
 pub use render::TEAM_BOXSCORE_SIDE_BY_SIDE_WIDTH;
 
@@ -59,10 +62,7 @@ pub enum DocumentElement {
     /// (blank)
     /// ```
     /// Height is 2 (no underline) or 3 (with underline).
-    SectionTitle {
-        content: String,
-        underline: bool,
-    },
+    SectionTitle { content: String, underline: bool },
 
     /// A link that can be focused and activated
     Link {
@@ -203,7 +203,9 @@ impl std::fmt::Debug for DocumentElement {
                 .field("children", children)
                 .field("style", style)
                 .finish(),
-            Self::Custom { height, focusable, .. } => f
+            Self::Custom {
+                height, focusable, ..
+            } => f
                 .debug_struct("Custom")
                 .field("height", height)
                 .field("focusable_count", &focusable.len())
@@ -214,13 +216,22 @@ impl std::fmt::Debug for DocumentElement {
                 .field("columns", &widget.column_count())
                 .field("focusable_count", &focusable.len())
                 .finish(),
-            Self::Row { children, gap, align } => f
+            Self::Row {
+                children,
+                gap,
+                align,
+            } => f
                 .debug_struct("Row")
                 .field("children", &children.len())
                 .field("gap", gap)
                 .field("align", align)
                 .finish(),
-            Self::ScoreBoxElement { id, game_id, focused, .. } => f
+            Self::ScoreBoxElement {
+                id,
+                game_id,
+                focused,
+                ..
+            } => f
                 .debug_struct("ScoreBoxElement")
                 .field("id", id)
                 .field("game_id", game_id)
@@ -231,7 +242,11 @@ impl std::fmt::Debug for DocumentElement {
                 .field("element", element)
                 .field("margin", margin)
                 .finish(),
-            Self::TeamBoxscore { team_name, focusable, .. } => f
+            Self::TeamBoxscore {
+                team_name,
+                focusable,
+                ..
+            } => f
                 .debug_struct("TeamBoxscore")
                 .field("team_name", team_name)
                 .field("focusable_count", &focusable.len())
@@ -258,7 +273,11 @@ impl DocumentElement {
             }
             Self::SectionTitle { underline, .. } => {
                 // title + optional underline + blank line
-                if *underline { 3 } else { 2 }
+                if *underline {
+                    3
+                } else {
+                    2
+                }
             }
             Self::Link { .. } => 1,
             Self::Separator => 1,
@@ -371,7 +390,9 @@ impl DocumentElement {
                     }
                 }
             }
-            Self::ScoreBoxElement { game_id, score_box, .. } => {
+            Self::ScoreBoxElement {
+                game_id, score_box, ..
+            } => {
                 // ScoreBox is a single focusable element with typed GameLink ID
                 let height = score_box.preferred_height().unwrap_or(6);
                 let width = score_box.preferred_width().unwrap_or(25);
@@ -475,10 +496,16 @@ impl DocumentElement {
             Self::Table { widget, .. } => {
                 widget.render(area, buf, config);
             }
-            Self::Row { children, gap, align } => {
+            Self::Row {
+                children,
+                gap,
+                align,
+            } => {
                 render_row(children, *gap, *align, area, buf, config);
             }
-            Self::ScoreBoxElement { score_box, focused, .. } => {
+            Self::ScoreBoxElement {
+                score_box, focused, ..
+            } => {
                 // Clone and set selection based on focus state
                 let mut box_to_render = score_box.clone();
                 box_to_render.selected = *focused;
@@ -487,12 +514,8 @@ impl DocumentElement {
             Self::Indented { element, margin } => {
                 // Render inner element with adjusted area (shifted right by margin)
                 if area.width > *margin {
-                    let indented_area = Rect::new(
-                        area.x + margin,
-                        area.y,
-                        area.width - margin,
-                        area.height,
-                    );
+                    let indented_area =
+                        Rect::new(area.x + margin, area.y, area.width - margin, area.height);
                     element.render(indented_area, buf, config);
                 }
             }
@@ -669,22 +692,38 @@ impl DocumentElement {
     /// Elements are laid out horizontally. Fixed-width children are spread
     /// across available width by default (maximizing gap).
     pub fn row(children: Vec<DocumentElement>) -> Self {
-        Self::Row { children, gap: 2, align: RowAlignment::Spread }
+        Self::Row {
+            children,
+            gap: 2,
+            align: RowAlignment::Spread,
+        }
     }
 
     /// Create a horizontal row with custom gap
     pub fn row_with_gap(children: Vec<DocumentElement>, gap: u16) -> Self {
-        Self::Row { children, gap, align: RowAlignment::Spread }
+        Self::Row {
+            children,
+            gap,
+            align: RowAlignment::Spread,
+        }
     }
 
     /// Create a horizontal row with left alignment (no gap maximization)
     pub fn row_left(children: Vec<DocumentElement>) -> Self {
-        Self::Row { children, gap: 2, align: RowAlignment::Left }
+        Self::Row {
+            children,
+            gap: 2,
+            align: RowAlignment::Left,
+        }
     }
 
     /// Create a horizontal row with left alignment and custom gap
     pub fn row_left_with_gap(children: Vec<DocumentElement>, gap: u16) -> Self {
-        Self::Row { children, gap, align: RowAlignment::Left }
+        Self::Row {
+            children,
+            gap,
+            align: RowAlignment::Left,
+        }
     }
 
     /// Create a score box element
@@ -860,11 +899,8 @@ mod tests {
 
     #[test]
     fn test_link_element_height() {
-        let elem = DocumentElement::link(
-            "link1",
-            "Click me",
-            LinkTarget::Action("test".to_string()),
-        );
+        let elem =
+            DocumentElement::link("link1", "Click me", LinkTarget::Action("test".to_string()));
         assert_eq!(elem.height(), 1);
     }
 
@@ -929,9 +965,11 @@ mod tests {
     #[test]
     fn test_collect_focusable_nested_groups() {
         let elem = DocumentElement::group(vec![
-            DocumentElement::group(vec![
-                DocumentElement::link("inner1", "Inner", LinkTarget::Action("x".to_string())),
-            ]),
+            DocumentElement::group(vec![DocumentElement::link(
+                "inner1",
+                "Inner",
+                LinkTarget::Action("x".to_string()),
+            )]),
             DocumentElement::link("outer1", "Outer", LinkTarget::Action("y".to_string())),
         ]);
 
@@ -977,11 +1015,8 @@ mod tests {
 
     #[test]
     fn test_render_link() {
-        let elem = DocumentElement::link(
-            "test_link",
-            "Click",
-            LinkTarget::Action("test".to_string()),
-        );
+        let elem =
+            DocumentElement::link("test_link", "Click", LinkTarget::Action("test".to_string()));
         let mut buf = Buffer::empty(Rect::new(0, 0, 20, 5));
         let config = DisplayConfig::default();
 
@@ -1015,7 +1050,9 @@ mod tests {
         // Focused links use BOLD + REVERSED modifiers
         let style = buf.cell((2, 0)).unwrap().style();
         assert!(style.add_modifier.contains(ratatui::style::Modifier::BOLD));
-        assert!(style.add_modifier.contains(ratatui::style::Modifier::REVERSED));
+        assert!(style
+            .add_modifier
+            .contains(ratatui::style::Modifier::REVERSED));
     }
 
     #[test]
@@ -1082,10 +1119,7 @@ mod tests {
     #[test]
     fn test_styled_group() {
         let style = Style::default().bg(Color::Blue);
-        let elem = DocumentElement::styled_group(
-            vec![DocumentElement::text("Content")],
-            style,
-        );
+        let elem = DocumentElement::styled_group(vec![DocumentElement::text("Content")], style);
 
         match elem {
             DocumentElement::Group { style: s, .. } => assert_eq!(s, Some(style)),
@@ -1107,15 +1141,14 @@ mod tests {
 
     #[test]
     fn test_table_element_height() {
-        use crate::tui::{Alignment, CellValue, ColumnDef};
         use crate::tui::components::TableWidget;
+        use crate::tui::{Alignment, CellValue, ColumnDef};
 
         // Create a simple table with 3 rows
-        let columns: Vec<ColumnDef<&str>> = vec![
-            ColumnDef::new("Name", 10, Alignment::Left, |row: &&str| {
+        let columns: Vec<ColumnDef<&str>> =
+            vec![ColumnDef::new("Name", 10, Alignment::Left, |row: &&str| {
                 CellValue::Text(row.to_string())
-            }),
-        ];
+            })];
         let data = vec!["Alice", "Bob", "Charlie"];
         let table = TableWidget::from_data(&columns, data);
         let elem = DocumentElement::table("test_table", table);
@@ -1126,18 +1159,19 @@ mod tests {
 
     #[test]
     fn test_table_element_focusable_extraction() {
-        use crate::tui::{Alignment, CellValue, ColumnDef};
         use crate::tui::components::TableWidget;
+        use crate::tui::{Alignment, CellValue, ColumnDef};
 
         // Create a table with link cells
-        let columns: Vec<ColumnDef<(&str, &str)>> = vec![
-            ColumnDef::new("Team", 15, Alignment::Left, |row: &(&str, &str)| {
-                CellValue::TeamLink {
-                    display: row.0.to_string(),
-                    team_abbrev: row.1.to_string(),
-                }
-            }),
-        ];
+        let columns: Vec<ColumnDef<(&str, &str)>> = vec![ColumnDef::new(
+            "Team",
+            15,
+            Alignment::Left,
+            |row: &(&str, &str)| CellValue::TeamLink {
+                display: row.0.to_string(),
+                team_abbrev: row.1.to_string(),
+            },
+        )];
         let data = vec![("Bruins", "BOS"), ("Maple Leafs", "TOR")];
         let table = TableWidget::from_data(&columns, data);
         let elem = DocumentElement::table("teams", table);
@@ -1165,18 +1199,19 @@ mod tests {
 
     #[test]
     fn test_table_element_focusable_y_positions() {
-        use crate::tui::{Alignment, CellValue, ColumnDef};
         use crate::tui::components::TableWidget;
+        use crate::tui::{Alignment, CellValue, ColumnDef};
 
         // Create a table with links
-        let columns: Vec<ColumnDef<&str>> = vec![
-            ColumnDef::new("Player", 15, Alignment::Left, |row: &&str| {
-                CellValue::PlayerLink {
-                    display: row.to_string(),
-                    player_id: 12345,
-                }
-            }),
-        ];
+        let columns: Vec<ColumnDef<&str>> = vec![ColumnDef::new(
+            "Player",
+            15,
+            Alignment::Left,
+            |row: &&str| CellValue::PlayerLink {
+                display: row.to_string(),
+                player_id: 12345,
+            },
+        )];
         let data = vec!["Player1", "Player2"];
         let table = TableWidget::from_data(&columns, data);
         let elem = DocumentElement::table("players", table);
@@ -1193,15 +1228,14 @@ mod tests {
 
     #[test]
     fn test_table_element_no_focusable_text_only() {
-        use crate::tui::{Alignment, CellValue, ColumnDef};
         use crate::tui::components::TableWidget;
+        use crate::tui::{Alignment, CellValue, ColumnDef};
 
         // Create a table with only text cells (no links)
-        let columns: Vec<ColumnDef<i32>> = vec![
-            ColumnDef::new("Value", 5, Alignment::Right, |row: &i32| {
+        let columns: Vec<ColumnDef<i32>> =
+            vec![ColumnDef::new("Value", 5, Alignment::Right, |row: &i32| {
                 CellValue::Text(row.to_string())
-            }),
-        ];
+            })];
         let data = vec![1, 2, 3];
         let table = TableWidget::from_data(&columns, data);
         let elem = DocumentElement::table("values", table);
@@ -1216,12 +1250,16 @@ mod tests {
 
     #[test]
     fn test_table_element_debug_format() {
-        use crate::tui::{Alignment, CellValue, ColumnDef};
         use crate::tui::components::TableWidget;
+        use crate::tui::{Alignment, CellValue, ColumnDef};
 
         let columns: Vec<ColumnDef<&str>> = vec![
-            ColumnDef::new("Col1", 10, Alignment::Left, |_: &&str| CellValue::Text("x".to_string())),
-            ColumnDef::new("Col2", 10, Alignment::Left, |_: &&str| CellValue::Text("y".to_string())),
+            ColumnDef::new("Col1", 10, Alignment::Left, |_: &&str| {
+                CellValue::Text("x".to_string())
+            }),
+            ColumnDef::new("Col2", 10, Alignment::Left, |_: &&str| {
+                CellValue::Text("y".to_string())
+            }),
         ];
         let data = vec!["a", "b", "c"];
         let table = TableWidget::from_data(&columns, data);
@@ -1236,15 +1274,14 @@ mod tests {
 
     #[test]
     fn test_table_element_render() {
-        use crate::tui::{Alignment, CellValue, ColumnDef};
         use crate::tui::components::TableWidget;
         use crate::tui::testing::assert_buffer;
+        use crate::tui::{Alignment, CellValue, ColumnDef};
 
-        let columns: Vec<ColumnDef<&str>> = vec![
-            ColumnDef::new("Name", 10, Alignment::Left, |row: &&str| {
+        let columns: Vec<ColumnDef<&str>> =
+            vec![ColumnDef::new("Name", 10, Alignment::Left, |row: &&str| {
                 CellValue::Text(row.to_string())
-            }),
-        ];
+            })];
         let data = vec!["Alice", "Bob"];
         let table = TableWidget::from_data(&columns, data);
         let elem = DocumentElement::table("test_table", table);
@@ -1256,16 +1293,7 @@ mod tests {
 
         // Verify the table renders with margin, column header and data
         // TableWidget adds 2 space margin on left
-        assert_buffer(
-            &buf,
-            &[
-                "  Name",
-                "  ──────────",
-                "  Alice",
-                "  Bob",
-                "",
-            ],
-        );
+        assert_buffer(&buf, &["  Name", "  ──────────", "  Alice", "  Bob", ""]);
     }
 
     #[test]
@@ -1273,8 +1301,26 @@ mod tests {
         use crate::tui::widgets::{ScoreBox, ScoreBoxStatus};
 
         // Create two score boxes (each 25 chars wide)
-        let score_box1 = ScoreBox::new("Team A", "Team B", Some(3), Some(2), ScoreBoxStatus::Final { overtime: false, shootout: false });
-        let score_box2 = ScoreBox::new("Team C", "Team D", Some(1), Some(4), ScoreBoxStatus::Final { overtime: false, shootout: false });
+        let score_box1 = ScoreBox::new(
+            "Team A",
+            "Team B",
+            Some(3),
+            Some(2),
+            ScoreBoxStatus::Final {
+                overtime: false,
+                shootout: false,
+            },
+        );
+        let score_box2 = ScoreBox::new(
+            "Team C",
+            "Team D",
+            Some(1),
+            Some(4),
+            ScoreBoxStatus::Final {
+                overtime: false,
+                shootout: false,
+            },
+        );
 
         // Row with Spread alignment (default)
         let row = DocumentElement::row(vec![
@@ -1292,7 +1338,11 @@ mod tests {
         // Check the status line of the second box
         let line0 = (0..60).map(|x| buf[(x, 0)].symbol()).collect::<String>();
         // First box status starts at 1, second should start around 35+1=36
-        assert!(line0[36..].trim_start().starts_with("Final"), "Second box should start around position 36, got: '{}'", line0);
+        assert!(
+            line0[36..].trim_start().starts_with("Final"),
+            "Second box should start around position 36, got: '{}'",
+            line0
+        );
     }
 
     #[test]
@@ -1300,8 +1350,26 @@ mod tests {
         use crate::tui::widgets::{ScoreBox, ScoreBoxStatus};
 
         // Create two score boxes (each 25 chars wide)
-        let score_box1 = ScoreBox::new("Team A", "Team B", Some(3), Some(2), ScoreBoxStatus::Final { overtime: false, shootout: false });
-        let score_box2 = ScoreBox::new("Team C", "Team D", Some(1), Some(4), ScoreBoxStatus::Final { overtime: false, shootout: false });
+        let score_box1 = ScoreBox::new(
+            "Team A",
+            "Team B",
+            Some(3),
+            Some(2),
+            ScoreBoxStatus::Final {
+                overtime: false,
+                shootout: false,
+            },
+        );
+        let score_box2 = ScoreBox::new(
+            "Team C",
+            "Team D",
+            Some(1),
+            Some(4),
+            ScoreBoxStatus::Final {
+                overtime: false,
+                shootout: false,
+            },
+        );
 
         // Row with Left alignment
         let row = DocumentElement::row_left(vec![
@@ -1318,7 +1386,11 @@ mod tests {
         // Check that second box status line starts near position 27
         let line0 = (0..60).map(|x| buf[(x, 0)].symbol()).collect::<String>();
         // Second box status should start at 27+1=28 (with space prefix)
-        assert!(line0[28..].trim_start().starts_with("Final"), "Second box should start at position 28 with Left alignment, got: '{}'", line0);
+        assert!(
+            line0[28..].trim_start().starts_with("Final"),
+            "Second box should start at position 28 with Left alignment, got: '{}'",
+            line0
+        );
     }
 
     #[test]
@@ -1326,14 +1398,35 @@ mod tests {
         use crate::tui::widgets::{ScoreBox, ScoreBoxStatus};
 
         // Create two score boxes (each 25 chars wide)
-        let score_box1 = ScoreBox::new("Team A", "Team B", Some(3), Some(2), ScoreBoxStatus::Final { overtime: false, shootout: false });
-        let score_box2 = ScoreBox::new("Team C", "Team D", Some(1), Some(4), ScoreBoxStatus::Final { overtime: false, shootout: false });
+        let score_box1 = ScoreBox::new(
+            "Team A",
+            "Team B",
+            Some(3),
+            Some(2),
+            ScoreBoxStatus::Final {
+                overtime: false,
+                shootout: false,
+            },
+        );
+        let score_box2 = ScoreBox::new(
+            "Team C",
+            "Team D",
+            Some(1),
+            Some(4),
+            ScoreBoxStatus::Final {
+                overtime: false,
+                shootout: false,
+            },
+        );
 
         // Row with minimum gap of 5
-        let row = DocumentElement::row_with_gap(vec![
-            DocumentElement::score_box_element(1, score_box1.clone(), false),
-            DocumentElement::score_box_element(2, score_box2.clone(), false),
-        ], 5);
+        let row = DocumentElement::row_with_gap(
+            vec![
+                DocumentElement::score_box_element(1, score_box1.clone(), false),
+                DocumentElement::score_box_element(2, score_box2.clone(), false),
+            ],
+            5,
+        );
 
         // Area of 52: 25 + 25 = 50, leaving only 2 for gap
         // But minimum gap is 5, so it should use 5
@@ -1343,7 +1436,11 @@ mod tests {
 
         // Second box should start at position 30 (25 + 5 minimum gap)
         let line0 = (0..52).map(|x| buf[(x, 0)].symbol()).collect::<String>();
-        assert!(line0[31..].trim_start().starts_with("Final"), "Second box should start at position 31 with minimum gap of 5, got: '{}'", line0);
+        assert!(
+            line0[31..].trim_start().starts_with("Final"),
+            "Second box should start at position 31 with minimum gap of 5, got: '{}'",
+            line0
+        );
     }
 
     #[test]

@@ -7,7 +7,10 @@ use nhl_api::{Boxscore, GoalieStats, SkaterStats};
 use super::table::TableWidget;
 use crate::config::DisplayConfig;
 use crate::tui::component::{Component, Element, ElementWidget};
-use crate::tui::document::{Document, DocumentBuilder, DocumentElement, DocumentView, FocusContext, TEAM_BOXSCORE_SIDE_BY_SIDE_WIDTH};
+use crate::tui::document::{
+    Document, DocumentBuilder, DocumentElement, DocumentView, FocusContext,
+    TEAM_BOXSCORE_SIDE_BY_SIDE_WIDTH,
+};
 use crate::tui::widgets::{LoadingAnimation, StandaloneWidget};
 use crate::tui::{Alignment, CellValue, ColumnDef};
 
@@ -168,21 +171,12 @@ impl BoxscoreDocumentContent {
             )
         };
 
-        let forwards_table = self.build_skater_table(
-            &team_stats.forwards,
-            &format!("{}_forwards", prefix),
-            focus,
-        );
-        let defense_table = self.build_skater_table(
-            &team_stats.defense,
-            &format!("{}_defense", prefix),
-            focus,
-        );
-        let goalies_table = self.build_goalies_table(
-            &team_stats.goalies,
-            &format!("{}_goalies", prefix),
-            focus,
-        );
+        let forwards_table =
+            self.build_skater_table(&team_stats.forwards, &format!("{}_forwards", prefix), focus);
+        let defense_table =
+            self.build_skater_table(&team_stats.defense, &format!("{}_defense", prefix), focus);
+        let goalies_table =
+            self.build_goalies_table(&team_stats.goalies, &format!("{}_goalies", prefix), focus);
 
         DocumentElement::team_boxscore(
             prefix,
@@ -378,11 +372,8 @@ impl ElementWidget for BoxscoreDocumentWidget {
         }
 
         // Create document and render with DocumentView
-        let doc = BoxscoreDocumentContent::new(
-            self.game_id,
-            boxscore.clone(),
-            self.team_view.clone(),
-        );
+        let doc =
+            BoxscoreDocumentContent::new(self.game_id, boxscore.clone(), self.team_view.clone());
 
         let mut view = DocumentView::new(Arc::new(doc), area.height);
 

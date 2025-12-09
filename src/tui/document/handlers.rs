@@ -20,15 +20,20 @@ impl StackedDocumentHandler for BoxscoreDocumentHandler {
     fn activate(&self, nav: &DocumentNavState, data: &DataState) -> Effect {
         if let Some(idx) = nav.focus_index {
             if let Some(player_id) = self.get_player_id_at_index(idx, data) {
-                return Effect::Action(Action::PushDocument(
-                    StackedDocument::PlayerDetail { player_id },
-                ));
+                return Effect::Action(Action::PushDocument(StackedDocument::PlayerDetail {
+                    player_id,
+                }));
             }
         }
         Effect::None
     }
 
-    fn populate_focusable_metadata(&self, nav: &mut DocumentNavState, data: &DataState, width: u16) {
+    fn populate_focusable_metadata(
+        &self,
+        nav: &mut DocumentNavState,
+        data: &DataState,
+        width: u16,
+    ) {
         use crate::tui::components::boxscore_document::{BoxscoreDocumentContent, TeamView};
         use crate::tui::document::FocusContext;
 
@@ -132,20 +137,21 @@ impl StackedDocumentHandler for TeamDetailDocumentHandler {
         }
     }
 
-    fn populate_focusable_metadata(&self, nav: &mut DocumentNavState, data: &DataState, _width: u16) {
+    fn populate_focusable_metadata(
+        &self,
+        nav: &mut DocumentNavState,
+        data: &DataState,
+        _width: u16,
+    ) {
         use crate::tui::components::team_detail_document::TeamDetailDocumentContent;
 
         let roster = data.team_roster_stats.get(&self.abbrev);
-        let standing = data
-            .standings
-            .as_ref()
-            .as_ref()
-            .and_then(|standings| {
-                standings
-                    .iter()
-                    .find(|s| s.team_abbrev.default == self.abbrev)
-                    .cloned()
-            });
+        let standing = data.standings.as_ref().as_ref().and_then(|standings| {
+            standings
+                .iter()
+                .find(|s| s.team_abbrev.default == self.abbrev)
+                .cloned()
+        });
 
         let doc = TeamDetailDocumentContent::new(self.abbrev.clone(), standing, roster.cloned());
         nav.focusable_positions = doc.focusable_positions();
@@ -177,9 +183,7 @@ impl StackedDocumentHandler for PlayerDetailDocumentHandler {
         // Filter and sort same as display
         let mut nhl_seasons: Vec<_> = seasons
             .iter()
-            .filter(|s| {
-                s.game_type == nhl_api::GameType::RegularSeason && s.league_abbrev == "NHL"
-            })
+            .filter(|s| s.game_type == nhl_api::GameType::RegularSeason && s.league_abbrev == "NHL")
             .collect();
         nhl_seasons.sort_by_season_desc();
 
@@ -198,7 +202,12 @@ impl StackedDocumentHandler for PlayerDetailDocumentHandler {
         }))
     }
 
-    fn populate_focusable_metadata(&self, nav: &mut DocumentNavState, data: &DataState, _width: u16) {
+    fn populate_focusable_metadata(
+        &self,
+        nav: &mut DocumentNavState,
+        data: &DataState,
+        _width: u16,
+    ) {
         use crate::tui::components::player_detail_document::PlayerDetailDocumentContent;
 
         let player_data = data.player_data.get(&self.player_id).cloned();

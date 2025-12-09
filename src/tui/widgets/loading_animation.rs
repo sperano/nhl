@@ -8,8 +8,8 @@ use ratatui::{
     style::{Modifier, Style},
 };
 
-use crate::config::DisplayConfig;
 use super::StandaloneWidget;
+use crate::config::DisplayConfig;
 
 /// Number of dots in the animation
 const DOT_COUNT: usize = 3;
@@ -54,9 +54,7 @@ impl StandaloneWidget for LoadingAnimation {
 
         if y < area.y + area.height {
             let style = if let Some(theme) = &config.theme {
-                Style::default()
-                    .fg(theme.fg2)
-                    .add_modifier(Modifier::BOLD)
+                Style::default().fg(theme.fg2).add_modifier(Modifier::BOLD)
             } else {
                 Style::default().add_modifier(Modifier::BOLD)
             };
@@ -99,14 +97,7 @@ mod tests {
         widget.render(area, &mut buf, &config);
 
         // Should be centered: (9-3)/2 = 3, middle row = 1
-        assert_buffer(
-            &buf,
-            &[
-                "         ",
-                "   ●○○   ",
-                "         ",
-            ],
-        );
+        assert_buffer(&buf, &["         ", "   ●○○   ", "         "]);
     }
 
     #[test]

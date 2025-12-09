@@ -145,9 +145,10 @@ pub fn handle_common_message<S: TabState>(
     state: &mut S,
 ) -> Option<Effect> {
     match msg? {
-        CommonTabMessage::DocNav(nav_msg) => {
-            Some(crate::tui::document_nav::handle_message(state.doc_nav_mut(), nav_msg))
-        }
+        CommonTabMessage::DocNav(nav_msg) => Some(crate::tui::document_nav::handle_message(
+            state.doc_nav_mut(),
+            nav_msg,
+        )),
 
         CommonTabMessage::UpdateViewportHeight(height) => {
             state.doc_nav_mut().viewport_height = height;
@@ -255,7 +256,9 @@ mod tests {
         fn as_common(&self) -> Option<CommonTabMessage<'_>> {
             match self {
                 TestTabMsg::DocNav(msg) => Some(CommonTabMessage::DocNav(msg)),
-                TestTabMsg::UpdateViewportHeight(h) => Some(CommonTabMessage::UpdateViewportHeight(*h)),
+                TestTabMsg::UpdateViewportHeight(h) => {
+                    Some(CommonTabMessage::UpdateViewportHeight(*h))
+                }
                 TestTabMsg::NavigateUp => Some(CommonTabMessage::NavigateUp),
                 TestTabMsg::CustomAction => None,
             }

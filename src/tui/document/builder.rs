@@ -54,7 +54,8 @@ impl DocumentBuilder {
     pub fn link(mut self, display: impl Into<String>, target: LinkTarget) -> Self {
         let display = display.into();
         let id = format!("link_{}", self.elements.len());
-        self.elements.push(DocumentElement::link(id, display, target));
+        self.elements
+            .push(DocumentElement::link(id, display, target));
         self
     }
 
@@ -142,7 +143,8 @@ impl DocumentBuilder {
     ///
     /// Elements are laid out horizontally with the specified gap between them.
     pub fn row_with_gap(mut self, children: Vec<DocumentElement>, gap: u16) -> Self {
-        self.elements.push(DocumentElement::row_with_gap(children, gap));
+        self.elements
+            .push(DocumentElement::row_with_gap(children, gap));
         self
     }
 
@@ -297,9 +299,7 @@ mod tests {
     #[test]
     fn test_builder_link() {
         let target = LinkTarget::Document(DocumentLink::team("BOS"));
-        let elements = DocumentBuilder::new()
-            .link("Boston Bruins", target)
-            .build();
+        let elements = DocumentBuilder::new().link("Boston Bruins", target).build();
 
         assert_eq!(elements.len(), 1);
     }
@@ -515,14 +515,13 @@ mod tests {
 
     #[test]
     fn test_builder_table() {
-        use crate::tui::{Alignment, CellValue, ColumnDef};
         use crate::tui::components::TableWidget;
+        use crate::tui::{Alignment, CellValue, ColumnDef};
 
-        let columns: Vec<ColumnDef<&str>> = vec![
-            ColumnDef::new("Name", 10, Alignment::Left, |row: &&str| {
+        let columns: Vec<ColumnDef<&str>> =
+            vec![ColumnDef::new("Name", 10, Alignment::Left, |row: &&str| {
                 CellValue::Text(row.to_string())
-            }),
-        ];
+            })];
         let data = vec!["Alice", "Bob"];
         let table = TableWidget::from_data(&columns, data);
 
@@ -543,23 +542,22 @@ mod tests {
 
     #[test]
     fn test_builder_table_with_links() {
-        use crate::tui::{Alignment, CellValue, ColumnDef};
         use crate::tui::components::TableWidget;
+        use crate::tui::{Alignment, CellValue, ColumnDef};
 
-        let columns: Vec<ColumnDef<(&str, &str)>> = vec![
-            ColumnDef::new("Team", 15, Alignment::Left, |row: &(&str, &str)| {
-                CellValue::TeamLink {
-                    display: row.0.to_string(),
-                    team_abbrev: row.1.to_string(),
-                }
-            }),
-        ];
+        let columns: Vec<ColumnDef<(&str, &str)>> = vec![ColumnDef::new(
+            "Team",
+            15,
+            Alignment::Left,
+            |row: &(&str, &str)| CellValue::TeamLink {
+                display: row.0.to_string(),
+                team_abbrev: row.1.to_string(),
+            },
+        )];
         let data = vec![("Bruins", "BOS"), ("Leafs", "TOR")];
         let table = TableWidget::from_data(&columns, data);
 
-        let elements = DocumentBuilder::new()
-            .table("teams", table)
-            .build();
+        let elements = DocumentBuilder::new().table("teams", table).build();
 
         assert_eq!(elements.len(), 1);
         match &elements[0] {

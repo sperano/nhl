@@ -19,12 +19,12 @@ use crate::tui::{
 
 use super::{TabItem, TabbedPanel, TabbedPanelProps};
 
+use crate::component_message_impl;
 use crate::tui::action::Action;
 use crate::tui::component::Effect;
 use crate::tui::document_nav::{DocumentNavMsg, DocumentNavState};
-use crate::tui::tab_component::{CommonTabMessage, TabMessage, TabState, handle_common_message};
+use crate::tui::tab_component::{handle_common_message, CommonTabMessage, TabMessage, TabState};
 use crate::tui::types::StackedDocument;
-use crate::component_message_impl;
 
 /// Component state for StandingsTab - managed by the component itself
 #[derive(Clone, Debug)]
@@ -168,21 +168,23 @@ impl Component for StandingsTab {
 
             StandingsTabMsg::ActivateTeam => {
                 // Get the team abbreviation from the focused element's link target
-                if let Some(crate::tui::document::LinkTarget::Action(action)) = state.doc_nav().focused_link_target() {
+                if let Some(crate::tui::document::LinkTarget::Action(action)) =
+                    state.doc_nav().focused_link_target()
+                {
                     // Parse "team:TOR" format
                     if let Some(abbrev) = action.strip_prefix("team:") {
-                        return Effect::Action(Action::PushDocument(
-                            StackedDocument::TeamDetail {
-                                abbrev: abbrev.to_string(),
-                            },
-                        ));
+                        return Effect::Action(Action::PushDocument(StackedDocument::TeamDetail {
+                            abbrev: abbrev.to_string(),
+                        }));
                     }
                 }
                 Effect::None
             }
 
             // Common messages already handled above
-            StandingsTabMsg::DocNav(_) | StandingsTabMsg::UpdateViewportHeight(_) | StandingsTabMsg::NavigateUp => {
+            StandingsTabMsg::DocNav(_)
+            | StandingsTabMsg::UpdateViewportHeight(_)
+            | StandingsTabMsg::NavigateUp => {
                 unreachable!("Common messages should be handled by handle_common_message")
             }
         }
@@ -267,7 +269,12 @@ impl StandingsTab {
         )
     }
 
-    fn render_standings_table(&self, props: &StandingsTabProps, state: &StandingsTabState, view: &GroupBy) -> Element {
+    fn render_standings_table(
+        &self,
+        props: &StandingsTabProps,
+        state: &StandingsTabState,
+        view: &GroupBy,
+    ) -> Element {
         // If no standings data, show loading animation
         let Some(standings) = props.standings.as_ref().as_ref() else {
             return Element::Widget(Box::new(AnimatedLoadingWidget {
@@ -289,7 +296,12 @@ impl StandingsTab {
         }
     }
 
-    fn render_league_view(&self, props: &StandingsTabProps, state: &StandingsTabState, standings: &[Standing]) -> Element {
+    fn render_league_view(
+        &self,
+        props: &StandingsTabProps,
+        state: &StandingsTabState,
+        standings: &[Standing],
+    ) -> Element {
         use super::StandingsDocumentWidget;
 
         Element::Widget(Box::new(StandingsDocumentWidget::league(
@@ -300,7 +312,12 @@ impl StandingsTab {
         )))
     }
 
-    fn render_conference_view(&self, props: &StandingsTabProps, state: &StandingsTabState, standings: &[Standing]) -> Element {
+    fn render_conference_view(
+        &self,
+        props: &StandingsTabProps,
+        state: &StandingsTabState,
+        standings: &[Standing],
+    ) -> Element {
         // Use the document system for Conference view (like League view)
         use super::StandingsDocumentWidget;
 
@@ -312,7 +329,12 @@ impl StandingsTab {
         )))
     }
 
-    fn render_division_view(&self, props: &StandingsTabProps, state: &StandingsTabState, standings: &[Standing]) -> Element {
+    fn render_division_view(
+        &self,
+        props: &StandingsTabProps,
+        state: &StandingsTabState,
+        standings: &[Standing],
+    ) -> Element {
         // Use the document system for Division view
         use super::StandingsDocumentWidget;
 
@@ -324,7 +346,12 @@ impl StandingsTab {
         )))
     }
 
-    fn render_wildcard_view(&self, props: &StandingsTabProps, state: &StandingsTabState, standings: &[Standing]) -> Element {
+    fn render_wildcard_view(
+        &self,
+        props: &StandingsTabProps,
+        state: &StandingsTabState,
+        standings: &[Standing],
+    ) -> Element {
         // Use the document system for Wildcard view
         use super::StandingsDocumentWidget;
 
@@ -357,9 +384,7 @@ impl StandingsTab {
             "No document".to_string()
         };
 
-        Element::Widget(Box::new(StackedDocumentWidget {
-            message: doc_info,
-        }))
+        Element::Widget(Box::new(StackedDocumentWidget { message: doc_info }))
     }
 }
 
@@ -406,8 +431,11 @@ struct StackedDocumentWidget {
 
 impl ElementWidget for StackedDocumentWidget {
     fn render(&self, area: Rect, buf: &mut Buffer, _config: &DisplayConfig) {
-        let widget = Paragraph::new(self.message.as_str())
-            .block(Block::default().borders(Borders::ALL).title("Document View"));
+        let widget = Paragraph::new(self.message.as_str()).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Document View"),
+        );
         ratatui::widgets::Widget::render(widget, area, buf);
     }
 
@@ -784,7 +812,10 @@ mod tests {
             Effect::Action(Action::RebuildStandingsFocusable) => {
                 // Good - this is the fix for the regression
             }
-            _ => panic!("Expected RebuildStandingsFocusable action, got {:?}", effect),
+            _ => panic!(
+                "Expected RebuildStandingsFocusable action, got {:?}",
+                effect
+            ),
         }
     }
 
@@ -814,7 +845,10 @@ mod tests {
             Effect::Action(Action::RebuildStandingsFocusable) => {
                 // Good - this is the fix for the regression
             }
-            _ => panic!("Expected RebuildStandingsFocusable action, got {:?}", effect),
+            _ => panic!(
+                "Expected RebuildStandingsFocusable action, got {:?}",
+                effect
+            ),
         }
     }
 
@@ -864,9 +898,7 @@ mod tests {
         };
 
         // Set link targets for teams
-        state.doc_nav.link_targets = vec![
-            Some(LinkTarget::Action("team:TOR".to_string())),
-        ];
+        state.doc_nav.link_targets = vec![Some(LinkTarget::Action("team:TOR".to_string()))];
 
         // No focus set
         state.doc_nav.focus_index = None;

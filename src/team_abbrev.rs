@@ -39,7 +39,7 @@ pub fn common_name_to_abbrev(common_name: &str) -> Option<&'static str> {
         "Golden Knights" => Some("VGK"),
         "Capitals" => Some("WSH"),
         "Jets" => Some("WPG"),
-        "Hockey Club" => Some("UTA"), 
+        "Hockey Club" => Some("UTA"),
         // Historical teams
         "Phoenix Coyotes" => Some("PHX"),
         "Atlanta Thrashers" => Some("ATL"),

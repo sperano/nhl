@@ -81,13 +81,17 @@ impl Runtime {
 
             // Take ownership temporarily, run reducer, put back
             let state = std::mem::take(&mut self.state);
-            let (new_state, _reducer_effect) = reduce(state, action.clone(), &mut self.component_states);
+            let (new_state, _reducer_effect) =
+                reduce(state, action.clone(), &mut self.component_states);
             self.state = new_state;
 
             // Then generate data fetch effects
             self.data_effects.handle_refresh(&self.state)
         } else if let Action::RefreshSchedule(date) = &action {
-            debug!("ACTION: RefreshSchedule({:?}) - generating fetch effects", date);
+            debug!(
+                "ACTION: RefreshSchedule({:?}) - generating fetch effects",
+                date
+            );
 
             // Mutate in place - no clone needed
             self.state.ui.scores.game_date = date.clone();
@@ -123,17 +127,26 @@ impl Runtime {
                 let _ = self.effect_tx.send(fetch_effect);
             }
             Effect::FetchTeamRosterStats(abbrev) => {
-                debug!("EFFECT: Executing team roster stats fetch for team={}", abbrev);
+                debug!(
+                    "EFFECT: Executing team roster stats fetch for team={}",
+                    abbrev
+                );
                 let fetch_effect = self.data_effects.fetch_team_roster_stats(abbrev);
                 let _ = self.effect_tx.send(fetch_effect);
             }
             Effect::FetchPlayerStats(player_id) => {
-                debug!("EFFECT: Executing player stats fetch for player_id={}", player_id);
+                debug!(
+                    "EFFECT: Executing player stats fetch for player_id={}",
+                    player_id
+                );
                 let fetch_effect = self.data_effects.fetch_player_stats(player_id);
                 let _ = self.effect_tx.send(fetch_effect);
             }
             Effect::FetchGameDetails(game_id) => {
-                debug!("EFFECT: Executing game details fetch for game_id={}", game_id);
+                debug!(
+                    "EFFECT: Executing game details fetch for game_id={}",
+                    game_id
+                );
                 let fetch_effect = self.data_effects.fetch_game_details(game_id);
                 let _ = self.effect_tx.send(fetch_effect);
             }
@@ -203,24 +216,34 @@ impl Runtime {
         const SUBTAB_CHROME_LINES: u16 = 2;
 
         let base_viewport = terminal_height.saturating_sub(BASE_CHROME_LINES);
-        let subtab_viewport = terminal_height.saturating_sub(BASE_CHROME_LINES + SUBTAB_CHROME_LINES);
+        let subtab_viewport =
+            terminal_height.saturating_sub(BASE_CHROME_LINES + SUBTAB_CHROME_LINES);
 
         // Update StandingsTab viewport (has subtabs)
-        if let Some(state) = self.component_states.get_mut::<StandingsTabState>(STANDINGS_TAB_PATH) {
+        if let Some(state) = self
+            .component_states
+            .get_mut::<StandingsTabState>(STANDINGS_TAB_PATH)
+        {
             if state.doc_nav.viewport_height != subtab_viewport {
                 state.doc_nav.viewport_height = subtab_viewport;
             }
         }
 
         // Update ScoresTab viewport (has subtabs - date selector)
-        if let Some(state) = self.component_states.get_mut::<ScoresTabState>(SCORES_TAB_PATH) {
+        if let Some(state) = self
+            .component_states
+            .get_mut::<ScoresTabState>(SCORES_TAB_PATH)
+        {
             if state.doc_nav.viewport_height != subtab_viewport {
                 state.doc_nav.viewport_height = subtab_viewport;
             }
         }
 
         // Update SettingsTab viewport (has subtabs)
-        if let Some(state) = self.component_states.get_mut::<SettingsTabState>(SETTINGS_TAB_PATH) {
+        if let Some(state) = self
+            .component_states
+            .get_mut::<SettingsTabState>(SETTINGS_TAB_PATH)
+        {
             if state.doc_nav.viewport_height != subtab_viewport {
                 state.doc_nav.viewport_height = subtab_viewport;
             }
@@ -228,7 +251,10 @@ impl Runtime {
 
         // Update DemoTab viewport (no subtabs, uses base chrome)
         // DemoTab uses DocumentNavState directly as its state type
-        if let Some(state) = self.component_states.get_mut::<DocumentNavState>(DEMO_TAB_PATH) {
+        if let Some(state) = self
+            .component_states
+            .get_mut::<DocumentNavState>(DEMO_TAB_PATH)
+        {
             if state.viewport_height != base_viewport {
                 state.viewport_height = base_viewport;
             }
@@ -485,7 +511,10 @@ mod tests {
         // Now arrows should navigate dates on Scores tab (dispatches ComponentMessage)
         let key_right = KeyEvent::new(KeyCode::Right, KeyModifiers::empty());
         let action_right = key_to_action(key_right, state, component_states);
-        assert!(matches!(action_right, Some(Action::ComponentMessage { .. })));
+        assert!(matches!(
+            action_right,
+            Some(Action::ComponentMessage { .. })
+        ));
 
         // Up should return to tab bar
         let key_up = KeyEvent::new(KeyCode::Up, KeyModifiers::empty());

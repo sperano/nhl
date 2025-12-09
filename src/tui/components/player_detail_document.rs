@@ -8,7 +8,9 @@ use super::table::TableWidget;
 use crate::config::DisplayConfig;
 use crate::team_abbrev::common_name_to_abbrev;
 use crate::tui::component::{Component, Element, ElementWidget};
-use crate::tui::document::{Document, DocumentBuilder, DocumentElement, DocumentView, FocusContext};
+use crate::tui::document::{
+    Document, DocumentBuilder, DocumentElement, DocumentView, FocusContext,
+};
 use crate::tui::helpers::SeasonSorting;
 use crate::tui::widgets::{LoadingAnimation, StandaloneWidget};
 use crate::tui::{Alignment, CellValue, ColumnDef};
@@ -259,8 +261,7 @@ impl Document for PlayerDetailDocumentContent {
             let total_seasons = seasons.len();
 
             let title = format!("SEASON BY SEASON ({} NHL seasons)", total_seasons);
-            let table = TableWidget::from_data(&columns, seasons)
-                .with_focused_row(focused_row);
+            let table = TableWidget::from_data(&columns, seasons).with_focused_row(focused_row);
 
             builder = builder
                 .element(DocumentElement::section_title(title, true))
@@ -489,7 +490,11 @@ mod tests {
         // Both should be TableCell IDs (team info is in link_targets, not IDs)
         for (i, id) in ids.iter().enumerate() {
             match id {
-                FocusableId::TableCell { table_name, row, col } => {
+                FocusableId::TableCell {
+                    table_name,
+                    row,
+                    col,
+                } => {
                     assert_eq!(table_name, "season_stats");
                     assert_eq!(*row, i);
                     assert_eq!(*col, 1); // team column
@@ -509,7 +514,9 @@ mod tests {
         let elements = doc.build(&focus);
 
         // Find the table element
-        let table_elem = elements.iter().find(|e| matches!(e, DocumentElement::Table { .. }));
+        let table_elem = elements
+            .iter()
+            .find(|e| matches!(e, DocumentElement::Table { .. }));
         assert!(table_elem.is_some(), "Should contain a Table element");
     }
 

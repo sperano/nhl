@@ -197,10 +197,7 @@ mod tests {
 
     #[test]
     fn test_document_link_new() {
-        let link = DocumentLink::new(
-            DocumentType::Player,
-            LinkParams::Player { id: 12345 },
-        );
+        let link = DocumentLink::new(DocumentType::Player, LinkParams::Player { id: 12345 });
 
         assert_eq!(link.doc_type, DocumentType::Player);
         match link.params {
@@ -228,9 +225,15 @@ mod tests {
 
     #[test]
     fn test_link_params_equality() {
-        let params1 = LinkParams::Team { abbrev: "BOS".to_string() };
-        let params2 = LinkParams::Team { abbrev: "BOS".to_string() };
-        let params3 = LinkParams::Team { abbrev: "TOR".to_string() };
+        let params1 = LinkParams::Team {
+            abbrev: "BOS".to_string(),
+        };
+        let params2 = LinkParams::Team {
+            abbrev: "BOS".to_string(),
+        };
+        let params3 = LinkParams::Team {
+            abbrev: "TOR".to_string(),
+        };
 
         assert_eq!(params1, params2);
         assert_ne!(params1, params3);

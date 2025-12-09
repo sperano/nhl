@@ -40,10 +40,7 @@ pub(super) fn render_row(
 
     if has_preferred_widths {
         // Calculate total width of all children
-        let total_children_width: u16 = children
-            .iter()
-            .filter_map(get_preferred_width)
-            .sum();
+        let total_children_width: u16 = children.iter().filter_map(get_preferred_width).sum();
 
         // Calculate gap based on alignment
         let actual_gap = match align {
@@ -121,7 +118,13 @@ pub(super) fn render_text(
 }
 
 /// Render a heading element
-pub(super) fn render_heading(level: u8, content: &str, area: Rect, buf: &mut Buffer, config: &DisplayConfig) {
+pub(super) fn render_heading(
+    level: u8,
+    content: &str,
+    area: Rect,
+    buf: &mut Buffer,
+    config: &DisplayConfig,
+) {
     let style = config.heading_style(level);
 
     // Render heading text
@@ -185,7 +188,13 @@ pub(super) fn render_section_title(
 }
 
 /// Render a link element
-pub(super) fn render_link(display: &str, focused: bool, area: Rect, buf: &mut Buffer, config: &DisplayConfig) {
+pub(super) fn render_link(
+    display: &str,
+    focused: bool,
+    area: Rect,
+    buf: &mut Buffer,
+    config: &DisplayConfig,
+) {
     use crate::config::SELECTION_STYLE_MODIFIER;
 
     let base_style = config.text_style();
@@ -311,15 +320,7 @@ pub(super) fn render_team_boxscore(
 
         // Section header with embedded title
         let title = format!("{} - {}", team_name, section_name);
-        render_section_header(
-            area.x,
-            y,
-            width,
-            &title,
-            is_first_section,
-            buf,
-            config,
-        );
+        render_section_header(area.x, y, width, &title, is_first_section, buf, config);
         y += 1;
         is_first_section = false;
 
@@ -377,7 +378,8 @@ fn render_section_header(
     };
 
     // Build the header line: corner + == + ╡ + title + ╞ + === + corner
-    let title_prefix = format!("{}{}{}",
+    let title_prefix = format!(
+        "{}{}{}",
         left_corner,
         bc.double_horizontal.repeat(2),
         &bc.mixed_dh_right_t,
@@ -411,13 +413,7 @@ fn render_section_header(
 }
 
 /// Render bottom border: ╘═══════════════════════════════════════════════╛
-fn render_bottom_border(
-    x: u16,
-    y: u16,
-    width: u16,
-    buf: &mut Buffer,
-    config: &DisplayConfig,
-) {
+fn render_bottom_border(x: u16, y: u16, width: u16, buf: &mut Buffer, config: &DisplayConfig) {
     let bc = &config.box_chars;
     let border_style = config.muted_style();
 

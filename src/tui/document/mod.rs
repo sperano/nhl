@@ -166,7 +166,12 @@ pub trait Document: Send + Sync {
 
     /// Render the document to a buffer at full height
     /// Returns the buffer and the actual height used
-    fn render_full(&self, width: u16, config: &DisplayConfig, focus: &FocusContext) -> (Buffer, u16) {
+    fn render_full(
+        &self,
+        width: u16,
+        config: &DisplayConfig,
+        focus: &FocusContext,
+    ) -> (Buffer, u16) {
         let elements = self.build(focus);
         let height = elements.iter().map(|e| e.height()).sum();
 
@@ -211,7 +216,13 @@ pub trait StackedDocumentHandler: Send + Sync {
     ///
     /// Default implementation populates focusable metadata on-demand, then handles
     /// navigation via `key_to_nav_msg` and delegates Enter to `activate()`.
-    fn handle_key(&self, key: KeyEvent, nav: &mut DocumentNavState, data: &DataState, width: u16) -> Effect {
+    fn handle_key(
+        &self,
+        key: KeyEvent,
+        nav: &mut DocumentNavState,
+        data: &DataState,
+        width: u16,
+    ) -> Effect {
         // Populate focusable metadata on-demand before navigation
         self.populate_focusable_metadata(nav, data, width);
 
@@ -233,22 +244,20 @@ pub trait StackedDocumentHandler: Send + Sync {
 /// Each document type (Boxscore, TeamDetail, PlayerDetail) has its own handler
 /// that understands how to navigate and activate elements within it.
 pub fn get_stacked_document_handler(doc: &StackedDocument) -> Box<dyn StackedDocumentHandler> {
-    use handlers::{BoxscoreDocumentHandler, TeamDetailDocumentHandler, PlayerDetailDocumentHandler};
+    use handlers::{
+        BoxscoreDocumentHandler, PlayerDetailDocumentHandler, TeamDetailDocumentHandler,
+    };
 
     match doc {
         StackedDocument::Boxscore { game_id } => {
             Box::new(BoxscoreDocumentHandler { game_id: *game_id })
         }
-        StackedDocument::TeamDetail { abbrev } => {
-            Box::new(TeamDetailDocumentHandler {
-                abbrev: abbrev.clone(),
-            })
-        }
-        StackedDocument::PlayerDetail { player_id } => {
-            Box::new(PlayerDetailDocumentHandler {
-                player_id: *player_id,
-            })
-        }
+        StackedDocument::TeamDetail { abbrev } => Box::new(TeamDetailDocumentHandler {
+            abbrev: abbrev.clone(),
+        }),
+        StackedDocument::PlayerDetail { player_id } => Box::new(PlayerDetailDocumentHandler {
+            player_id: *player_id,
+        }),
     }
 }
 
@@ -803,15 +812,7 @@ mod tests {
         view.render(area, &mut buf, &config);
 
         // Underline only extends to title width ("Test" = 4 chars)
-        assert_buffer(
-            &buf,
-            &[
-                "Test",
-                "════",
-                "Line 1",
-                "Line 2",
-            ],
-        );
+        assert_buffer(&buf, &["Test", "════", "Line 1", "Line 2"]);
     }
 
     #[test]
@@ -832,14 +833,7 @@ mod tests {
         view.render(area, &mut buf, &config);
 
         // Should show lines starting from offset 2 (after title + underline)
-        assert_buffer(
-            &buf,
-            &[
-                "Line 1",
-                "Line 2",
-                "Line 3",
-            ],
-        );
+        assert_buffer(&buf, &["Line 1", "Line 2", "Line 3"]);
     }
 
     #[test]
@@ -860,13 +854,7 @@ mod tests {
 
         // Total height is 5 (title + underline + 3 lines), viewport is 2
         // Scrolled to bottom shows last 2 lines
-        assert_buffer(
-            &buf,
-            &[
-                "Line 2",
-                "Line 3",
-            ],
-        );
+        assert_buffer(&buf, &["Line 2", "Line 3"]);
     }
 
     /// Test document with a link for focus rendering
@@ -915,14 +903,7 @@ mod tests {
         view.render(area, &mut buf, &config);
 
         // Unfocused link has "  " prefix for alignment
-        assert_buffer(
-            &buf,
-            &[
-                "Before",
-                "  Click Me",
-                "After",
-            ],
-        );
+        assert_buffer(&buf, &["Before", "  Click Me", "After"]);
     }
 
     #[test]
@@ -940,13 +921,6 @@ mod tests {
         view.render(area, &mut buf, &config);
 
         // Focused link has "▶ " prefix
-        assert_buffer(
-            &buf,
-            &[
-                "Before",
-                "▶ Click Me",
-                "After",
-            ],
-        );
+        assert_buffer(&buf, &["Before", "▶ Click Me", "After"]);
     }
 }

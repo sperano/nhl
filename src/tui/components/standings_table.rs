@@ -111,14 +111,17 @@ mod tests {
         let height = table.preferred_height().unwrap();
         let buf = render_widget(&table, 60, height);
 
-        assert_buffer(&buf, &[
-            "  Team                          GP     W    L   OT    PTS",
-            "  ───────────────────────────────────────────────────────",
-            "  Panthers                      19    14    3    2     30",
-            "  Bruins                        18    13    4    1     27",
-            "  Maple Leafs                   19    12    5    2     26",
-            "  Lightning                     18    11    6    1     23",
-        ]);
+        assert_buffer(
+            &buf,
+            &[
+                "  Team                          GP     W    L   OT    PTS",
+                "  ───────────────────────────────────────────────────────",
+                "  Panthers                      19    14    3    2     30",
+                "  Bruins                        18    13    4    1     27",
+                "  Maple Leafs                   19    12    5    2     26",
+                "  Lightning                     18    11    6    1     23",
+            ],
+        );
     }
 
     #[test]
@@ -131,12 +134,15 @@ mod tests {
         let buf = render_widget(&table, 60, height);
 
         // Row 1 should show the selector
-        assert_buffer(&buf, &[
-            "  Team                          GP     W    L   OT    PTS",
-            "  ───────────────────────────────────────────────────────",
-            "  Panthers                      19    14    3    2     30",
-            "▶ Bruins                        18    13    4    1     27",
-            "  Maple Leafs                   19    12    5    2     26",
-        ]);
+        assert_buffer(
+            &buf,
+            &[
+                "  Team                          GP     W    L   OT    PTS",
+                "  ───────────────────────────────────────────────────────",
+                "  Panthers                      19    14    3    2     30",
+                "▶ Bruins                        18    13    4    1     27",
+                "  Maple Leafs                   19    12    5    2     26",
+            ],
+        );
     }
 }

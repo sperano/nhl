@@ -24,11 +24,16 @@ pub use demo_tab::{DemoTab, DemoTabProps};
 pub use player_detail_document::{PlayerDetailDocument, PlayerDetailDocumentProps};
 pub use score_boxes_document::ScoreBoxesDocument;
 pub use scores_tab::{ScoresTab, ScoresTabProps};
-pub use settings_tab::{SettingsTab, SettingsTabMsg, SettingsTabProps, SettingsTabState};
 pub use settings_document::SettingsDocument;
-pub use standings_documents::{ConferenceStandingsDocument, DivisionStandingsDocument, LeagueStandingsDocument, StandingsDocumentWidget, WildcardStandingsDocument};
+pub use settings_tab::{SettingsTab, SettingsTabMsg, SettingsTabProps, SettingsTabState};
+pub use standings_documents::{
+    ConferenceStandingsDocument, DivisionStandingsDocument, LeagueStandingsDocument,
+    StandingsDocumentWidget, WildcardStandingsDocument,
+};
 pub use standings_tab::StandingsTab;
-pub use standings_table::{create_standings_table, create_standings_table_with_selection, standings_columns};
+pub use standings_table::{
+    create_standings_table, create_standings_table_with_selection, standings_columns,
+};
 pub use status_bar::StatusBar;
 pub use tabbed_panel::{TabItem, TabbedPanel, TabbedPanelProps};
 pub use table::{Table, TableWidget};

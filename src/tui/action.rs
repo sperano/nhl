@@ -57,7 +57,7 @@ pub enum Action {
     // SelectTeam(String),
     // SelectPlayer(i64),
     RefreshData,
-    RefreshSchedule(GameDate),  // Refresh schedule for specific date
+    RefreshSchedule(GameDate), // Refresh schedule for specific date
 
     // Data loaded (from effects)
     StandingsLoaded(Result<Vec<Standing>, String>),
@@ -95,7 +95,10 @@ pub enum Action {
     // System actions
     Quit,
     Error(String),
-    SetStatusMessage { message: String, is_error: bool },
+    SetStatusMessage {
+        message: String,
+        is_error: bool,
+    },
     UpdateTerminalWidth(u16),
     /// Tick action for animation frame advancement
     Tick,
@@ -106,11 +109,10 @@ pub enum Action {
 pub enum SettingsAction {
     NavigateCategoryLeft,
     NavigateCategoryRight,
-    ToggleBoolean(String), // Setting key to toggle
+    ToggleBoolean(String),                        // Setting key to toggle
     UpdateSetting { key: String, value: String }, // Update a setting value
     UpdateConfig(Box<crate::config::Config>),
 }
-
 
 impl Clone for Action {
     fn clone(&self) -> Self {

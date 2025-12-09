@@ -15,19 +15,37 @@ pub struct ModalOption {
 pub fn get_setting_modal_options(key: &str) -> Vec<ModalOption> {
     match key {
         "log_level" => vec![
-            ModalOption { id: "trace".to_string(), display_name: "Trace".to_string() },
-            ModalOption { id: "debug".to_string(), display_name: "Debug".to_string() },
-            ModalOption { id: "info".to_string(), display_name: "Info".to_string() },
-            ModalOption { id: "warn".to_string(), display_name: "Warn".to_string() },
-            ModalOption { id: "error".to_string(), display_name: "Error".to_string() },
+            ModalOption {
+                id: "trace".to_string(),
+                display_name: "Trace".to_string(),
+            },
+            ModalOption {
+                id: "debug".to_string(),
+                display_name: "Debug".to_string(),
+            },
+            ModalOption {
+                id: "info".to_string(),
+                display_name: "Info".to_string(),
+            },
+            ModalOption {
+                id: "warn".to_string(),
+                display_name: "Warn".to_string(),
+            },
+            ModalOption {
+                id: "error".to_string(),
+                display_name: "Error".to_string(),
+            },
         ],
         "theme" => {
             use crate::config::THEMES;
-            let mut options = vec![
-                ModalOption { id: "none".to_string(), display_name: "None".to_string() },
-            ];
+            let mut options = vec![ModalOption {
+                id: "none".to_string(),
+                display_name: "None".to_string(),
+            }];
             // Add options from THEMES map in a consistent order
-            for id in ["orange", "green", "blue", "purple", "white", "red", "yellow", "cyan"] {
+            for id in [
+                "orange", "green", "blue", "purple", "white", "red", "yellow", "cyan",
+            ] {
                 if let Some(theme) = THEMES.get(id) {
                     options.push(ModalOption {
                         id: id.to_string(),

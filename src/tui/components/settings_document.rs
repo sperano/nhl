@@ -19,7 +19,11 @@ impl SettingsDocument {
     }
 
     /// Build the logging settings section
-    fn build_logging_settings(&self, builder: DocumentBuilder, focus: &FocusContext) -> DocumentBuilder {
+    fn build_logging_settings(
+        &self,
+        builder: DocumentBuilder,
+        focus: &FocusContext,
+    ) -> DocumentBuilder {
         builder
             .heading(2, "Logging Settings")
             .spacer(1)
@@ -39,7 +43,11 @@ impl SettingsDocument {
     }
 
     /// Build the display settings section
-    fn build_display_settings(&self, builder: DocumentBuilder, focus: &FocusContext) -> DocumentBuilder {
+    fn build_display_settings(
+        &self,
+        builder: DocumentBuilder,
+        focus: &FocusContext,
+    ) -> DocumentBuilder {
         let theme_name = self
             .config
             .display
@@ -65,11 +73,18 @@ impl SettingsDocument {
                 focus,
             )
             .spacer(1)
-            .text(format!("Error Color: {}", format_color(&self.config.display.error_fg)))
+            .text(format!(
+                "Error Color: {}",
+                format_color(&self.config.display.error_fg)
+            ))
     }
 
     /// Build the data settings section
-    fn build_data_settings(&self, builder: DocumentBuilder, focus: &FocusContext) -> DocumentBuilder {
+    fn build_data_settings(
+        &self,
+        builder: DocumentBuilder,
+        focus: &FocusContext,
+    ) -> DocumentBuilder {
         builder
             .heading(2, "Data Settings")
             .spacer(1)
@@ -82,7 +97,10 @@ impl SettingsDocument {
             .spacer(1)
             .link_with_focus(
                 "western_teams_first",
-                format!("Western Teams First: {}", self.config.display_standings_western_first),
+                format!(
+                    "Western Teams First: {}",
+                    self.config.display_standings_western_first
+                ),
                 LinkTarget::Action("toggle:western_teams_first".to_string()),
                 focus,
             )

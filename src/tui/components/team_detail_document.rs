@@ -153,7 +153,10 @@ impl Document for TeamDetailDocumentContent {
 
     fn title(&self) -> String {
         if let Some(ref standing) = self.standing {
-            format!("{} {}", standing.team_name.default, standing.team_common_name.default)
+            format!(
+                "{} {}",
+                standing.team_name.default, standing.team_common_name.default
+            )
         } else {
             self.team_abbrev.clone()
         }
@@ -167,15 +170,12 @@ impl Document for TeamDetailDocumentContent {
 /// Define columns for skater stats table
 fn skater_columns() -> Vec<ColumnDef<ClubSkaterStats>> {
     vec![
-        ColumnDef::new(
-            "Player",
-            20,
-            Alignment::Left,
-            |s: &ClubSkaterStats| CellValue::PlayerLink {
+        ColumnDef::new("Player", 20, Alignment::Left, |s: &ClubSkaterStats| {
+            CellValue::PlayerLink {
                 display: format!("{} {}", s.first_name.default, s.last_name.default),
                 player_id: s.player_id,
-            },
-        ),
+            }
+        }),
         ColumnDef::new("Pos", 3, Alignment::Left, |s: &ClubSkaterStats| {
             CellValue::Text(s.position.to_string())
         }),
@@ -203,15 +203,12 @@ fn skater_columns() -> Vec<ColumnDef<ClubSkaterStats>> {
 /// Define columns for goalie stats table
 fn goalie_columns() -> Vec<ColumnDef<ClubGoalieStats>> {
     vec![
-        ColumnDef::new(
-            "Player",
-            20,
-            Alignment::Left,
-            |g: &ClubGoalieStats| CellValue::PlayerLink {
+        ColumnDef::new("Player", 20, Alignment::Left, |g: &ClubGoalieStats| {
+            CellValue::PlayerLink {
                 display: format!("{} {}", g.first_name.default, g.last_name.default),
                 player_id: g.player_id,
-            },
-        ),
+            }
+        }),
         ColumnDef::new("GP", 4, Alignment::Right, |g: &ClubGoalieStats| {
             CellValue::Text(g.games_played.to_string())
         }),
@@ -416,11 +413,8 @@ mod tests {
         let standing = create_test_standing();
         let club_stats = create_test_club_stats();
 
-        let doc = TeamDetailDocumentContent::new(
-            "TST".to_string(),
-            Some(standing),
-            Some(club_stats),
-        );
+        let doc =
+            TeamDetailDocumentContent::new("TST".to_string(), Some(standing), Some(club_stats));
 
         let elements = doc.build(&FocusContext::default());
 
@@ -432,11 +426,7 @@ mod tests {
     fn test_document_metadata() {
         let standing = create_test_standing();
 
-        let doc = TeamDetailDocumentContent::new(
-            "TST".to_string(),
-            Some(standing),
-            None,
-        );
+        let doc = TeamDetailDocumentContent::new("TST".to_string(), Some(standing), None);
 
         assert_eq!(doc.title(), "Test Team Test");
         assert_eq!(doc.id(), "team_detail_TST");
@@ -444,11 +434,7 @@ mod tests {
 
     #[test]
     fn test_document_without_standing() {
-        let doc = TeamDetailDocumentContent::new(
-            "TST".to_string(),
-            None,
-            None,
-        );
+        let doc = TeamDetailDocumentContent::new("TST".to_string(), None, None);
 
         assert_eq!(doc.title(), "TST");
         assert_eq!(doc.id(), "team_detail_TST");
@@ -459,11 +445,8 @@ mod tests {
         let standing = create_test_standing();
         let club_stats = create_test_club_stats();
 
-        let doc = TeamDetailDocumentContent::new(
-            "TST".to_string(),
-            Some(standing),
-            Some(club_stats),
-        );
+        let doc =
+            TeamDetailDocumentContent::new("TST".to_string(), Some(standing), Some(club_stats));
 
         let positions = doc.focusable_positions();
 
@@ -476,11 +459,8 @@ mod tests {
         let standing = create_test_standing();
         let club_stats = create_test_club_stats();
 
-        let doc = TeamDetailDocumentContent::new(
-            "TST".to_string(),
-            Some(standing),
-            Some(club_stats),
-        );
+        let doc =
+            TeamDetailDocumentContent::new("TST".to_string(), Some(standing), Some(club_stats));
 
         let ids = doc.focusable_ids();
 

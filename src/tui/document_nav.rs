@@ -299,11 +299,7 @@ pub fn autoscroll_to_focus(state: &mut DocumentNavState) {
     };
 
     // Get element height (default to 1 for backwards compatibility)
-    let focused_height = state
-        .focusable_heights
-        .get(focus_idx)
-        .copied()
-        .unwrap_or(1);
+    let focused_height = state.focusable_heights.get(focus_idx).copied().unwrap_or(1);
 
     let viewport_height = state.viewport_height.max(MIN_VIEWPORT_HEIGHT);
     let scroll_offset = state.scroll_offset;

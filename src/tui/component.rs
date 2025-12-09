@@ -124,9 +124,16 @@ impl std::fmt::Debug for Effect {
             Effect::Batch(effects) => f.debug_tuple("Effect::Batch").field(effects).finish(),
             Effect::Async(_) => write!(f, "Effect::Async(<future>)"),
             Effect::FetchBoxscore(id) => f.debug_tuple("Effect::FetchBoxscore").field(id).finish(),
-            Effect::FetchTeamRosterStats(abbrev) => f.debug_tuple("Effect::FetchTeamRosterStats").field(abbrev).finish(),
-            Effect::FetchPlayerStats(id) => f.debug_tuple("Effect::FetchPlayerStats").field(id).finish(),
-            Effect::FetchGameDetails(id) => f.debug_tuple("Effect::FetchGameDetails").field(id).finish(),
+            Effect::FetchTeamRosterStats(abbrev) => f
+                .debug_tuple("Effect::FetchTeamRosterStats")
+                .field(abbrev)
+                .finish(),
+            Effect::FetchPlayerStats(id) => {
+                f.debug_tuple("Effect::FetchPlayerStats").field(id).finish()
+            }
+            Effect::FetchGameDetails(id) => {
+                f.debug_tuple("Effect::FetchGameDetails").field(id).finish()
+            }
         }
     }
 }

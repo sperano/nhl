@@ -9,15 +9,15 @@ use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 
+use crate::component_message_impl;
 use crate::config::{Config, DisplayConfig};
 use crate::tui::component::{Component, Effect, Element, ElementWidget};
 use crate::tui::components::{SettingsDocument, TabItem, TabbedPanel, TabbedPanelProps};
 use crate::tui::document::{DocumentView, FocusableId};
 use crate::tui::document_nav::{DocumentNavMsg, DocumentNavState};
 use crate::tui::settings_helpers::ModalOption;
-use crate::tui::tab_component::{CommonTabMessage, TabMessage, TabState, handle_common_message};
+use crate::tui::tab_component::{handle_common_message, CommonTabMessage, TabMessage, TabState};
 use crate::tui::SettingsCategory;
-use crate::component_message_impl;
 
 /// Props for SettingsTab component
 #[derive(Clone)]
@@ -165,22 +165,30 @@ impl Component for SettingsTab {
                 Effect::None
             }
             SettingsTabMsg::ActivateSetting(config) => {
-                use crate::tui::settings_helpers::{find_initial_modal_index, get_setting_modal_options};
+                use crate::tui::settings_helpers::{
+                    find_initial_modal_index, get_setting_modal_options,
+                };
 
                 // Get the currently focused setting link
                 if let Some(focus_idx) = state.doc_nav().focus_index {
-                    if let Some(FocusableId::Link(link_id)) = state.doc_nav().focusable_ids.get(focus_idx) {
+                    if let Some(FocusableId::Link(link_id)) =
+                        state.doc_nav().focusable_ids.get(focus_idx)
+                    {
                         // Parse the link ID which is the setting key (e.g., "log_level", "theme")
 
                         let effect = match link_id.as_str() {
                             "use_unicode" | "western_teams_first" => {
-                                Effect::Action(Action::SettingsAction(SettingsAction::ToggleBoolean(link_id.clone())))
+                                Effect::Action(Action::SettingsAction(
+                                    SettingsAction::ToggleBoolean(link_id.clone()),
+                                ))
                             }
                             "log_level" | "theme" => {
                                 let options = get_setting_modal_options(link_id);
                                 let selected_index = find_initial_modal_index(&config, link_id);
 
-                                let position_y = state.doc_nav().focusable_positions
+                                let position_y = state
+                                    .doc_nav()
+                                    .focusable_positions
                                     .get(focus_idx)
                                     .copied()
                                     .unwrap_or(0);
@@ -211,7 +219,8 @@ impl Component for SettingsTab {
                             Effect::None
                         }
                         ModalMsg::Down => {
-                            modal.selected_index = (modal.selected_index + 1).min(modal.options.len().saturating_sub(1));
+                            modal.selected_index = (modal.selected_index + 1)
+                                .min(modal.options.len().saturating_sub(1));
                             Effect::None
                         }
                         ModalMsg::Cancel => {
@@ -220,7 +229,9 @@ impl Component for SettingsTab {
                         }
                         ModalMsg::Confirm => {
                             // Get the selected option's ID (not display name)
-                            let selected_id = modal.options.get(modal.selected_index)
+                            let selected_id = modal
+                                .options
+                                .get(modal.selected_index)
                                 .map(|opt| opt.id.clone())
                                 .unwrap_or_default();
                             let setting_key = modal.setting_key.clone();
@@ -283,7 +294,9 @@ impl Component for SettingsTab {
         // If modal is open, wrap in a widget that renders both the base and the modal
         if let Some(modal) = &state.modal {
             // Extract display names for the modal widget
-            let display_names: Vec<String> = modal.options.iter()
+            let display_names: Vec<String> = modal
+                .options
+                .iter()
                 .map(|opt| opt.display_name.clone())
                 .collect();
 
@@ -342,9 +355,9 @@ impl SettingsTab {
         } else {
             // Category selection mode
             match key.code {
-                KeyCode::Left => Effect::Action(Action::SettingsAction(
-                    SettingsAction::NavigateCategoryLeft,
-                )),
+                KeyCode::Left => {
+                    Effect::Action(Action::SettingsAction(SettingsAction::NavigateCategoryLeft))
+                }
                 KeyCode::Right => Effect::Action(Action::SettingsAction(
                     SettingsAction::NavigateCategoryRight,
                 )),

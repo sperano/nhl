@@ -377,10 +377,7 @@ mod tests {
 
         renderer.render(element, buffer.area, &mut buffer, &config);
 
-        assert_buffer(
-            &buffer,
-            &["TOP", "", "", "BOTTOM", "", ""],
-        );
+        assert_buffer(&buffer, &["TOP", "", "", "BOTTOM", "", ""]);
     }
 
     #[test]
@@ -407,10 +404,7 @@ mod tests {
 
         renderer.render(element, buffer.area, &mut buffer, &config);
 
-        assert_buffer(
-            &buffer,
-            &["LEFT      RIGHT", "", ""],
-        );
+        assert_buffer(&buffer, &["LEFT      RIGHT", "", ""]);
     }
 
     #[test]

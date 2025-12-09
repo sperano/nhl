@@ -88,7 +88,11 @@ pub fn did_wrap_forward(prev_index: Option<usize>, new_index: Option<usize>, cou
 ///
 /// # Returns
 /// * `true` if we wrapped from the first item to the last
-pub fn did_wrap_backward(prev_index: Option<usize>, new_index: Option<usize>, count: usize) -> bool {
+pub fn did_wrap_backward(
+    prev_index: Option<usize>,
+    new_index: Option<usize>,
+    count: usize,
+) -> bool {
     match (prev_index, new_index) {
         (Some(0), Some(last)) if last == count - 1 => true,
         (None, Some(last)) if last == count - 1 => true, // Initial focus counts as wrap

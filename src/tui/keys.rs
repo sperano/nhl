@@ -8,10 +8,10 @@ use tracing::{debug, trace};
 use crossterm::event::KeyModifiers;
 
 use super::action::{Action, SettingsAction};
-use super::components::scores_tab::ScoresTabMsg;
-use super::components::standings_tab::StandingsTabMsg;
 use super::component_store::ComponentStateStore;
+use super::components::scores_tab::ScoresTabMsg;
 use super::components::scores_tab::ScoresTabState;
+use super::components::standings_tab::StandingsTabMsg;
 use super::components::standings_tab::StandingsTabState;
 use super::constants::{DEMO_TAB_PATH, SCORES_TAB_PATH, SETTINGS_TAB_PATH, STANDINGS_TAB_PATH};
 use super::state::AppState;
@@ -153,7 +153,8 @@ fn handle_scores_tab_keys(
             }),
             KeyCode::Enter => {
                 // Look up game_id from component state and schedule
-                if let Some(scores_state) = component_states.get::<ScoresTabState>(SCORES_TAB_PATH) {
+                if let Some(scores_state) = component_states.get::<ScoresTabState>(SCORES_TAB_PATH)
+                {
                     if let Some(selected_index) = scores_state.doc_nav.focus_index {
                         if let Some(schedule) = state.data.schedule.as_ref().as_ref() {
                             if let Some(game) = schedule.games.get(selected_index) {
@@ -221,12 +222,18 @@ fn handle_standings_league_keys(key: KeyEvent, _state: &AppState) -> Option<Acti
         KeyCode::Down if !key.modifiers.contains(KeyModifiers::SHIFT) => DocumentNavMsg::FocusNext,
         // Left/Right arrows for Row navigation (Conference view)
         KeyCode::Left if !key.modifiers.contains(KeyModifiers::SHIFT) => DocumentNavMsg::FocusLeft,
-        KeyCode::Right if !key.modifiers.contains(KeyModifiers::SHIFT) => DocumentNavMsg::FocusRight,
+        KeyCode::Right if !key.modifiers.contains(KeyModifiers::SHIFT) => {
+            DocumentNavMsg::FocusRight
+        }
         // Shift+Arrow keys for scrolling
-        KeyCode::Down if key.modifiers.contains(KeyModifiers::SHIFT) => DocumentNavMsg::ScrollDown(1),
+        KeyCode::Down if key.modifiers.contains(KeyModifiers::SHIFT) => {
+            DocumentNavMsg::ScrollDown(1)
+        }
         KeyCode::Up if key.modifiers.contains(KeyModifiers::SHIFT) => DocumentNavMsg::ScrollUp(1),
         KeyCode::Left if key.modifiers.contains(KeyModifiers::SHIFT) => DocumentNavMsg::ScrollUp(1),
-        KeyCode::Right if key.modifiers.contains(KeyModifiers::SHIFT) => DocumentNavMsg::ScrollDown(1),
+        KeyCode::Right if key.modifiers.contains(KeyModifiers::SHIFT) => {
+            DocumentNavMsg::ScrollDown(1)
+        }
         // Page navigation
         KeyCode::PageUp => DocumentNavMsg::PageUp,
         KeyCode::PageDown => DocumentNavMsg::PageDown,
@@ -263,7 +270,11 @@ fn handle_standings_tab_keys(key_code: KeyCode, _state: &AppState) -> Option<Act
 }
 
 /// Handle Settings tab navigation
-fn handle_settings_tab_keys(key: KeyEvent, state: &AppState, component_states: &ComponentStateStore) -> Option<Action> {
+fn handle_settings_tab_keys(
+    key: KeyEvent,
+    state: &AppState,
+    component_states: &ComponentStateStore,
+) -> Option<Action> {
     use crate::tui::components::settings_tab::{ModalMsg, SettingsTabMsg};
     use crate::tui::document_nav::DocumentNavMsg;
 
@@ -294,7 +305,11 @@ fn handle_settings_tab_keys(key: KeyEvent, state: &AppState, component_states: &
     // Left/Right always navigate categories
     match key.code {
         KeyCode::Left => return Some(Action::SettingsAction(SettingsAction::NavigateCategoryLeft)),
-        KeyCode::Right => return Some(Action::SettingsAction(SettingsAction::NavigateCategoryRight)),
+        KeyCode::Right => {
+            return Some(Action::SettingsAction(
+                SettingsAction::NavigateCategoryRight,
+            ))
+        }
         _ => {}
     }
 
@@ -320,7 +335,9 @@ fn handle_settings_tab_keys(key: KeyEvent, state: &AppState, component_states: &
             DocumentNavMsg::FocusNext
         }
         // Shift+Arrow keys for scrolling
-        KeyCode::Down if key.modifiers.contains(KeyModifiers::SHIFT) => DocumentNavMsg::ScrollDown(1),
+        KeyCode::Down if key.modifiers.contains(KeyModifiers::SHIFT) => {
+            DocumentNavMsg::ScrollDown(1)
+        }
         KeyCode::Up if key.modifiers.contains(KeyModifiers::SHIFT) => DocumentNavMsg::ScrollUp(1),
         // Page navigation
         KeyCode::PageUp => DocumentNavMsg::PageUp,
@@ -391,7 +408,9 @@ fn handle_demo_tab_keys(key: KeyEvent, _state: &AppState) -> Option<Action> {
             DocumentNavMsg::FocusNext
         }
         // Shift+Arrow keys for scrolling
-        KeyCode::Down if key.modifiers.contains(KeyModifiers::SHIFT) => DocumentNavMsg::ScrollDown(1),
+        KeyCode::Down if key.modifiers.contains(KeyModifiers::SHIFT) => {
+            DocumentNavMsg::ScrollDown(1)
+        }
         KeyCode::Up if key.modifiers.contains(KeyModifiers::SHIFT) => DocumentNavMsg::ScrollUp(1),
         // Page navigation
         KeyCode::PageUp => DocumentNavMsg::PageUp,
@@ -482,7 +501,8 @@ pub fn key_to_action(
             // Demo tab - Up handled by handle_demo_tab_keys (both plain and Shift)
         } else if current_tab == Tab::Settings {
             // Settings tab - Up handled by handle_settings_tab_keys (both plain and Shift)
-        } else if current_tab == Tab::Standings && is_standings_browse_mode_active(component_states) {
+        } else if current_tab == Tab::Standings && is_standings_browse_mode_active(component_states)
+        {
             // Standings browse mode - Up handled by handle_standings_league_keys (both plain and Shift)
         } else {
             // Not in nested mode - Up returns to tab bar

@@ -38,7 +38,12 @@ impl DivisionStandingsDocument {
 
     /// Group standings by division and return maps for each conference
     #[allow(clippy::type_complexity)]
-    fn group_by_division(&self) -> (Vec<(&'static str, Vec<Standing>)>, Vec<(&'static str, Vec<Standing>)>) {
+    fn group_by_division(
+        &self,
+    ) -> (
+        Vec<(&'static str, Vec<Standing>)>,
+        Vec<(&'static str, Vec<Standing>)>,
+    ) {
         let mut grouped: BTreeMap<String, Vec<Standing>> = BTreeMap::new();
         for standing in self.standings.as_ref() {
             grouped

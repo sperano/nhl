@@ -194,7 +194,7 @@ impl Default for DisplayConfig {
             use_unicode: true,
             theme_name: None,
             theme: None,
-            error_fg: Color::Rgb(255, 0, 0),               // Red
+            error_fg: Color::Rgb(255, 0, 0), // Red
             box_chars: crate::formatting::BoxChars::unicode(),
         }
     }

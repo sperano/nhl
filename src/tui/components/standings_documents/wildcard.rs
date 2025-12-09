@@ -131,27 +131,39 @@ impl Document for WildcardStandingsDocument {
         let (left_group, right_group) = if self.config.display_standings_western_first {
             // Western left, Eastern right
             let western = Self::build_wildcard_group(
-                "Central", &central,
-                "Pacific", &pacific,
-                "wildcard_left", focus,
+                "Central",
+                &central,
+                "Pacific",
+                &pacific,
+                "wildcard_left",
+                focus,
             );
             let eastern = Self::build_wildcard_group(
-                "Atlantic", &atlantic,
-                "Metropolitan", &metropolitan,
-                "wildcard_right", focus,
+                "Atlantic",
+                &atlantic,
+                "Metropolitan",
+                &metropolitan,
+                "wildcard_right",
+                focus,
             );
             (western, eastern)
         } else {
             // Eastern left, Western right
             let eastern = Self::build_wildcard_group(
-                "Atlantic", &atlantic,
-                "Metropolitan", &metropolitan,
-                "wildcard_left", focus,
+                "Atlantic",
+                &atlantic,
+                "Metropolitan",
+                &metropolitan,
+                "wildcard_left",
+                focus,
             );
             let western = Self::build_wildcard_group(
-                "Central", &central,
-                "Pacific", &pacific,
-                "wildcard_right", focus,
+                "Central",
+                &central,
+                "Pacific",
+                &pacific,
+                "wildcard_right",
+                focus,
             );
             (eastern, western)
         };

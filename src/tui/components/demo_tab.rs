@@ -14,20 +14,20 @@ use nhl_api::Standing;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 
+use crate::component_message_impl;
 use crate::config::DisplayConfig;
 use crate::tui::action::Action;
-use crate::tui::document_nav::{DocumentNavMsg, DocumentNavState};
 use crate::tui::component::{Component, Effect, Element, ElementWidget};
 use crate::tui::components::create_standings_table_with_selection;
 use crate::tui::components::TableWidget;
 use crate::tui::document::{
     Document, DocumentBuilder, DocumentElement, DocumentView, FocusContext, LinkTarget,
 };
+use crate::tui::document_nav::{DocumentNavMsg, DocumentNavState};
 use crate::tui::helpers::StandingsSorting;
-use crate::tui::tab_component::{CommonTabMessage, TabMessage, handle_common_message};
+use crate::tui::tab_component::{handle_common_message, CommonTabMessage, TabMessage};
 use crate::tui::types::StackedDocument;
 use crate::tui::{Alignment, CellValue, ColumnDef};
-use crate::component_message_impl;
 
 /// Demo player data for the sample player table
 #[derive(Clone)]
@@ -118,7 +118,6 @@ pub struct DemoTabProps {
     pub standings: Arc<Option<Vec<Standing>>>,
 }
 
-
 /// Messages that can be sent to the Demo tab
 #[derive(Clone, Debug)]
 pub enum DemoTabMsg {
@@ -193,11 +192,9 @@ impl Component for DemoTab {
                 if let Some(LinkTarget::Action(action)) = state.focused_link_target() {
                     // Parse "team:BOS" or "player:12345" format
                     if let Some(abbrev) = action.strip_prefix("team:") {
-                        return Effect::Action(Action::PushDocument(
-                            StackedDocument::TeamDetail {
-                                abbrev: abbrev.to_string(),
-                            },
-                        ));
+                        return Effect::Action(Action::PushDocument(StackedDocument::TeamDetail {
+                            abbrev: abbrev.to_string(),
+                        }));
                     } else if let Some(player_id_str) = action.strip_prefix("player:") {
                         if let Ok(player_id) = player_id_str.parse::<i64>() {
                             return Effect::Action(Action::PushDocument(
@@ -210,7 +207,9 @@ impl Component for DemoTab {
             }
 
             // Common messages already handled above
-            DemoTabMsg::DocNav(_) | DemoTabMsg::UpdateViewportHeight(_) | DemoTabMsg::NavigateUp => {
+            DemoTabMsg::DocNav(_)
+            | DemoTabMsg::UpdateViewportHeight(_)
+            | DemoTabMsg::NavigateUp => {
                 unreachable!("Common messages should be handled by handle_common_message")
             }
         }
@@ -228,7 +227,11 @@ impl Component for DemoTab {
 
 impl DemoTab {
     /// Handle key events when this tab is focused
-    fn handle_key(&mut self, key: KeyEvent, state: &mut crate::tui::document_nav::DocumentNavState) -> Effect {
+    fn handle_key(
+        &mut self,
+        key: KeyEvent,
+        state: &mut crate::tui::document_nav::DocumentNavState,
+    ) -> Effect {
         // DemoTab is always in "browse mode" when content is focused
         // Arrow keys navigate focusable elements, Enter activates links
         match key.code {
@@ -393,13 +396,33 @@ impl Document for DemoDocument {
             .heading(2, "Example Links")
             .text("These links demonstrate focusable elements:")
             .spacer(1)
-            .link_with_focus("link_bos", "Boston Bruins", LinkTarget::Action("team:BOS".to_string()), focus)
+            .link_with_focus(
+                "link_bos",
+                "Boston Bruins",
+                LinkTarget::Action("team:BOS".to_string()),
+                focus,
+            )
             .spacer(1)
-            .link_with_focus("link_tor", "Toronto Maple Leafs", LinkTarget::Action("team:TOR".to_string()), focus)
+            .link_with_focus(
+                "link_tor",
+                "Toronto Maple Leafs",
+                LinkTarget::Action("team:TOR".to_string()),
+                focus,
+            )
             .spacer(1)
-            .link_with_focus("link_nyr", "New York Rangers", LinkTarget::Action("team:NYR".to_string()), focus)
+            .link_with_focus(
+                "link_nyr",
+                "New York Rangers",
+                LinkTarget::Action("team:NYR".to_string()),
+                focus,
+            )
             .spacer(1)
-            .link_with_focus("link_mtl", "Montreal Canadiens", LinkTarget::Action("team:MTL".to_string()), focus)
+            .link_with_focus(
+                "link_mtl",
+                "Montreal Canadiens",
+                LinkTarget::Action("team:MTL".to_string()),
+                focus,
+            )
             .spacer(1)
             .separator()
             .spacer(1)
@@ -419,10 +442,7 @@ impl Document for DemoDocument {
         // Add player stats table at the bottom
         let builder = self.build_player_section(builder, focus);
 
-        builder
-            .spacer(1)
-            .text("End of demo document.")
-            .build()
+        builder.spacer(1).text("End of demo document.").build()
     }
 
     fn title(&self) -> String {
@@ -499,13 +519,16 @@ mod tests {
         widget.render(buf.area, &mut buf, &config);
 
         // Should render the heading and first lines of content
-        assert_buffer(&buf, &[
-            "Document System Demo",
-            "════════════════════",
-            "",
-            "This tab demonstrates the new document system for the NHL TU",
-            "Press Tab/Shift-Tab to navigate between focusable elements.",
-        ]);
+        assert_buffer(
+            &buf,
+            &[
+                "Document System Demo",
+                "════════════════════",
+                "",
+                "This tab demonstrates the new document system for the NHL TU",
+                "Press Tab/Shift-Tab to navigate between focusable elements.",
+            ],
+        );
     }
 
     #[test]

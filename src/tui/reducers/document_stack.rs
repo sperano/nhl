@@ -11,7 +11,10 @@ use crate::tui::types::StackedDocument;
 /// Returns Ok((new_state, effect)) if the action was handled,
 /// or Err(state) to pass ownership back to the caller.
 #[allow(clippy::result_large_err)]
-pub fn reduce_document_stack(state: AppState, action: &Action) -> Result<(AppState, Effect), AppState> {
+pub fn reduce_document_stack(
+    state: AppState,
+    action: &Action,
+) -> Result<(AppState, Effect), AppState> {
     match action {
         Action::PushDocument(doc) => Ok(push_document(state, doc.clone())),
         Action::PopDocument => Ok(pop_document(state)),
@@ -48,9 +51,15 @@ fn push_document(state: AppState, doc: StackedDocument) -> (AppState, Effect) {
         StackedDocument::Boxscore { game_id } => {
             // Check if we don't already have the data and aren't already loading
             if !new_state.data.boxscores.contains_key(game_id)
-                && !new_state.data.loading.contains(&LoadingKey::Boxscore(*game_id))
+                && !new_state
+                    .data
+                    .loading
+                    .contains(&LoadingKey::Boxscore(*game_id))
             {
-                debug!("DOCUMENT_STACK: Requesting boxscore fetch for game_id={}", game_id);
+                debug!(
+                    "DOCUMENT_STACK: Requesting boxscore fetch for game_id={}",
+                    game_id
+                );
                 Effect::FetchBoxscore(*game_id)
             } else {
                 Effect::None
@@ -58,9 +67,15 @@ fn push_document(state: AppState, doc: StackedDocument) -> (AppState, Effect) {
         }
         StackedDocument::TeamDetail { abbrev } => {
             if !new_state.data.team_roster_stats.contains_key(abbrev)
-                && !new_state.data.loading.contains(&LoadingKey::TeamRosterStats(abbrev.clone()))
+                && !new_state
+                    .data
+                    .loading
+                    .contains(&LoadingKey::TeamRosterStats(abbrev.clone()))
             {
-                debug!("DOCUMENT_STACK: Requesting team roster stats fetch for team={}", abbrev);
+                debug!(
+                    "DOCUMENT_STACK: Requesting team roster stats fetch for team={}",
+                    abbrev
+                );
                 Effect::FetchTeamRosterStats(abbrev.clone())
             } else {
                 Effect::None
@@ -68,9 +83,15 @@ fn push_document(state: AppState, doc: StackedDocument) -> (AppState, Effect) {
         }
         StackedDocument::PlayerDetail { player_id } => {
             if !new_state.data.player_data.contains_key(player_id)
-                && !new_state.data.loading.contains(&LoadingKey::PlayerStats(*player_id))
+                && !new_state
+                    .data
+                    .loading
+                    .contains(&LoadingKey::PlayerStats(*player_id))
             {
-                debug!("DOCUMENT_STACK: Requesting player stats fetch for player_id={}", player_id);
+                debug!(
+                    "DOCUMENT_STACK: Requesting player stats fetch for player_id={}",
+                    player_id
+                );
                 Effect::FetchPlayerStats(*player_id)
             } else {
                 Effect::None

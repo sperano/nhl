@@ -47,7 +47,11 @@ impl Viewport {
 
     /// Get the range of visible lines
     pub fn visible_range(&self) -> Range<u16> {
-        self.offset..self.offset.saturating_add(self.height).min(self.content_height)
+        self.offset
+            ..self
+                .offset
+                .saturating_add(self.height)
+                .min(self.content_height)
     }
 
     /// Check if a rectangle is at least partially visible

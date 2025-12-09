@@ -6,13 +6,13 @@ use std::sync::Arc;
 use nhl_api::{DailySchedule, GameDate, GameMatchup};
 
 use crate::commands::scores_format::PeriodScores;
+use crate::component_message_impl;
 use crate::config::DisplayConfig;
 use crate::tui::action::Action;
 use crate::tui::component::{Component, Effect, Element, ElementWidget};
 use crate::tui::document::DocumentView;
 use crate::tui::document_nav::{DocumentNavMsg, DocumentNavState};
-use crate::tui::tab_component::{CommonTabMessage, TabMessage, TabState, handle_common_message};
-use crate::component_message_impl;
+use crate::tui::tab_component::{handle_common_message, CommonTabMessage, TabMessage, TabState};
 
 use super::score_boxes_document::ScoreBoxesDocument;
 use super::{TabItem, TabbedPanel, TabbedPanelProps};
@@ -173,12 +173,16 @@ impl Component for ScoresTab {
             // Game activation
             ScoresTabMsg::ActivateGame => {
                 if let Some(focus_idx) = state.doc_nav().focus_index {
-                    if let Some(crate::tui::document::FocusableId::Link(link_id)) = state.doc_nav().focusable_ids.get(focus_idx) {
+                    if let Some(crate::tui::document::FocusableId::Link(link_id)) =
+                        state.doc_nav().focusable_ids.get(focus_idx)
+                    {
                         // Parse "game_12345" -> 12345
-                        if let Some(game_id) = link_id.strip_prefix("game_")
-                            .and_then(|s| s.parse::<i64>().ok()) {
+                        if let Some(game_id) = link_id
+                            .strip_prefix("game_")
+                            .and_then(|s| s.parse::<i64>().ok())
+                        {
                             return Effect::Action(Action::PushDocument(
-                                crate::tui::types::StackedDocument::Boxscore { game_id }
+                                crate::tui::types::StackedDocument::Boxscore { game_id },
                             ));
                         }
                     }
@@ -187,7 +191,9 @@ impl Component for ScoresTab {
             }
 
             // Common messages already handled above
-            ScoresTabMsg::DocNav(_) | ScoresTabMsg::UpdateViewportHeight(_) | ScoresTabMsg::NavigateUp => {
+            ScoresTabMsg::DocNav(_)
+            | ScoresTabMsg::UpdateViewportHeight(_)
+            | ScoresTabMsg::NavigateUp => {
                 unreachable!("Common messages should be handled by handle_common_message")
             }
         }
@@ -204,7 +210,9 @@ impl ScoresTab {
         const DATE_WINDOW_SIZE: usize = 5;
         //
         // Calculate the 5-date window using component state
-        let window_base_date = state.game_date.add_days(-(state.selected_date_index as i64));
+        let window_base_date = state
+            .game_date
+            .add_days(-(state.selected_date_index as i64));
         let dates: Vec<GameDate> = (0..DATE_WINDOW_SIZE)
             .map(|i| window_base_date.add_days(i as i64))
             .collect();
@@ -254,7 +262,12 @@ impl ScoresTab {
         }
     }
     /// Render game list using the document system with ScoreBoxesDocument
-    fn render_game_list_from_state(&self, props: &ScoresTabProps, state: &ScoresTabState, _date: &GameDate) -> Element {
+    fn render_game_list_from_state(
+        &self,
+        props: &ScoresTabProps,
+        state: &ScoresTabState,
+        _date: &GameDate,
+    ) -> Element {
         // Wrap in ScoreBoxesDocumentWidget which calculates boxes_per_row at render time
         Element::Widget(Box::new(ScoreBoxesDocumentWidget {
             schedule: props.schedule.clone(),
@@ -274,30 +287,22 @@ impl ScoresTab {
         if state.is_browse_mode() {
             // Box selection mode - arrow keys navigate games
             match key.code {
-                KeyCode::Up => {
-                    crate::tui::document_nav::handle_message(
-                        &mut state.doc_nav,
-                        &DocumentNavMsg::FocusPrev,
-                    )
-                }
-                KeyCode::Down => {
-                    crate::tui::document_nav::handle_message(
-                        &mut state.doc_nav,
-                        &DocumentNavMsg::FocusNext,
-                    )
-                }
-                KeyCode::Left => {
-                    crate::tui::document_nav::handle_message(
-                        &mut state.doc_nav,
-                        &DocumentNavMsg::FocusLeft,
-                    )
-                }
-                KeyCode::Right => {
-                    crate::tui::document_nav::handle_message(
-                        &mut state.doc_nav,
-                        &DocumentNavMsg::FocusRight,
-                    )
-                }
+                KeyCode::Up => crate::tui::document_nav::handle_message(
+                    &mut state.doc_nav,
+                    &DocumentNavMsg::FocusPrev,
+                ),
+                KeyCode::Down => crate::tui::document_nav::handle_message(
+                    &mut state.doc_nav,
+                    &DocumentNavMsg::FocusNext,
+                ),
+                KeyCode::Left => crate::tui::document_nav::handle_message(
+                    &mut state.doc_nav,
+                    &DocumentNavMsg::FocusLeft,
+                ),
+                KeyCode::Right => crate::tui::document_nav::handle_message(
+                    &mut state.doc_nav,
+                    &DocumentNavMsg::FocusRight,
+                ),
                 KeyCode::Enter => {
                     // Activate the focused game
                     self.update(ScoresTabMsg::ActivateGame, state)
