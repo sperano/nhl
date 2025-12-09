@@ -7,6 +7,8 @@ use crate::tui::state::{AppState, LoadingKey};
 
 #[cfg(feature = "development")]
 use super::demo_tab::DemoTabProps;
+#[cfg(feature = "development")]
+use super::DemoTab;
 use super::{
     boxscore_document::{BoxscoreDocument, BoxscoreDocumentProps, TeamView},
     player_detail_document::PlayerDetailDocumentProps,
@@ -17,8 +19,6 @@ use super::{
     BreadcrumbWidget, PlayerDetailDocument, ScoresTab, SettingsTab, StandingsTab, StatusBar,
     TabItem, TabbedPanel, TabbedPanelProps, TeamDetailDocument,
 };
-#[cfg(feature = "development")]
-use super::DemoTab;
 use crate::tui::state::DocumentStackEntry;
 use crate::tui::types::StackedDocument;
 
