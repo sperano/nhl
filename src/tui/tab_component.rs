@@ -228,6 +228,7 @@ mod tests {
     #[derive(Default, Clone)]
     struct TestTabState {
         doc_nav: DocumentNavState,
+        #[allow(dead_code)]
         custom_field: i32,
     }
 

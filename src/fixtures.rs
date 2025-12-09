@@ -283,9 +283,9 @@ fn create_matchup_team(
     abbrev: &str,
     name: &str,
     place: &str,
-    wins: i32,
-    losses: i32,
-    ot: i32,
+    _wins: i32,
+    _losses: i32,
+    _ot: i32,
     score: i32,
     sog: i32,
 ) -> nhl_api::MatchupTeam {

@@ -360,7 +360,6 @@ mod tests {
 
     #[test]
     fn test_setup_test_render_with() {
-        use crate::commands::standings::GroupBy;
         use crate::tui::state::AppState;
         use crate::tui::types::Tab;
 

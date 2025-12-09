@@ -86,7 +86,7 @@ impl ElementWidget for DocumentElementWidget {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tui::document::{DocumentBuilder, DocumentElement, FocusContext, LinkTarget};
+    use crate::tui::document::{DocumentBuilder, DocumentElement, FocusContext};
     use crate::tui::testing::assert_buffer;
 
     /// Simple test document
