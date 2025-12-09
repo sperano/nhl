@@ -1,7 +1,7 @@
-/// Core type definitions used across the framework
-///
-/// This module contains fundamental types that are used throughout
-/// the TUI framework, particularly for navigation and categorization.
+//! Core type definitions used across the framework
+//!
+//! This module contains fundamental types that are used throughout
+//! the TUI framework, particularly for navigation and categorization.
 
 /// Tab enum for main navigation
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

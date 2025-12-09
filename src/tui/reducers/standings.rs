@@ -23,7 +23,7 @@ pub fn rebuild_standings_focusable_metadata(
         // Get current view from component state
         let view = component_states
             .get::<StandingsTabState>(STANDINGS_TAB_PATH)
-            .map(|s| s.view.clone())
+            .map(|s| s.view)
             .unwrap_or(GroupBy::Wildcard);
 
         // Build document for current view and extract metadata

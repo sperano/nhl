@@ -95,6 +95,7 @@ pub enum Constraint {
 }
 
 /// Side effects to run after rendering
+#[allow(clippy::large_enum_variant)]
 pub enum Effect {
     None,
     /// Indicates the component handled the input and no further processing needed

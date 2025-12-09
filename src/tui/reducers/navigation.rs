@@ -9,6 +9,7 @@ use crate::tui::types::Tab;
 ///
 /// Returns Ok((new_state, effect)) if the action was handled,
 /// or Err(state) to pass ownership back to the caller.
+#[allow(clippy::result_large_err)]
 pub fn reduce_navigation(state: AppState, action: &Action) -> Result<(AppState, Effect), AppState> {
     match action {
         Action::NavigateTab(tab) => Ok(navigate_to_tab(state, *tab)),

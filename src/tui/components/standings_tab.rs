@@ -168,16 +168,14 @@ impl Component for StandingsTab {
 
             StandingsTabMsg::ActivateTeam => {
                 // Get the team abbreviation from the focused element's link target
-                if let Some(link_target) = state.doc_nav().focused_link_target() {
-                    if let crate::tui::document::LinkTarget::Action(action) = link_target {
-                        // Parse "team:TOR" format
-                        if let Some(abbrev) = action.strip_prefix("team:") {
-                            return Effect::Action(Action::PushDocument(
-                                StackedDocument::TeamDetail {
-                                    abbrev: abbrev.to_string(),
-                                },
-                            ));
-                        }
+                if let Some(crate::tui::document::LinkTarget::Action(action)) = state.doc_nav().focused_link_target() {
+                    // Parse "team:TOR" format
+                    if let Some(abbrev) = action.strip_prefix("team:") {
+                        return Effect::Action(Action::PushDocument(
+                            StackedDocument::TeamDetail {
+                                abbrev: abbrev.to_string(),
+                            },
+                        ));
                     }
                 }
                 Effect::None

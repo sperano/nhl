@@ -10,6 +10,7 @@ use crate::tui::types::StackedDocument;
 ///
 /// Returns Ok((new_state, effect)) if the action was handled,
 /// or Err(state) to pass ownership back to the caller.
+#[allow(clippy::result_large_err)]
 pub fn reduce_document_stack(state: AppState, action: &Action) -> Result<(AppState, Effect), AppState> {
     match action {
         Action::PushDocument(doc) => Ok(push_document(state, doc.clone())),

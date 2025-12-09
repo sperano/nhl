@@ -1,158 +1,158 @@
-/// Generic Table component for displaying data with mixed cell types
-///
-/// This component provides a reusable table that supports:
-/// - Mixed cell types (Text, PlayerLink, TeamLink)
-/// - Column-based layout with customizable alignment
-/// - Selection highlighting (focused and unfocused states)
-/// - Keyboard navigation (via parent component actions)
-///
-/// # Architecture
-///
-/// The table follows the current (React-like) framework pattern:
-/// - **TableWidget**: Implements `StandaloneWidget` for actual rendering
-/// - **CellValue**: Type-safe enum for Text, PlayerLink, or TeamLink
-/// - **ColumnDef**: Defines column header, width, alignment, and cell extraction
-/// - **Navigation helpers**: Methods to find next/previous link columns
-///
-/// # State Management
-///
-/// Following the Redux pattern, table selection state lives in AppState (not in the widget):
-/// - Parent component stores `selected_row`, `selected_col` in its UiState
-/// - Parent component dispatches actions on arrow key presses
-/// - Reducer updates selection state
-/// - Table widget receives new props and re-renders
-///
-/// # Navigation Pattern
-///
-/// Left/Right arrow keys should navigate only between link columns, skipping Text columns:
-///
-/// ```ignore
-/// // In your tab's key handler:
-/// KeyCode::Right => {
-///     if let Some(new_col) = table.find_next_link_column(current_col) {
-///         // Dispatch action to update selected_col to new_col
-///         Action::TableAction(TableAction::SelectCell { row: current_row, col: new_col })
-///     }
-/// }
-/// ```
-///
-/// # Usage Example - Player Statistics Table
-///
-/// ```ignore
-/// use nhl::tui::components::TableWidget;
-/// use nhl::tui::{CellValue, ColumnDef, Alignment, Element};
-/// use nhl_api::PlayerStats;
-///
-/// // 1. Define your row data type (or use existing nhl_api types)
-/// struct PlayerRow {
-///     name: String,
-///     id: i64,
-///     games: i32,
-///     goals: i32,
-///     assists: i32,
-/// }
-///
-/// // 2. Create column definitions
-/// let columns = vec![
-///     ColumnDef::new("Player", 25, Alignment::Left, |p: &PlayerRow| {
-///         CellValue::PlayerLink {
-///             display: p.name.clone(),
-///             player_id: p.id,
-///         }
-///     }),
-///     ColumnDef::new("GP", 4, Alignment::Right, |p: &PlayerRow| {
-///         CellValue::Text(p.games.to_string())
-///     }),
-///     ColumnDef::new("G", 4, Alignment::Right, |p: &PlayerRow| {
-///         CellValue::Text(p.goals.to_string())
-///     }),
-///     ColumnDef::new("A", 4, Alignment::Right, |p: &PlayerRow| {
-///         CellValue::Text(p.assists.to_string())
-///     }),
-///     ColumnDef::new("PTS", 5, Alignment::Right, |p: &PlayerRow| {
-///         CellValue::Text((p.goals + p.assists).to_string())
-///     }),
-/// ];
-///
-/// // 3. Get row data from props
-/// let rows: Vec<PlayerRow> = props.player_stats.clone();
-///
-/// // 4. Create table widget
-/// let table = TableWidget::from_data(&columns, rows)
-///     .with_selection(props.selected_row.unwrap_or(0), props.selected_col.unwrap_or(0))
-///     .with_focused(props.table_focused)
-///     ;
-///
-/// // 5. Wrap in Element::Widget for component tree
-/// Element::Widget(Box::new(table))
-/// ```
-///
-/// # Usage Example - Standings Table with Team Links
-///
-/// ```ignore
-/// let columns = vec![
-///     ColumnDef::new("Team", 25, Alignment::Left, |s: &Standing| {
-///         CellValue::TeamLink {
-///             display: s.team_common_name.default.clone(),
-///             team_abbrev: s.team_abbrev.default.clone(),
-///         }
-///     }),
-///     ColumnDef::new("GP", 4, Alignment::Right, |s: &Standing| {
-///         CellValue::Text((s.wins + s.losses + s.ot_losses).to_string())
-///     }),
-///     ColumnDef::new("W", 4, Alignment::Right, |s: &Standing| {
-///         CellValue::Text(s.wins.to_string())
-///     }),
-///     ColumnDef::new("L", 4, Alignment::Right, |s: &Standing| {
-///         CellValue::Text(s.losses.to_string())
-///     }),
-///     ColumnDef::new("PTS", 5, Alignment::Right, |s: &Standing| {
-///         CellValue::Text(s.points.to_string())
-///     }),
-/// ];
-///
-/// let table = TableWidget::from_data(&columns, standings)
-///     .with_selection(selected_row, selected_col)
-///     .with_focused(focused)
-///     ;
-/// ```
-///
-/// # Link Activation
-///
-/// When Enter is pressed on a link cell, the parent component should:
-///
-/// 1. Get the cell value using `table.get_cell_value(row, col)`
-/// 2. Check if it's a link using `cell_value.is_link()`
-/// 3. Log the link info using `cell_value.link_info()` (for now)
-/// 4. Later: Dispatch NavigationAction to navigate to player/team detail
-///
-/// ```ignore
-/// KeyCode::Enter => {
-///     if let Some(cell) = table.get_cell_value(row, col) {
-///         if cell.is_link() {
-///             println!("Link activated: {}", cell.link_info());
-///             // Future: dispatch Action::Navigate(...)
-///         }
-///     }
-/// }
-/// ```
-///
-/// # Visual States
-///
-/// - **Focused selection**: Uses `config.selection_fg` (bright color)
-/// - **Unfocused selection**: Uses `config.unfocused_selection_fg()` (dim color)
-/// - **Unselected cells**: No special styling (Text and Link look identical)
-/// - **Column headers**: Bold + underlined
-///
-/// # Navigation Helpers
-///
-/// The TableWidget provides helper methods for navigation:
-///
-/// - `find_next_link_column(current_col)` - Find next focusable column (skips Text)
-/// - `find_prev_link_column(current_col)` - Find previous focusable column
-/// - `find_first_link_column()` - Find first focusable column
-/// - `get_cell_value(row, col)` - Get CellValue at position
-/// - `row_count()` / `column_count()` - Get table dimensions
+//! Generic Table component for displaying data with mixed cell types
+//!
+//! This component provides a reusable table that supports:
+//! - Mixed cell types (Text, PlayerLink, TeamLink)
+//! - Column-based layout with customizable alignment
+//! - Selection highlighting (focused and unfocused states)
+//! - Keyboard navigation (via parent component actions)
+//!
+//! # Architecture
+//!
+//! The table follows the current (React-like) framework pattern:
+//! - **TableWidget**: Implements `StandaloneWidget` for actual rendering
+//! - **CellValue**: Type-safe enum for Text, PlayerLink, or TeamLink
+//! - **ColumnDef**: Defines column header, width, alignment, and cell extraction
+//! - **Navigation helpers**: Methods to find next/previous link columns
+//!
+//! # State Management
+//!
+//! Following the Redux pattern, table selection state lives in AppState (not in the widget):
+//! - Parent component stores `selected_row`, `selected_col` in its UiState
+//! - Parent component dispatches actions on arrow key presses
+//! - Reducer updates selection state
+//! - Table widget receives new props and re-renders
+//!
+//! # Navigation Pattern
+//!
+//! Left/Right arrow keys should navigate only between link columns, skipping Text columns:
+//!
+//! ```ignore
+//! // In your tab's key handler:
+//! KeyCode::Right => {
+//!     if let Some(new_col) = table.find_next_link_column(current_col) {
+//!         // Dispatch action to update selected_col to new_col
+//!         Action::TableAction(TableAction::SelectCell { row: current_row, col: new_col })
+//!     }
+//! }
+//! ```
+//!
+//! # Usage Example - Player Statistics Table
+//!
+//! ```ignore
+//! use nhl::tui::components::TableWidget;
+//! use nhl::tui::{CellValue, ColumnDef, Alignment, Element};
+//! use nhl_api::PlayerStats;
+//!
+//! // 1. Define your row data type (or use existing nhl_api types)
+//! struct PlayerRow {
+//!     name: String,
+//!     id: i64,
+//!     games: i32,
+//!     goals: i32,
+//!     assists: i32,
+//! }
+//!
+//! // 2. Create column definitions
+//! let columns = vec![
+//!     ColumnDef::new("Player", 25, Alignment::Left, |p: &PlayerRow| {
+//!         CellValue::PlayerLink {
+//!             display: p.name.clone(),
+//!             player_id: p.id,
+//!         }
+//!     }),
+//!     ColumnDef::new("GP", 4, Alignment::Right, |p: &PlayerRow| {
+//!         CellValue::Text(p.games.to_string())
+//!     }),
+//!     ColumnDef::new("G", 4, Alignment::Right, |p: &PlayerRow| {
+//!         CellValue::Text(p.goals.to_string())
+//!     }),
+//!     ColumnDef::new("A", 4, Alignment::Right, |p: &PlayerRow| {
+//!         CellValue::Text(p.assists.to_string())
+//!     }),
+//!     ColumnDef::new("PTS", 5, Alignment::Right, |p: &PlayerRow| {
+//!         CellValue::Text((p.goals + p.assists).to_string())
+//!     }),
+//! ];
+//!
+//! // 3. Get row data from props
+//! let rows: Vec<PlayerRow> = props.player_stats.clone();
+//!
+//! // 4. Create table widget
+//! let table = TableWidget::from_data(&columns, rows)
+//!     .with_selection(props.selected_row.unwrap_or(0), props.selected_col.unwrap_or(0))
+//!     .with_focused(props.table_focused)
+//!     ;
+//!
+//! // 5. Wrap in Element::Widget for component tree
+//! Element::Widget(Box::new(table))
+//! ```
+//!
+//! # Usage Example - Standings Table with Team Links
+//!
+//! ```ignore
+//! let columns = vec![
+//!     ColumnDef::new("Team", 25, Alignment::Left, |s: &Standing| {
+//!         CellValue::TeamLink {
+//!             display: s.team_common_name.default.clone(),
+//!             team_abbrev: s.team_abbrev.default.clone(),
+//!         }
+//!     }),
+//!     ColumnDef::new("GP", 4, Alignment::Right, |s: &Standing| {
+//!         CellValue::Text((s.wins + s.losses + s.ot_losses).to_string())
+//!     }),
+//!     ColumnDef::new("W", 4, Alignment::Right, |s: &Standing| {
+//!         CellValue::Text(s.wins.to_string())
+//!     }),
+//!     ColumnDef::new("L", 4, Alignment::Right, |s: &Standing| {
+//!         CellValue::Text(s.losses.to_string())
+//!     }),
+//!     ColumnDef::new("PTS", 5, Alignment::Right, |s: &Standing| {
+//!         CellValue::Text(s.points.to_string())
+//!     }),
+//! ];
+//!
+//! let table = TableWidget::from_data(&columns, standings)
+//!     .with_selection(selected_row, selected_col)
+//!     .with_focused(focused)
+//!     ;
+//! ```
+//!
+//! # Link Activation
+//!
+//! When Enter is pressed on a link cell, the parent component should:
+//!
+//! 1. Get the cell value using `table.get_cell_value(row, col)`
+//! 2. Check if it's a link using `cell_value.is_link()`
+//! 3. Log the link info using `cell_value.link_info()` (for now)
+//! 4. Later: Dispatch NavigationAction to navigate to player/team detail
+//!
+//! ```ignore
+//! KeyCode::Enter => {
+//!     if let Some(cell) = table.get_cell_value(row, col) {
+//!         if cell.is_link() {
+//!             println!("Link activated: {}", cell.link_info());
+//!             // Future: dispatch Action::Navigate(...)
+//!         }
+//!     }
+//! }
+//! ```
+//!
+//! # Visual States
+//!
+//! - **Focused selection**: Uses `config.selection_fg` (bright color)
+//! - **Unfocused selection**: Uses `config.unfocused_selection_fg()` (dim color)
+//! - **Unselected cells**: No special styling (Text and Link look identical)
+//! - **Column headers**: Bold + underlined
+//!
+//! # Navigation Helpers
+//!
+//! The TableWidget provides helper methods for navigation:
+//!
+//! - `find_next_link_column(current_col)` - Find next focusable column (skips Text)
+//! - `find_prev_link_column(current_col)` - Find previous focusable column
+//! - `find_first_link_column()` - Find first focusable column
+//! - `get_cell_value(row, col)` - Get CellValue at position
+//! - `row_count()` / `column_count()` - Get table dimensions
 
 mod rendering;
 

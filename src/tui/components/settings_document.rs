@@ -25,14 +25,14 @@ impl SettingsDocument {
             .spacer(1)
             .link_with_focus(
                 "log_level",
-                &format!("Log Level: {}", self.config.log_level),
+                format!("Log Level: {}", self.config.log_level),
                 LinkTarget::Action("edit:log_level".to_string()),
                 focus,
             )
             .spacer(1)
             .link_with_focus(
                 "log_file",
-                &format!("Log File: {}", self.config.log_file),
+                format!("Log File: {}", self.config.log_file),
                 LinkTarget::Action("edit:log_file".to_string()),
                 focus,
             )
@@ -53,19 +53,19 @@ impl SettingsDocument {
             .spacer(1)
             .link_with_focus(
                 "theme",
-                &format!("Theme: {}", theme_name),
+                format!("Theme: {}", theme_name),
                 LinkTarget::Action("edit:theme".to_string()),
                 focus,
             )
             .spacer(1)
             .link_with_focus(
                 "use_unicode",
-                &format!("Use Unicode: {}", self.config.display.use_unicode),
+                format!("Use Unicode: {}", self.config.display.use_unicode),
                 LinkTarget::Action("toggle:use_unicode".to_string()),
                 focus,
             )
             .spacer(1)
-            .text(&format!("Error Color: {}", format_color(&self.config.display.error_fg)))
+            .text(format!("Error Color: {}", format_color(&self.config.display.error_fg)))
     }
 
     /// Build the data settings section
@@ -75,21 +75,21 @@ impl SettingsDocument {
             .spacer(1)
             .link_with_focus(
                 "refresh_interval",
-                &format!("Refresh Interval: {} seconds", self.config.refresh_interval),
+                format!("Refresh Interval: {} seconds", self.config.refresh_interval),
                 LinkTarget::Action("edit:refresh_interval".to_string()),
                 focus,
             )
             .spacer(1)
             .link_with_focus(
                 "western_teams_first",
-                &format!("Western Teams First: {}", self.config.display_standings_western_first),
+                format!("Western Teams First: {}", self.config.display_standings_western_first),
                 LinkTarget::Action("toggle:western_teams_first".to_string()),
                 focus,
             )
             .spacer(1)
             .link_with_focus(
                 "time_format",
-                &format!("Time Format: {}", self.config.time_format),
+                format!("Time Format: {}", self.config.time_format),
                 LinkTarget::Action("edit:time_format".to_string()),
                 focus,
             )

@@ -15,6 +15,7 @@ use crate::tui::state::{AppState, LoadingKey};
 /// or Err(state) to pass ownership back to the caller.
 ///
 /// Takes component_states to update focusable metadata in component state when data loads.
+#[allow(clippy::result_large_err)]
 pub fn reduce_data_loading(
     state: AppState,
     action: &Action,

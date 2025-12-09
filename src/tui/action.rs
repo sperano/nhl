@@ -26,6 +26,7 @@ pub trait ComponentMessageTrait: Send + Sync + std::fmt::Debug {
 /// - Effects (async data loading)
 /// - Middleware (logging, side effects)
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum Action {
     // Navigation actions
     NavigateTab(Tab),

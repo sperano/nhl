@@ -67,6 +67,7 @@ impl TabState for SettingsTabState {
 
 /// Messages that can be sent to the Settings tab
 #[derive(Clone, Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum SettingsTabMsg {
     /// Key event when this tab is focused
     Key(KeyEvent),

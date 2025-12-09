@@ -118,7 +118,7 @@ impl Document for TeamDetailDocumentContent {
         if let Some(ref standing) = self.standing {
             let team_name = &standing.team_name.default;
             let common_name = &standing.team_common_name.default;
-            builder = builder.heading(1, &format!("{} {}", team_name, common_name));
+            builder = builder.heading(1, format!("{} {}", team_name, common_name));
 
             // Team record
             let record = format!(

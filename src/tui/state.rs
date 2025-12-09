@@ -130,6 +130,7 @@ pub struct UiState {
 /// Note: game_date is duplicated between global and component state by design:
 /// - Global: What schedule data is loaded (for effects system)
 /// - Component: What date UI is viewing (for rendering)
+///
 /// These are kept in sync via RefreshSchedule action.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ScoresUiState {

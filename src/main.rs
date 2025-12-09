@@ -58,7 +58,7 @@ enum GroupBy {
 
 impl GroupBy {
     /// Convert CLI GroupBy enum to commands::standings::GroupBy
-    fn to_standings_groupby(&self) -> commands::standings::GroupBy {
+    fn to_standings_groupby(self) -> commands::standings::GroupBy {
         match self {
             Self::Division => commands::standings::GroupBy::Division,
             Self::Conference => commands::standings::GroupBy::Conference,

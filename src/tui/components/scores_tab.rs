@@ -173,15 +173,13 @@ impl Component for ScoresTab {
             // Game activation
             ScoresTabMsg::ActivateGame => {
                 if let Some(focus_idx) = state.doc_nav().focus_index {
-                    if let Some(id) = state.doc_nav().focusable_ids.get(focus_idx) {
-                        if let crate::tui::document::FocusableId::Link(link_id) = id {
-                            // Parse "game_12345" -> 12345
-                            if let Some(game_id) = link_id.strip_prefix("game_")
-                                .and_then(|s| s.parse::<i64>().ok()) {
-                                return Effect::Action(Action::PushDocument(
-                                    crate::tui::types::StackedDocument::Boxscore { game_id }
-                                ));
-                            }
+                    if let Some(crate::tui::document::FocusableId::Link(link_id)) = state.doc_nav().focusable_ids.get(focus_idx) {
+                        // Parse "game_12345" -> 12345
+                        if let Some(game_id) = link_id.strip_prefix("game_")
+                            .and_then(|s| s.parse::<i64>().ok()) {
+                            return Effect::Action(Action::PushDocument(
+                                crate::tui::types::StackedDocument::Boxscore { game_id }
+                            ));
                         }
                     }
                 }

@@ -66,6 +66,7 @@ pub fn format_period_text(period_type: PeriodType, period_number: i32) -> String
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn build_score_table(
     away_team: &str,
     home_team: &str,
@@ -320,6 +321,7 @@ fn render_team_periods(
 }
 
 /// Build a team row with period scores
+#[allow(clippy::too_many_arguments)]
 fn build_team_row(
     team_abbrev: &str,
     team_score: Option<i32>,

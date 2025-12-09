@@ -95,8 +95,7 @@ impl ElementWidget for BreadcrumbWidget {
             } else {
                 Style::default()
             };
-            let divider: String = std::iter::repeat(HORIZONTAL_LINE)
-                .take(area.width as usize)
+            let divider: String = std::iter::repeat_n(HORIZONTAL_LINE, area.width as usize)
                 .collect();
             let divider_line = Line::from(Span::styled(divider, divider_style));
             buf.set_line(area.x, area.y + 1, &divider_line, area.width);

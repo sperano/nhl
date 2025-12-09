@@ -207,6 +207,7 @@ pub fn assert_buffer(buf: &Buffer, expected: &[&str]) {
 }
 
 /// Helper to create a test Standing
+#[allow(clippy::too_many_arguments)]
 pub fn create_division_team(
     name: &str,
     abbrev: &str,

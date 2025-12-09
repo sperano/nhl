@@ -42,7 +42,7 @@ pub(super) fn render_row(
         // Calculate total width of all children
         let total_children_width: u16 = children
             .iter()
-            .filter_map(|c| get_preferred_width(c))
+            .filter_map(get_preferred_width)
             .sum();
 
         // Calculate gap based on alignment
@@ -382,9 +382,7 @@ fn render_section_header(
         bc.double_horizontal.repeat(2),
         &bc.mixed_dh_right_t,
     );
-    let title_suffix = format!("{}",
-        &bc.mixed_dh_left_t,
-    );
+    let title_suffix = bc.mixed_dh_left_t.clone();
 
     // Calculate remaining space for trailing ═
     let prefix_len = 4; // corner + 2x═ + ╡

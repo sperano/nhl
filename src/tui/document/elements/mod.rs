@@ -36,6 +36,7 @@ pub(crate) const TABLE_COLUMN_HEADER_HEIGHT: u16 = 2;
 
 /// Elements that can be part of a document
 #[derive(Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum DocumentElement {
     /// Plain text paragraph
     Text {

@@ -190,21 +190,19 @@ impl Component for DemoTab {
 
             DemoTabMsg::ActivateLink => {
                 // Get the link target from the focused element
-                if let Some(link_target) = state.focused_link_target() {
-                    if let LinkTarget::Action(action) = link_target {
-                        // Parse "team:BOS" or "player:12345" format
-                        if let Some(abbrev) = action.strip_prefix("team:") {
+                if let Some(LinkTarget::Action(action)) = state.focused_link_target() {
+                    // Parse "team:BOS" or "player:12345" format
+                    if let Some(abbrev) = action.strip_prefix("team:") {
+                        return Effect::Action(Action::PushDocument(
+                            StackedDocument::TeamDetail {
+                                abbrev: abbrev.to_string(),
+                            },
+                        ));
+                    } else if let Some(player_id_str) = action.strip_prefix("player:") {
+                        if let Ok(player_id) = player_id_str.parse::<i64>() {
                             return Effect::Action(Action::PushDocument(
-                                StackedDocument::TeamDetail {
-                                    abbrev: abbrev.to_string(),
-                                },
+                                StackedDocument::PlayerDetail { player_id },
                             ));
-                        } else if let Some(player_id_str) = action.strip_prefix("player:") {
-                            if let Ok(player_id) = player_id_str.parse::<i64>() {
-                                return Effect::Action(Action::PushDocument(
-                                    StackedDocument::PlayerDetail { player_id },
-                                ));
-                            }
                         }
                     }
                 }
