@@ -36,4 +36,9 @@ log_file = "/dev/null"
 refresh_interval = 60
 display_standings_western_first = false
 time_format = "%H:%M:%S"
+
+[display]
+use_unicode = true
+theme = "orange"
+error_fg = "226,74,74"
 ```
