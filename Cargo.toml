@@ -1,6 +1,6 @@
 [package]
 name = "nhl"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 [lib]
@@ -8,16 +8,26 @@ name = "nhl"
 path = "src/lib.rs"
 
 [dependencies]
+anyhow = "1.0"
 chrono = "0.4.42"
-nhl_api = { version = "0.4.4" }
+nhl_api = "0.5.2"
 tokio = { version = "1", features = ["full"] }
 clap = { version = "4.5.40", features = ["cargo", "derive"]}
 ratatui = "0.29.0"
 crossterm = "0.28.1"
-xdg = "3.0.0"
+dirs = "5.0"
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.8"
-futures = "0.3"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+cached = { version = "0.49", features = ["async"] }
+unicode-width = "0.1"
+phf = { version = "0.13.1", features = ["macros"] }
+async-trait = "0.1"
 
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[features]
+game_stats = []
+development = []

@@ -1,0 +1,27 @@
+# NHL CLI Configuration Example
+# Copy this file to ~/.config/nhl/config.toml and customize as needed
+
+# Logging configuration
+log_level = "info"  # Options: trace, debug, info, warn, error
+log_file = "/dev/null"  # Set to a file path to enable logging
+
+# TUI refresh interval in seconds
+refresh_interval = 60
+
+# Display Western Conference first in standings (default: false shows Eastern first)
+display_standings_western_first = false
+
+# Time format for status bar (strftime format)
+time_format = "%H:%M:%S"
+
+# Theme configuration
+[theme]
+# Selection foreground color (when tab bar is focused) - supports multiple formats:
+# - Named colors: "orange", "red", "blue", "cyan", "green", "yellow", etc.
+# - Hex colors: "#FF6600" or "#f60"
+# - RGB tuples: "255,165,0"
+selection_fg = "orange"  # Default: orange (RGB 255,165,0)
+
+# Selection foreground color when tab bar is unfocused
+# If not specified, defaults to 50% darker version of selection_fg
+# unfocused_selection_fg = "blue"  # Optional: specify a custom color

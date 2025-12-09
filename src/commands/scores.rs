@@ -1,25 +1,43 @@
-use nhl_api::{Client, GameDate, GameId, Boxscore, GameClock, PeriodDescriptor};
-use chrono::NaiveDate;
+use crate::commands::parse_game_date;
+use crate::data_provider::NHLDataProvider;
+use anyhow::{Context, Result};
+use nhl_api::{Boxscore, GameClock};
 
-pub async fn run(client: &Client, date: Option<String>) {
-    let game_date = if let Some(date_str) = date {
-        let parsed_date = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
-            .expect("Invalid date format. Use YYYY-MM-DD");
-        GameDate::Date(parsed_date)
-    } else {
-        GameDate::today()
-    };
+// Layout Constants
+/// Width of the game box border
+const BOX_WIDTH: usize = 88;
 
-    let schedule = client.daily_schedule(Some(&game_date)).await.unwrap();
+/// Width of team abbreviation column in detailed display
+const TEAM_ABBREV_WIDTH: usize = 15;
+
+/// Width of period column in score table
+const PERIOD_COL_WIDTH: usize = 5;
+
+/// Width of total score column
+const TOTAL_COL_WIDTH: usize = 7;
+
+/// Trailing padding string for box formatting
+const TRAILING_PADDING: &str = "                                    ";
+
+/// Width of header separator line
+const HEADER_SEPARATOR_WIDTH: usize = 90;
+
+pub async fn run(client: &dyn NHLDataProvider, date: Option<String>) -> Result<()> {
+    let game_date = parse_game_date(date)?;
+
+    let schedule = client
+        .daily_schedule(Some(game_date))
+        .await
+        .context("Failed to fetch schedule")?;
 
     // Display header
-    println!("\n{}", "═".repeat(90));
+    println!("\n{}", "═".repeat(HEADER_SEPARATOR_WIDTH));
     println!("NHL SCORES - {}", schedule.date);
-    println!("{}\n", "═".repeat(90));
+    println!("{}\n", "═".repeat(HEADER_SEPARATOR_WIDTH));
 
     if schedule.number_of_games == 0 {
         println!("No games scheduled for this date.\n");
-        return;
+        return Ok(());
     }
 
     // Process each game
@@ -33,10 +51,9 @@ pub async fn run(client: &Client, date: Option<String>) {
 
         if game_started {
             // Fetch detailed boxscore for period information
-            let game_id = GameId::new(game.id);
-            match client.boxscore(&game_id).await {
+            match client.boxscore(game.id).await {
                 Ok(boxscore) => {
-                    display_detailed_score(&boxscore, game.game_state);
+                    display_detailed_score(&boxscore);
                 }
                 Err(_) => {
                     // Fall back to simple display if boxscore unavailable
@@ -50,93 +67,138 @@ pub async fn run(client: &Client, date: Option<String>) {
     }
 
     println!();
+
+    Ok(())
 }
 
-fn display_detailed_score(boxscore: &Boxscore, game_state: nhl_api::GameState) {
+fn display_detailed_score(boxscore: &Boxscore) {
     let away_abbrev = &boxscore.away_team.abbrev;
     let home_abbrev = &boxscore.home_team.abbrev;
     let away_score = boxscore.away_team.score;
     let home_score = boxscore.home_team.score;
+    let max_period = boxscore.period_descriptor.number;
 
-    // Box top
-    println!("┌{:─<88}┐", "");
+    // Box top border
+    println!("{}", build_box_border('┌'));
 
-    // Teams and final score
-    println!("│ {:<15} {:>2}     FINAL     {:>2}  {:<15}                                │",
-        away_abbrev, away_score, home_score, home_abbrev);
+    // Teams and final score line
+    println!(
+        "│ {:<15} {:>2}     FINAL     {:>2}  {:<15}                                │",
+        away_abbrev, away_score, home_score, home_abbrev
+    );
 
     // Game status line
-    let status_text = format_game_status(boxscore.game_state, &boxscore.period_descriptor.number, &boxscore.clock);
+    let status_text = format_game_status(
+        boxscore.game_state,
+        &boxscore.period_descriptor.number,
+        &boxscore.clock,
+    );
     println!("│ {:<86} │", status_text);
 
-    println!("├{:─<88}┤", "");
+    // Separator line
+    println!("{}", build_box_border('├'));
 
     // Period-by-period header
-    print!("│ {:<15}   ", "");
-    print!("{:^5}", "1");
-    print!("{:^5}", "2");
-    print!("{:^5}", "3");
+    println!("{}", build_period_header(max_period));
 
-    // Check if there were overtime/shootout periods
-    let max_period = boxscore.period_descriptor.number;
-    if max_period > 3 {
-        print!("{:^5}", "OT");
-    }
-    if max_period > 4 {
-        print!("{:^5}", "SO");
-    }
-    print!("{:^7}", "T");
-    println!("                                    │");
+    // Header separator line
+    println!("{}", build_period_header_separator(max_period));
 
-    print!("│ {:<15}   {:─<5}{:─<5}{:─<5}", "", "", "", "");
-    if max_period > 3 {
-        print!("{:─<5}", "");
-    }
-    if max_period > 4 {
-        print!("{:─<5}", "");
-    }
-    println!("{:─<7}                                    │", "");
-
-    // Get period scores from linescore if available
-    // Note: The nhl_api crate may or may not have linescore data
-    // We'll display what we can
+    // Period lines for both teams
     display_period_line(away_abbrev, away_score, max_period);
     display_period_line(home_abbrev, home_score, max_period);
 
-    // Box bottom
-    println!("└{:─<88}┘", "");
+    // Box bottom border
+    println!("{}", build_box_border('└'));
+}
+
+fn build_box_border(style: char) -> String {
+    let end_char = match style {
+        '┌' => '┐',
+        '├' => '┤',
+        '└' => '┘',
+        _ => '│',
+    };
+    format!("{}{:─<width$}{}", style, "", end_char, width = BOX_WIDTH)
+}
+
+fn build_period_header(max_period: i32) -> String {
+    let mut header = format!("│ {:<width$}   ", "", width = TEAM_ABBREV_WIDTH);
+    header.push_str(&format!("{:^width$}", "1", width = PERIOD_COL_WIDTH));
+    header.push_str(&format!("{:^width$}", "2", width = PERIOD_COL_WIDTH));
+    header.push_str(&format!("{:^width$}", "3", width = PERIOD_COL_WIDTH));
+
+    if max_period > 3 {
+        header.push_str(&format!("{:^width$}", "OT", width = PERIOD_COL_WIDTH));
+    }
+    if max_period > 4 {
+        header.push_str(&format!("{:^width$}", "SO", width = PERIOD_COL_WIDTH));
+    }
+
+    header.push_str(&format!("{:^width$}", "T", width = TOTAL_COL_WIDTH));
+    header.push_str(TRAILING_PADDING);
+    header.push('│');
+    header
+}
+
+fn build_period_header_separator(max_period: i32) -> String {
+    let mut separator = format!(
+        "│ {:<width$}   {:─<col_width$}{:─<col_width$}{:─<col_width$}",
+        "",
+        "",
+        "",
+        "",
+        width = TEAM_ABBREV_WIDTH,
+        col_width = PERIOD_COL_WIDTH
+    );
+
+    if max_period > 3 {
+        separator.push_str(&format!("{:─<width$}", "", width = PERIOD_COL_WIDTH));
+    }
+    if max_period > 4 {
+        separator.push_str(&format!("{:─<width$}", "", width = PERIOD_COL_WIDTH));
+    }
+
+    separator.push_str(&format!("{:─<width$}", "", width = TOTAL_COL_WIDTH));
+    separator.push_str(TRAILING_PADDING);
+    separator.push('│');
+    separator
 }
 
 fn display_period_line(team_abbrev: &str, total_score: i32, max_period: i32) {
-    print!("│ {:<15}   ", team_abbrev);
+    print!("│ {:<width$}   ", team_abbrev, width = TEAM_ABBREV_WIDTH);
 
     // For now, we'll show placeholders for period scores
     // The nhl_api crate's Boxscore might not include detailed linescore
     // We'd need to check the actual structure
     for _ in 1..=3 {
-        print!("{:^5}", "-");
+        print!("{:^width$}", "-", width = PERIOD_COL_WIDTH);
     }
 
     if max_period > 3 {
-        print!("{:^5}", "-");
+        print!("{:^width$}", "-", width = PERIOD_COL_WIDTH);
     }
     if max_period > 4 {
-        print!("{:^5}", "-");
+        print!("{:^width$}", "-", width = PERIOD_COL_WIDTH);
     }
 
-    print!("{:^7}", total_score);
-    println!("                                    │");
+    print!("{:^width$}", total_score, width = TOTAL_COL_WIDTH);
+    println!("{}│", TRAILING_PADDING);
 }
 
 fn display_simple_score(game: &nhl_api::ScheduleGame) {
-    println!("┌{:─<88}┐", "");
+    println!("┌{:─<width$}┐", "", width = BOX_WIDTH);
 
     if let (Some(away_score), Some(home_score)) = (game.away_team.score, game.home_team.score) {
-        println!("│ {:<15} {:>2}           {:>2}  {:<15}                                    │",
-            game.away_team.abbrev, away_score, home_score, game.home_team.abbrev);
+        println!(
+            "│ {:<15} {:>2}           {:>2}  {:<15}                                    │",
+            game.away_team.abbrev, away_score, home_score, game.home_team.abbrev
+        );
     } else {
-        println!("│ {:<15}  @  {:<15}                                                │",
-            game.away_team.abbrev, game.home_team.abbrev);
+        println!(
+            "│ {:<15}  @  {:<15}                                                │",
+            game.away_team.abbrev, game.home_team.abbrev
+        );
     }
 
     let status = if game.game_state.is_scheduled() {
@@ -146,7 +208,7 @@ fn display_simple_score(game: &nhl_api::ScheduleGame) {
     };
     println!("│ {:<86} │", status);
 
-    println!("└{:─<88}┘", "");
+    println!("└{:─<width$}┘", "", width = BOX_WIDTH);
 }
 
 fn format_game_status(state: nhl_api::GameState, period: &i32, clock: &GameClock) -> String {

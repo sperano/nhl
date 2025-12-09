@@ -1,57 +1,43 @@
-mod tui;
-mod commands;
-mod config;
+use nhl::commands;
+use nhl::config;
+use nhl::data_provider::NHLDataProvider;
+use nhl::tui;
 
-use nhl_api::{Client, Standing, DailySchedule};
+#[cfg(feature = "development")]
+use nhl::dev::mock_client::MockClient;
+
 use clap::{Parser, Subcommand, ValueEnum};
+use nhl_api::Client;
 use std::sync::Arc;
-use std::collections::HashMap;
-use tokio::sync::{RwLock, mpsc};
-use std::time::{Duration, SystemTime};
-use futures::future::join_all;
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 
-#[derive(Clone)]
-pub struct SharedData {
-    pub standings: Vec<Standing>,
-    pub schedule: Option<DailySchedule>,
-    pub period_scores: HashMap<i64, commands::scores_format::PeriodScores>,
-    pub game_info: HashMap<i64, nhl_api::GameMatchup>,
-    pub config: config::Config,
-    pub last_refresh: Option<SystemTime>,
-    pub game_date: nhl_api::GameDate,
-    pub error_message: Option<String>,
-}
+// Default Configuration Constants
+/// Default log level when not specified
+const DEFAULT_LOG_LEVEL: &str = "info";
 
-impl Default for SharedData {
-    fn default() -> Self {
-        SharedData {
-            standings: Vec::new(),
-            schedule: None,
-            period_scores: HashMap::new(),
-            game_info: HashMap::new(),
-            config: config::Config::default(),
-            last_refresh: None,
-            game_date: nhl_api::GameDate::today(),
-            error_message: None,
-        }
-    }
-}
-
-pub type SharedDataHandle = Arc<RwLock<SharedData>>;
+/// Default log file path (no logging to file)
+const DEFAULT_LOG_FILE: &str = "/dev/null";
 
 #[derive(Parser)]
 #[command(name = "nhl")]
-#[command(about = "NHL stats and standings CLI", long_about = "NHL stats and standings CLI\n\nIf no command is specified, the program starts in interactive mode.")]
+#[command(
+    about = "NHL stats and standings CLI",
+    long_about = "NHL stats and standings CLI\n\nIf no command is specified, the program starts in interactive mode."
+)]
 struct Cli {
     /// Set log level (trace, debug, info, warn, error)
-    #[arg(short = 'L', long, global = true, default_value = "info")]
+    #[arg(short = 'L', long, global = true, default_value = DEFAULT_LOG_LEVEL)]
     log_level: String,
 
     /// Log file path (default: /dev/null for no logging)
-    #[arg(short = 'F', long, global = true, default_value = "/dev/null")]
+    #[arg(short = 'F', long, global = true, default_value = DEFAULT_LOG_FILE)]
     log_file: String,
+
+    /// Use mock data instead of real API calls (development feature only)
+    #[cfg(feature = "development")]
+    #[arg(long, global = true)]
+    mock: bool,
 
     #[command(subcommand)]
     command: Option<Commands>,
@@ -68,6 +54,17 @@ enum GroupBy {
     /// Show league-wide standings
     #[value(name = "l")]
     League,
+}
+
+impl GroupBy {
+    /// Convert CLI GroupBy enum to commands::standings::GroupBy
+    fn to_standings_groupby(self) -> commands::standings::GroupBy {
+        match self {
+            Self::Division => commands::standings::GroupBy::Division,
+            Self::Conference => commands::standings::GroupBy::Conference,
+            Self::League => commands::standings::GroupBy::League,
+        }
+    }
 }
 
 #[derive(Subcommand)]
@@ -103,112 +100,31 @@ enum Commands {
         #[arg(short, long)]
         date: Option<String>,
     },
+    /// Display all NHL franchises
+    Franchises,
     /// Display current configuration
     Config,
 }
 
-/// Create an NHL API client with optional debug mode
-fn create_client() -> Client {
-    Client::new().unwrap()
-}
+fn create_client(#[allow(unused_variables)] mock_mode: bool) -> Arc<dyn NHLDataProvider> {
+    #[cfg(feature = "development")]
+    if mock_mode {
+        tracing::info!("Using mock client for development");
+        return Arc::new(MockClient::new());
+    }
 
-async fn fetch_data_loop(client: Client, shared_data: SharedDataHandle, interval: u64, mut refresh_rx: mpsc::Receiver<()>) {
-    let mut interval_timer = tokio::time::interval(Duration::from_secs(interval));
-    interval_timer.tick().await; // First tick completes immediately
-
-    loop {
-        // Fetch standings
-        match client.current_league_standings().await {
-            Ok(data) => {
-                let mut shared = shared_data.write().await;
-                shared.standings = data;
-                shared.last_refresh = Some(SystemTime::now());
-                shared.error_message = None; // Clear any previous errors
-            }
-            Err(e) => {
-                let mut shared = shared_data.write().await;
-                shared.error_message = Some(format!("Failed to fetch standings: {}", e));
-            }
-        }
-
-        // Fetch schedule for the current game_date
-        let date = {
-            let shared = shared_data.read().await;
-            shared.game_date.clone()
-        };
-        match client.daily_schedule(Some(&date)).await {
-            Ok(schedule) => {
-                // Fetch period scores and game info for LIVE and FINAL games
-                let mut period_scores = HashMap::new();
-                let mut game_info = HashMap::new();
-
-                // Collect all games that need fetching
-                let games_to_fetch: Vec<_> = schedule.games.iter()
-                    .filter(|game| game.game_state.has_started())
-                    .collect();
-
-                // Create futures for all landing requests
-                let fetch_futures = games_to_fetch.iter().map(|game| {
-                    let game_id = nhl_api::GameId::new(game.id);
-                    let game_clone = (*game).clone();
-                    let client_ref = &client;
-                    async move {
-                        let result = client_ref.landing(&game_id).await;
-                        (game_clone, result)
-                    }
-                });
-
-                // Execute all requests in parallel
-                let results = join_all(fetch_futures).await;
-
-                // Process results
-                for (game, result) in results {
-                    match result {
-                        Ok(landing) => {
-                            if let Some(summary) = &landing.summary {
-                                let scores = commands::scores_format::extract_period_scores(
-                                    summary,
-                                    game.away_team.id,
-                                    game.home_team.id,
-                                );
-                                period_scores.insert(game.id, scores);
-                            }
-                            // Store the full game info for clock/period display
-                            game_info.insert(game.id, landing);
-                        }
-                        Err(e) => {
-                            // Store error for individual game fetch failures
-                            let mut shared = shared_data.write().await;
-                            shared.error_message = Some(format!("Failed to fetch game {} data: {}", game.id, e));
-                        }
-                    }
-                }
-
-                let mut shared = shared_data.write().await;
-                shared.schedule = Some(schedule);
-                shared.period_scores = period_scores;
-                shared.game_info = game_info;
-                // Note: errors from individual game fetches are preserved
-            }
-            Err(e) => {
-                let mut shared = shared_data.write().await;
-                shared.error_message = Some(format!("Failed to fetch schedule: {}", e));
-            }
-        }
-        // Wait for either the interval timer or a manual refresh signal
-        tokio::select! {
-            _ = interval_timer.tick() => {
-                // Regular interval refresh
-            }
-            _ = refresh_rx.recv() => {
-                // Manual refresh triggered
-            }
+    match Client::new() {
+        Ok(client) => Arc::new(client),
+        Err(e) => {
+            let error_msg = format!("Failed to create NHL API client: {}", e);
+            tracing::error!("{}", error_msg);
+            eprintln!("{}", error_msg);
+            std::process::exit(1);
         }
     }
 }
 
 fn init_logging(log_level: &str, log_file: &str) {
-    // Parse log level
     let level = match log_level.to_lowercase().as_str() {
         "trace" => Level::TRACE,
         "debug" => Level::DEBUG,
@@ -217,16 +133,10 @@ fn init_logging(log_level: &str, log_file: &str) {
         "error" => Level::ERROR,
         _ => Level::INFO,
     };
-
-    // If log file is /dev/null, skip logging setup
-    if log_file == "/dev/null" {
-        return;
-    }
-
-    // Create log file
     let file = match std::fs::OpenOptions::new()
         .create(true)
-        .append(true)
+        .write(true)
+        .truncate(true)
         .open(log_file)
     {
         Ok(f) => f,
@@ -235,67 +145,113 @@ fn init_logging(log_level: &str, log_file: &str) {
             return;
         }
     };
-
-    // Initialize tracing subscriber with file output
     let subscriber = FmtSubscriber::builder()
         .with_max_level(level)
         .with_writer(std::sync::Mutex::new(file))
         .with_ansi(false)
         .finish();
-
     if let Err(e) = tracing::subscriber::set_global_default(subscriber) {
         eprintln!("Failed to set tracing subscriber: {}", e);
     }
 }
 
+// TODO update this command, output is not up to date
+/// Handle the config command - display current configuration
+fn handle_config_command() {
+    let cfg = config::read();
+
+    let (path_str, exists) = match config::get_config_path() {
+        Some(path) => {
+            let exists = path.exists();
+            (path.display().to_string(), exists)
+        }
+        None => ("Unable to determine config path".to_string(), false),
+    };
+
+    println!(
+        "Configuration File: {} (Exists: {})",
+        path_str,
+        if exists { "yes" } else { "no" }
+    );
+    println!();
+    println!("Current Configuration:");
+    println!("=====================");
+    println!("log_level: {}", cfg.log_level);
+    println!("log_file: {}", cfg.log_file);
+    println!("refresh_interval: {} seconds", cfg.refresh_interval);
+    println!(
+        "display_standings_western_first: {}",
+        cfg.display_standings_western_first
+    );
+    println!("time_format: {}", cfg.time_format);
+    println!();
+    println!("[theme]");
+}
+
+/// Resolve log configuration from CLI args and config file
+/// CLI arguments take precedence over config file
+fn resolve_log_config<'a>(cli: &'a Cli, config: &'a config::Config) -> (&'a str, &'a str) {
+    let log_level = if cli.log_level != DEFAULT_LOG_LEVEL {
+        cli.log_level.as_str()
+    } else {
+        config.log_level.as_str()
+    };
+
+    let log_file = if cli.log_file != DEFAULT_LOG_FILE {
+        cli.log_file.as_str()
+    } else {
+        config.log_file.as_str()
+    };
+
+    (log_level, log_file)
+}
+
+/// Run TUI mode
+async fn run_tui_mode(config: config::Config, mock_mode: bool) -> Result<(), std::io::Error> {
+    tracing::info!("Running in experimental React-like mode");
+    let client = create_client(mock_mode);
+    tui::run(client, config).await
+}
+
+/// Execute a CLI command by routing it to the appropriate command handler
+async fn execute_command(
+    client: &dyn NHLDataProvider,
+    command: Commands,
+    config: &config::Config,
+) -> anyhow::Result<()> {
+    match command {
+        Commands::Config => unreachable!("Config command should be handled before execute_command"),
+        Commands::Standings { season, date, by } => {
+            let group_by = by.to_standings_groupby();
+            commands::standings::run(client, season, date, group_by, config).await
+        }
+        Commands::Boxscore { game_id } => commands::boxscore::run(client, game_id, config).await,
+        Commands::Schedule { date } => commands::schedule::run(client, date).await,
+        Commands::Scores { date } => commands::scores::run(client, date).await,
+        Commands::Franchises => commands::franchises::run(client).await,
+    }
+}
+
 #[tokio::main]
 async fn main() {
-    let mut config = config::read();
+    let config = config::read();
     let cli = Cli::parse();
 
-    // CLI arguments override config file
-    let log_level = if cli.log_level != "info" {
-        &cli.log_level
-    } else {
-        &config.log_level
-    };
-    let log_file = if cli.log_file != "/dev/null" {
-        &cli.log_file
-    } else {
-        &config.log_file
-    };
+    // Resolve and initialize logging
+    let (log_level, log_file) = resolve_log_config(&cli, &config);
+    if log_file != DEFAULT_LOG_FILE {
+        init_logging(log_level, log_file);
+    }
 
-    // Initialize logging
-    init_logging(log_level, log_file);
+    // Extract mock flag (only available in development feature)
+    #[cfg(feature = "development")]
+    let mock_mode = cli.mock;
+    #[cfg(not(feature = "development"))]
+    let mock_mode = false;
 
     // If no subcommand, run TUI
     if cli.command.is_none() {
-        // Create shared data structure with config
-        let shared_data: SharedDataHandle = Arc::new(RwLock::new(SharedData {
-            standings: Vec::new(),
-            schedule: None,
-            period_scores: HashMap::new(),
-            game_info: HashMap::new(),
-            config: config.clone(),
-            last_refresh: None,
-            game_date: nhl_api::GameDate::today(),
-            error_message: None,
-        }));
-
-        // Create channel for manual refresh triggers
-        let (refresh_tx, refresh_rx) = mpsc::channel::<()>(10);
-
-        // Create client for background task
-        let bg_client = create_client();
-
-        // Spawn background task to fetch data
-        let shared_data_clone = Arc::clone(&shared_data);
-        let refresh_interval = config.refresh_interval as u64;
-        tokio::spawn(async move {
-            fetch_data_loop(bg_client, shared_data_clone, refresh_interval, refresh_rx).await;
-        });
-
-        if let Err(e) = tui::run(shared_data, refresh_tx).await {
+        if let Err(e) = run_tui_mode(config, mock_mode).await {
             eprintln!("Error running TUI: {}", e);
             std::process::exit(1);
         }
@@ -306,47 +262,15 @@ async fn main() {
 
     // Handle Config command separately (doesn't need a client)
     if let Commands::Config = command {
-        let (path_str, exists) = match config::get_config_path() {
-            Some(path) => {
-                let exists = path.exists();
-                (path.display().to_string(), exists)
-            }
-            None => ("Unable to determine config path".to_string(), false),
-        };
-
-        println!("Configuration File: {} (Exists: {})", path_str, if exists { "yes" } else { "no" });
-        println!();
-        println!("Current Configuration:");
-        println!("=====================");
-        println!("log_level: {}", config.log_level);
-        println!("log_file: {}", config.log_file);
-        println!("refresh_interval: {} seconds", config.refresh_interval);
-        println!("display_standings_western_first: {}", config.display_standings_western_first);
-        println!("time_format: {}", config.time_format);
+        handle_config_command();
         return;
     }
 
-    // Create client once for all other commands
-    let client = create_client();
-
-    match command {
-        Commands::Config => unreachable!(), // Already handled above
-        Commands::Standings { season, date, by } => {
-            let group_by = match by {
-                GroupBy::Division => commands::standings::GroupBy::Division,
-                GroupBy::Conference => commands::standings::GroupBy::Conference,
-                GroupBy::League => commands::standings::GroupBy::League,
-            };
-            commands::standings::run(&client, season, date, group_by).await;
-        }
-        Commands::Boxscore { game_id } => {
-            commands::boxscore::run(&client, game_id).await;
-        }
-        Commands::Schedule { date } => {
-            commands::schedule::run(&client, date).await;
-        }
-        Commands::Scores { date } => {
-            commands::scores::run(&client, date).await;
-        }
+    // Create client and execute command
+    let client = create_client(mock_mode);
+    if let Err(e) = execute_command(&*client, command, &config).await {
+        eprintln!("Error: {:#}", e);
+        tracing::error!("Command failed: {:#}", e);
+        std::process::exit(1);
     }
 }

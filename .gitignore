@@ -24,5 +24,8 @@ target
 # Added by cargo
 
 /target
-CLAUDE.md
 nhl.log
+tarpaulin-report.html
+.prompts
+nhl-screenshot-*.txt
+panic.txt
