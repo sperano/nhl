@@ -2,7 +2,22 @@
 ///
 /// This module provides common functionality used by the settings tab
 /// for managing settings modals.
-use crate::config::Config;
+use crate::config::{
+    Config, THEMES, THEME_ID_BLUE, THEME_ID_CYAN, THEME_ID_GREEN, THEME_ID_NORTH_STARS,
+    THEME_ID_ORANGE, THEME_ID_PURPLE, THEME_ID_RED, THEME_ID_WHITE, THEME_ID_YELLOW,
+};
+
+const THEME_IDS: &[&str] = &[
+    THEME_ID_ORANGE,
+    THEME_ID_GREEN,
+    THEME_ID_BLUE,
+    THEME_ID_PURPLE,
+    THEME_ID_WHITE,
+    THEME_ID_RED,
+    THEME_ID_YELLOW,
+    THEME_ID_CYAN,
+    THEME_ID_NORTH_STARS,
+];
 
 /// Modal option with ID and display name
 #[derive(Debug, Clone)]
@@ -37,15 +52,11 @@ pub fn get_setting_modal_options(key: &str) -> Vec<ModalOption> {
             },
         ],
         "theme" => {
-            use crate::config::THEMES;
             let mut options = vec![ModalOption {
                 id: "none".to_string(),
                 display_name: "None".to_string(),
             }];
-            // Add options from THEMES map in a consistent order
-            for id in [
-                "orange", "green", "blue", "purple", "white", "red", "yellow", "cyan",
-            ] {
+            for id in THEME_IDS {
                 if let Some(theme) = THEMES.get(id) {
                     options.push(ModalOption {
                         id: id.to_string(),
@@ -63,9 +74,11 @@ pub fn get_setting_modal_options(key: &str) -> Vec<ModalOption> {
 fn get_setting_values(key: &str) -> Vec<&'static str> {
     match key {
         "log_level" => vec!["trace", "debug", "info", "warn", "error"],
-        "theme" => vec![
-            "none", "orange", "green", "blue", "purple", "white", "red", "yellow", "cyan",
-        ],
+        "theme" => {
+            let mut values = vec!["none"];
+            values.extend(THEME_IDS.iter().copied());
+            values
+        }
         _ => vec![], // Empty for non-list settings
     }
 }
@@ -104,10 +117,10 @@ mod tests {
 
     #[test]
     fn test_find_initial_modal_index_theme_blue() {
+        use crate::config::THEME_ID_BLUE;
         let mut config = Config::default();
-        config.display.theme_name = Some("blue".to_string());
-        // Theme values: ["none", "orange", "green", "blue", "purple", "white", "red", "yellow", "cyan"]
-        // "blue" is at index 3
+        config.display.theme_name = Some(THEME_ID_BLUE.to_string());
+        // "blue" is at index 3 (after "none", "orange", "green")
         assert_eq!(find_initial_modal_index(&config, "theme"), 3);
     }
 
