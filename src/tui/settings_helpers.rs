@@ -3,9 +3,9 @@
 /// This module provides common functionality used by the settings tab
 /// for managing settings modals.
 use crate::config::{
-    Config, THEMES, THEME_ID_BLUE, THEME_ID_CYAN, THEME_ID_GREEN, THEME_ID_NORTH_STARS,
-    THEME_ID_ORANGE, THEME_ID_PURPLE, THEME_ID_RED, THEME_ID_WHITE, THEME_ID_YELLOW,
-    THEME_ID_HABS, THEME_ID_SABRES,
+    Config, THEMES, THEME_ID_BLUE, THEME_ID_CYAN, THEME_ID_GREEN, THEME_ID_HABS,
+    THEME_ID_NORTH_STARS, THEME_ID_ORANGE, THEME_ID_PURPLE, THEME_ID_RED, THEME_ID_SABRES,
+    THEME_ID_WHITE, THEME_ID_YELLOW,
 };
 
 const THEME_IDS: &[&str] = &[
