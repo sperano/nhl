@@ -105,21 +105,8 @@ pub fn reduce_settings(
                         new_state.system.config.display.theme_name = None;
                         new_state.system.config.display.theme = None;
                     } else {
-                        use crate::config::{
-                            THEME_BLUE, THEME_CYAN, THEME_GREEN, THEME_ORANGE, THEME_PURPLE,
-                            THEME_RED, THEME_WHITE, THEME_YELLOW,
-                        };
-                        let theme = match value.as_str() {
-                            "orange" => Some(THEME_ORANGE.clone()),
-                            "green" => Some(THEME_GREEN.clone()),
-                            "blue" => Some(THEME_BLUE.clone()),
-                            "purple" => Some(THEME_PURPLE.clone()),
-                            "white" => Some(THEME_WHITE.clone()),
-                            "red" => Some(THEME_RED.clone()),
-                            "yellow" => Some(THEME_YELLOW.clone()),
-                            "cyan" => Some(THEME_CYAN.clone()),
-                            _ => None,
-                        };
+                        use crate::config::THEMES;
+                        let theme = THEMES.get(value.as_str()).map(|t| (*t).clone());
                         new_state.system.config.display.theme_name = Some(value);
                         new_state.system.config.display.theme = theme;
                     }
