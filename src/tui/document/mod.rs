@@ -43,6 +43,8 @@ pub struct FocusContext {
     pub focused_id: Option<FocusableId>,
     /// Available width for layout decisions (if known)
     pub available_width: Option<u16>,
+    /// Whether to use unicode characters for rendering
+    pub use_unicode: bool,
 }
 
 impl FocusContext {
@@ -51,6 +53,7 @@ impl FocusContext {
         Self {
             focused_id: Some(id.clone()),
             available_width: None,
+            use_unicode: true,
         }
     }
 
@@ -59,6 +62,7 @@ impl FocusContext {
         Self {
             focused_id: Some(FocusableId::link(id)),
             available_width: None,
+            use_unicode: true,
         }
     }
 
@@ -67,12 +71,19 @@ impl FocusContext {
         Self {
             focused_id: Some(FocusableId::table_cell(table_name, row, col)),
             available_width: None,
+            use_unicode: true,
         }
     }
 
     /// Set the available width for layout decisions
     pub fn with_width(mut self, width: u16) -> Self {
         self.available_width = Some(width);
+        self
+    }
+
+    /// Set whether to use unicode characters
+    pub fn with_unicode(mut self, use_unicode: bool) -> Self {
+        self.use_unicode = use_unicode;
         self
     }
 
@@ -459,13 +470,14 @@ impl DocumentView {
 
     /// Render the visible portion of the document
     pub fn render(&mut self, area: Rect, buf: &mut Buffer, config: &DisplayConfig) {
-        // Build focus context from current focus state, including available width
+        // Build focus context from current focus state, including available width and unicode setting
         let focus = self
             .focus_manager
             .get_current_id()
             .map(|id| FocusContext::from_id(id).with_width(area.width))
             .unwrap_or_default()
-            .with_width(area.width);
+            .with_width(area.width)
+            .with_unicode(config.use_unicode);
 
         let (full_buf, height) = self.document.render_full(area.width, config, &focus);
         self.full_buffer = Some(full_buf);
