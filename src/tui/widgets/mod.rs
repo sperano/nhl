@@ -28,6 +28,9 @@ pub use list_modal::{render_list_modal, ListModalWidget};
 pub mod score_box;
 pub use score_box::{ScoreBox, ScoreBoxStatus};
 
+pub mod big_score;
+pub use big_score::BigScore;
+
 pub mod loading_animation;
 pub use loading_animation::LoadingAnimation;
 

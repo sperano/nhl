@@ -69,11 +69,39 @@ pub fn reduce(
         }
 
         // Scores: SelectGame pushes boxscore document onto stack
-        Action::SelectGame(game_id) => reduce_document_stack(
-            state,
-            &Action::PushDocument(StackedDocument::Boxscore { game_id }),
-        )
-        .unwrap_or_else(|s| (s, Effect::None)),
+        Action::SelectGame(game_id) => {
+            // Look up game data from schedule to get team abbrevs and scores
+            let (away_abbrev, home_abbrev, away_score, home_score) =
+                if let Some(schedule) = &*state.data.schedule {
+                    schedule
+                        .games
+                        .iter()
+                        .find(|g| g.id == game_id)
+                        .map(|g| {
+                            (
+                                g.away_team.abbrev.clone(),
+                                g.home_team.abbrev.clone(),
+                                g.away_team.score.unwrap_or(0),
+                                g.home_team.score.unwrap_or(0),
+                            )
+                        })
+                        .unwrap_or_else(|| ("???".to_string(), "???".to_string(), 0, 0))
+                } else {
+                    ("???".to_string(), "???".to_string(), 0, 0)
+                };
+
+            reduce_document_stack(
+                state,
+                &Action::PushDocument(StackedDocument::Boxscore {
+                    game_id,
+                    away_abbrev,
+                    home_abbrev,
+                    away_score,
+                    home_score,
+                }),
+            )
+            .unwrap_or_else(|s| (s, Effect::None))
+        }
 
         // Standings: Rebuild focusable metadata after view change
         Action::RebuildStandingsFocusable => {
@@ -156,7 +184,7 @@ mod tests {
         // Should push boxscore document onto stack
         assert_eq!(new_state.navigation.document_stack.len(), 1);
         match &new_state.navigation.document_stack[0].document {
-            StackedDocument::Boxscore { game_id } => {
+            StackedDocument::Boxscore { game_id, .. } => {
                 assert_eq!(*game_id, 12345);
             }
             _ => panic!("Expected Boxscore document"),

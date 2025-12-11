@@ -370,10 +370,10 @@ impl StandingsTab {
                 super::super::StackedDocument::TeamDetail { abbrev } => {
                     format!("Team Detail: {}\n\n(Document rendering not yet implemented)\n\nPress ESC to go back", abbrev)
                 }
-                super::super::StackedDocument::PlayerDetail { player_id } => {
+                super::super::StackedDocument::PlayerDetail { player_id, .. } => {
                     format!("Player Detail: {}\n\n(Document rendering not yet implemented)\n\nPress ESC to go back", player_id)
                 }
-                super::super::StackedDocument::Boxscore { game_id } => {
+                super::super::StackedDocument::Boxscore { game_id, .. } => {
                     format!("Boxscore: {}\n\n(Document rendering not yet implemented)\n\nPress ESC to go back", game_id)
                 }
             };

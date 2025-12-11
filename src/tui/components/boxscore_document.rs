@@ -112,22 +112,16 @@ impl BoxscoreDocumentContent {
         ]
     }
 
-    /// Build score section
+    /// Build score section using big digits
     fn build_score(&self) -> Vec<DocumentElement> {
         let boxscore = &self.boxscore;
 
-        let score_text = format!(
-            "{}: {}  |  {}: {}",
-            boxscore.away_team.abbrev,
+        vec![DocumentElement::big_score(
+            &boxscore.away_team.abbrev,
+            &boxscore.home_team.abbrev,
             boxscore.away_team.score,
-            boxscore.home_team.abbrev,
-            boxscore.home_team.score
-        );
-
-        vec![
-            DocumentElement::heading(2, "SCORE"),
-            DocumentElement::text(&score_text),
-        ]
+            boxscore.home_team.score,
+        )]
     }
 
     /// Build a skater table (forwards or defense)

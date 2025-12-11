@@ -198,7 +198,11 @@ impl Component for DemoTab {
                     } else if let Some(player_id_str) = action.strip_prefix("player:") {
                         if let Ok(player_id) = player_id_str.parse::<i64>() {
                             return Effect::Action(Action::PushDocument(
-                                StackedDocument::PlayerDetail { player_id },
+                                StackedDocument::PlayerDetail {
+                                    player_id,
+                                    sweater_number: None,
+                                    last_name: format!("Player {}", player_id),
+                                },
                             ));
                         }
                     }
@@ -597,7 +601,10 @@ mod tests {
 
         // Should return PushDocument action for PlayerDetail
         match effect {
-            Effect::Action(Action::PushDocument(StackedDocument::PlayerDetail { player_id })) => {
+            Effect::Action(Action::PushDocument(StackedDocument::PlayerDetail {
+                player_id,
+                ..
+            })) => {
                 assert_eq!(player_id, 8477492);
             }
             _ => panic!("Expected PushDocument(PlayerDetail), got {:?}", effect),

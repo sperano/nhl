@@ -249,13 +249,13 @@ pub fn get_stacked_document_handler(doc: &StackedDocument) -> Box<dyn StackedDoc
     };
 
     match doc {
-        StackedDocument::Boxscore { game_id } => {
+        StackedDocument::Boxscore { game_id, .. } => {
             Box::new(BoxscoreDocumentHandler { game_id: *game_id })
         }
         StackedDocument::TeamDetail { abbrev } => Box::new(TeamDetailDocumentHandler {
             abbrev: abbrev.clone(),
         }),
-        StackedDocument::PlayerDetail { player_id } => Box::new(PlayerDetailDocumentHandler {
+        StackedDocument::PlayerDetail { player_id, .. } => Box::new(PlayerDetailDocumentHandler {
             player_id: *player_id,
         }),
     }
