@@ -112,22 +112,30 @@ impl BoxscoreDocumentContent {
         ]
     }
 
-    /// Build score section
-    fn build_score(&self) -> Vec<DocumentElement> {
+    /// Build score section - uses big digits if unicode enabled, otherwise text
+    fn build_score(&self, focus: &FocusContext) -> Vec<DocumentElement> {
         let boxscore = &self.boxscore;
 
-        let score_text = format!(
-            "{}: {}  |  {}: {}",
-            boxscore.away_team.abbrev,
-            boxscore.away_team.score,
-            boxscore.home_team.abbrev,
-            boxscore.home_team.score
-        );
-
-        vec![
-            DocumentElement::heading(2, "SCORE"),
-            DocumentElement::text(&score_text),
-        ]
+        if focus.use_unicode {
+            vec![DocumentElement::big_score(
+                &boxscore.away_team.abbrev,
+                &boxscore.home_team.abbrev,
+                boxscore.away_team.score,
+                boxscore.home_team.score,
+            )]
+        } else {
+            let score_text = format!(
+                "{}: {}  |  {}: {}",
+                boxscore.away_team.abbrev,
+                boxscore.away_team.score,
+                boxscore.home_team.abbrev,
+                boxscore.home_team.score
+            );
+            vec![
+                DocumentElement::heading(2, "SCORE"),
+                DocumentElement::text(&score_text),
+            ]
+        }
     }
 
     /// Build a skater table (forwards or defense)
@@ -199,7 +207,7 @@ impl Document for BoxscoreDocumentContent {
         builder = builder.spacer(1);
 
         // Score section
-        for elem in self.build_score() {
+        for elem in self.build_score(focus) {
             builder = builder.element(elem);
         }
         builder = builder.spacer(1);

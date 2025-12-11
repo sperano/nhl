@@ -48,7 +48,7 @@ fn push_document(state: AppState, doc: StackedDocument) -> (AppState, Effect) {
     // Return fetch effect directly based on document type
     // This eliminates the need for runtime to compare old/new state
     let fetch_effect = match &doc {
-        StackedDocument::Boxscore { game_id } => {
+        StackedDocument::Boxscore { game_id, .. } => {
             // Check if we don't already have the data and aren't already loading
             if !new_state.data.boxscores.contains_key(game_id)
                 && !new_state
@@ -81,7 +81,7 @@ fn push_document(state: AppState, doc: StackedDocument) -> (AppState, Effect) {
                 Effect::None
             }
         }
-        StackedDocument::PlayerDetail { player_id } => {
+        StackedDocument::PlayerDetail { player_id, .. } => {
             if !new_state.data.player_data.contains_key(player_id)
                 && !new_state
                     .data
@@ -109,7 +109,7 @@ fn pop_document(state: AppState) -> (AppState, Effect) {
     if let Some(doc_entry) = new_state.navigation.document_stack.pop() {
         // Clear the loading state for the document being popped
         match &doc_entry.document {
-            StackedDocument::Boxscore { game_id } => {
+            StackedDocument::Boxscore { game_id, .. } => {
                 new_state
                     .data
                     .loading
@@ -121,7 +121,7 @@ fn pop_document(state: AppState) -> (AppState, Effect) {
                     .loading
                     .remove(&LoadingKey::TeamRosterStats(abbrev.clone()));
             }
-            StackedDocument::PlayerDetail { player_id } => {
+            StackedDocument::PlayerDetail { player_id, .. } => {
                 new_state
                     .data
                     .loading
@@ -176,11 +176,21 @@ mod tests {
         assert!(matches!(effect, Effect::FetchTeamRosterStats(ref abbrev) if abbrev == "BOS"));
     }
 
+    fn test_boxscore(game_id: i64) -> StackedDocument {
+        StackedDocument::Boxscore {
+            game_id,
+            away_abbrev: "TOR".to_string(),
+            home_abbrev: "BOS".to_string(),
+            away_score: 0,
+            home_score: 0,
+        }
+    }
+
     #[test]
     fn test_push_document_boxscore_returns_fetch_effect() {
         let state = AppState::default();
         let game_id = 2024020001;
-        let panel = StackedDocument::Boxscore { game_id };
+        let panel = test_boxscore(game_id);
 
         let (new_state, effect) = push_document(state, panel);
 
@@ -196,7 +206,7 @@ mod tests {
         // Mark as already loading
         state.data.loading.insert(LoadingKey::Boxscore(game_id));
 
-        let panel = StackedDocument::Boxscore { game_id };
+        let panel = test_boxscore(game_id);
         let (_new_state, effect) = push_document(state, panel);
 
         // Should NOT return fetch effect since we're already loading
@@ -212,7 +222,7 @@ mod tests {
         state
             .navigation
             .document_stack
-            .push(make_entry(StackedDocument::Boxscore { game_id }, None));
+            .push(make_entry(test_boxscore(game_id), None));
         state.data.loading.insert(LoadingKey::Boxscore(game_id));
 
         let (new_state, _) = pop_document(state);

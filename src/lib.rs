@@ -1,3 +1,4 @@
+pub mod big_digits;
 pub mod cache;
 pub mod commands;
 pub mod config;

@@ -10,7 +10,7 @@ use ratatui::{
 };
 
 use crate::config::DisplayConfig;
-use crate::tui::{component::ElementWidget, state::DocumentStackEntry, StackedDocument, Tab};
+use crate::tui::{component::ElementWidget, state::DocumentStackEntry, Tab};
 
 /// Breadcrumb widget that renders a navigation path
 #[derive(Clone)]
@@ -61,11 +61,7 @@ impl BreadcrumbWidget {
         for doc_entry in &self.document_stack {
             spans.push(Span::styled(separator.clone(), separator_style));
 
-            let doc_text = match &doc_entry.document {
-                StackedDocument::Boxscore { game_id } => format!("Boxscore: Game {}", game_id),
-                StackedDocument::TeamDetail { abbrev } => format!("Team: {}", abbrev),
-                StackedDocument::PlayerDetail { player_id } => format!("Player: {}", player_id),
-            };
+            let doc_text = doc_entry.document.label();
 
             spans.push(Span::styled(doc_text, text_style));
         }
@@ -120,6 +116,7 @@ impl ElementWidget for BreadcrumbWidget {
 mod tests {
     use super::*;
     use crate::tui::testing::assert_buffer;
+    use crate::tui::StackedDocument;
     use ratatui::buffer::Buffer;
     use ratatui::layout::Rect;
 
@@ -159,7 +156,7 @@ mod tests {
         assert_buffer(
             &buf,
             &[
-                "Standings ▶ Team: TOR",
+                "Standings ▶ TOR",
                 "────────────────────────────────────────────────────────────────────────────────",
             ],
         );
@@ -170,6 +167,10 @@ mod tests {
         let document_stack = vec![DocumentStackEntry::with_selection(
             StackedDocument::Boxscore {
                 game_id: 2024020001,
+                away_abbrev: "TOR".to_string(),
+                home_abbrev: "BOS".to_string(),
+                away_score: 3,
+                home_score: 2,
             },
             None,
         )];
@@ -183,7 +184,7 @@ mod tests {
         assert_buffer(
             &buf,
             &[
-                "Scores ▶ Boxscore: Game 2024020001",
+                "Scores ▶ TOR:3-BOS:2",
                 "────────────────────────────────────────────────────────────────────────────────",
             ],
         );
@@ -195,11 +196,19 @@ mod tests {
             DocumentStackEntry::with_selection(
                 StackedDocument::Boxscore {
                     game_id: 2024020001,
+                    away_abbrev: "TOR".to_string(),
+                    home_abbrev: "BOS".to_string(),
+                    away_score: 3,
+                    home_score: 2,
                 },
                 None,
             ),
             DocumentStackEntry::with_selection(
-                StackedDocument::PlayerDetail { player_id: 8471675 },
+                StackedDocument::PlayerDetail {
+                    player_id: 8471675,
+                    sweater_number: Some(87),
+                    last_name: "Crosby".to_string(),
+                },
                 None,
             ),
         ];
@@ -213,7 +222,7 @@ mod tests {
         assert_buffer(
             &buf,
             &[
-                "Scores ▶ Boxscore: Game 2024020001 ▶ Player: 8471675",
+                "Scores ▶ TOR:3-BOS:2 ▶ #87 Crosby",
                 "────────────────────────────────────────────────────────────────────────────────",
             ],
         );
@@ -322,7 +331,11 @@ mod tests {
     #[test]
     fn test_breadcrumb_with_player_detail() {
         let document_stack = vec![DocumentStackEntry::with_selection(
-            StackedDocument::PlayerDetail { player_id: 8478402 },
+            StackedDocument::PlayerDetail {
+                player_id: 8478402,
+                sweater_number: Some(97),
+                last_name: "McDavid".to_string(),
+            },
             None,
         )];
 
@@ -335,7 +348,33 @@ mod tests {
         assert_buffer(
             &buf,
             &[
-                "Scores ▶ Player: 8478402",
+                "Scores ▶ #97 McDavid",
+                "────────────────────────────────────────────────────────────────────────────────",
+            ],
+        );
+    }
+
+    #[test]
+    fn test_breadcrumb_player_no_number() {
+        let document_stack = vec![DocumentStackEntry::with_selection(
+            StackedDocument::PlayerDetail {
+                player_id: 8478402,
+                sweater_number: None,
+                last_name: "Smith".to_string(),
+            },
+            None,
+        )];
+
+        let widget = BreadcrumbWidget::new(Tab::Scores, document_stack);
+        let config = DisplayConfig::default();
+
+        let mut buf = Buffer::empty(Rect::new(0, 0, 80, 2));
+        widget.render(buf.area, &mut buf, &config);
+
+        assert_buffer(
+            &buf,
+            &[
+                "Scores ▶ Smith",
                 "────────────────────────────────────────────────────────────────────────────────",
             ],
         );

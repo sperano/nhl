@@ -9,10 +9,11 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 
+use crate::big_digits::BIG_DIGIT_HEIGHT;
 use crate::config::DisplayConfig;
 use crate::tui::component::ElementWidget;
 use crate::tui::components::TableWidget;
-use crate::tui::widgets::{ScoreBox, StandaloneWidget};
+use crate::tui::widgets::{BigScore, ScoreBox, StandaloneWidget};
 
 use super::focus::{FocusableElement, FocusableId, RowPosition};
 use super::link::LinkTarget;
@@ -164,6 +165,21 @@ pub enum DocumentElement {
         /// Focusable elements collected from all three tables
         focusable: Vec<FocusableElement>,
     },
+
+    /// Big score display using large digit font
+    ///
+    /// Renders score with team abbreviations and big digits:
+    /// ```text
+    /// NJD    BUF
+    /// ▟▀▀▙    ▟▀▀▙
+    ///  ▄▄▛ ──   ▗▛
+    ///    █     ▗▛
+    /// ▜▄▄▛    ▄█▄▄
+    /// ```
+    BigScoreElement {
+        /// The BigScore widget
+        big_score: BigScore,
+    },
 }
 
 impl std::fmt::Debug for DocumentElement {
@@ -251,6 +267,11 @@ impl std::fmt::Debug for DocumentElement {
                 .field("team_name", team_name)
                 .field("focusable_count", &focusable.len())
                 .finish(),
+            Self::BigScoreElement { big_score } => f
+                .debug_struct("BigScoreElement")
+                .field("away", &big_score.away_abbrev)
+                .field("home", &big_score.home_abbrev)
+                .finish(),
         }
     }
 }
@@ -324,6 +345,9 @@ impl DocumentElement {
                 };
                 let bottom_border_height = 1;
                 forwards_height + defense_height + goalies_height + bottom_border_height
+            }
+            Self::BigScoreElement { big_score } => {
+                big_score.preferred_height().unwrap_or(BIG_DIGIT_HEIGHT + 1)
             }
         }
     }
@@ -535,6 +559,9 @@ impl DocumentElement {
                     buf,
                     config,
                 );
+            }
+            Self::BigScoreElement { big_score } => {
+                big_score.render(area, buf, config);
             }
         }
     }
@@ -863,6 +890,24 @@ impl DocumentElement {
             defense_table,
             goalies_table,
             focusable,
+        }
+    }
+
+    /// Create a big score element
+    ///
+    /// # Arguments
+    /// - `away_abbrev`: Away team abbreviation (e.g., "NJD")
+    /// - `home_abbrev`: Home team abbreviation (e.g., "BUF")
+    /// - `away_score`: Away team score
+    /// - `home_score`: Home team score
+    pub fn big_score(
+        away_abbrev: impl Into<String>,
+        home_abbrev: impl Into<String>,
+        away_score: i32,
+        home_score: i32,
+    ) -> Self {
+        Self::BigScoreElement {
+            big_score: BigScore::new(away_abbrev, home_abbrev, away_score, home_score),
         }
     }
 }

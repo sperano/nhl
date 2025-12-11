@@ -198,13 +198,13 @@ pub async fn run(client: Arc<dyn NHLDataProvider>, config: Config) -> Result<(),
             || state.navigation.document_stack.iter().any(|doc| {
                 use crate::tui::types::StackedDocument;
                 match &doc.document {
-                    StackedDocument::Boxscore { game_id } => {
+                    StackedDocument::Boxscore { game_id, .. } => {
                         state.data.boxscores.get(game_id).is_none()
                     }
                     StackedDocument::TeamDetail { abbrev } => {
                         state.data.team_roster_stats.get(abbrev).is_none()
                     }
-                    StackedDocument::PlayerDetail { player_id } => {
+                    StackedDocument::PlayerDetail { player_id, .. } => {
                         state.data.player_data.get(player_id).is_none()
                     }
                 }

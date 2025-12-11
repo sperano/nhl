@@ -223,7 +223,7 @@ impl App {
 
     fn render_stacked_document(&self, state: &AppState, doc_entry: &DocumentStackEntry) -> Element {
         match &doc_entry.document {
-            StackedDocument::Boxscore { game_id } => {
+            StackedDocument::Boxscore { game_id, .. } => {
                 let props = BoxscoreDocumentProps {
                     game_id: *game_id,
                     boxscore: state.data.boxscores.get(game_id).cloned(),
@@ -264,7 +264,7 @@ impl App {
                 };
                 TeamDetailDocument.view(&props, &())
             }
-            StackedDocument::PlayerDetail { player_id } => {
+            StackedDocument::PlayerDetail { player_id, .. } => {
                 let props = PlayerDetailDocumentProps {
                     player_id: *player_id,
                     player_data: state.data.player_data.get(player_id).cloned(),

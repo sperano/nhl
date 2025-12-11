@@ -19,9 +19,13 @@ pub(super) struct BoxscoreDocumentHandler {
 impl StackedDocumentHandler for BoxscoreDocumentHandler {
     fn activate(&self, nav: &DocumentNavState, data: &DataState) -> Effect {
         if let Some(idx) = nav.focus_index {
-            if let Some(player_id) = self.get_player_id_at_index(idx, data) {
+            if let Some((player_id, sweater_number, last_name)) =
+                self.get_player_info_at_index(idx, data)
+            {
                 return Effect::Action(Action::PushDocument(StackedDocument::PlayerDetail {
                     player_id,
+                    sweater_number,
+                    last_name,
                 }));
             }
         }
@@ -61,8 +65,12 @@ impl StackedDocumentHandler for BoxscoreDocumentHandler {
 }
 
 impl BoxscoreDocumentHandler {
-    /// Get the player ID at the given focus index
-    pub(super) fn get_player_id_at_index(&self, index: usize, data: &DataState) -> Option<i64> {
+    /// Get the player info (id, sweater_number, last_name) at the given focus index
+    pub(super) fn get_player_info_at_index(
+        &self,
+        index: usize,
+        data: &DataState,
+    ) -> Option<(i64, Option<i32>, String)> {
         let boxscore = data.boxscores.get(&self.game_id)?;
         let away_stats = &boxscore.player_by_game_stats.away_team;
         let home_stats = &boxscore.player_by_game_stats.home_team;
@@ -77,22 +85,40 @@ impl BoxscoreDocumentHandler {
         let home_defense_count = home_stats.defense.len();
 
         if index < away_forwards_count {
-            away_stats.forwards.get(index).map(|p| p.player_id)
+            away_stats
+                .forwards
+                .get(index)
+                .map(|p| (p.player_id, Some(p.sweater_number), p.name.default.clone()))
         } else if index < away_forwards_count + away_defense_count {
             let defense_idx = index - away_forwards_count;
-            away_stats.defense.get(defense_idx).map(|p| p.player_id)
+            away_stats
+                .defense
+                .get(defense_idx)
+                .map(|p| (p.player_id, Some(p.sweater_number), p.name.default.clone()))
         } else if index < away_total {
             let goalie_idx = index - away_forwards_count - away_defense_count;
-            away_stats.goalies.get(goalie_idx).map(|p| p.player_id)
+            away_stats
+                .goalies
+                .get(goalie_idx)
+                .map(|p| (p.player_id, Some(p.sweater_number), p.name.default.clone()))
         } else if index < away_total + home_forwards_count {
             let forward_idx = index - away_total;
-            home_stats.forwards.get(forward_idx).map(|p| p.player_id)
+            home_stats
+                .forwards
+                .get(forward_idx)
+                .map(|p| (p.player_id, Some(p.sweater_number), p.name.default.clone()))
         } else if index < away_total + home_forwards_count + home_defense_count {
             let defense_idx = index - away_total - home_forwards_count;
-            home_stats.defense.get(defense_idx).map(|p| p.player_id)
+            home_stats
+                .defense
+                .get(defense_idx)
+                .map(|p| (p.player_id, Some(p.sweater_number), p.name.default.clone()))
         } else {
             let goalie_idx = index - away_total - home_forwards_count - home_defense_count;
-            home_stats.goalies.get(goalie_idx).map(|p| p.player_id)
+            home_stats
+                .goalies
+                .get(goalie_idx)
+                .map(|p| (p.player_id, Some(p.sweater_number), p.name.default.clone()))
         }
     }
 }
@@ -122,17 +148,26 @@ impl StackedDocumentHandler for TeamDetailDocumentHandler {
 
         let num_skaters = sorted_skaters.len();
 
-        let player_id = if idx < num_skaters {
-            sorted_skaters.get(idx).map(|p| p.player_id)
+        // Note: ClubStats doesn't have sweater_number, so we pass None
+        let player_info: Option<(i64, Option<i32>, String)> = if idx < num_skaters {
+            sorted_skaters
+                .get(idx)
+                .map(|p| (p.player_id, None, p.last_name.default.clone()))
         } else {
             let goalie_idx = idx - num_skaters;
-            sorted_goalies.get(goalie_idx).map(|g| g.player_id)
+            sorted_goalies
+                .get(goalie_idx)
+                .map(|g| (g.player_id, None, g.last_name.default.clone()))
         };
 
-        match player_id {
-            Some(id) => Effect::Action(Action::PushDocument(StackedDocument::PlayerDetail {
-                player_id: id,
-            })),
+        match player_info {
+            Some((player_id, sweater_number, last_name)) => {
+                Effect::Action(Action::PushDocument(StackedDocument::PlayerDetail {
+                    player_id,
+                    sweater_number,
+                    last_name,
+                }))
+            }
             None => Effect::None,
         }
     }
