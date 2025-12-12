@@ -55,6 +55,9 @@ pub static THEME_ID_CYAN: &str = "cyan";
 pub static THEME_ID_NORTH_STARS: &str = "north_stars";
 pub static THEME_ID_HABS: &str = "habs";
 pub static THEME_ID_SABRES: &str = "sabres";
+pub static THEME_ID_SHARKS: &str = "sharks";
+pub static THEME_ID_BRUINS: &str = "bruins";
+pub static THEME_ID_ISLANDERS: &str = "islanders";
 
 pub static THEME_ORANGE: Theme = Theme {
     name: "Orange",
@@ -155,6 +158,33 @@ pub static THEME_SABRES: Theme = Theme {
     fg3_dim: OnceLock::new(),
 };
 
+pub static THEME_SHARKS: Theme = Theme {
+    name: "Sharks",
+    fg1: Color::Rgb(255, 255, 255),
+    fg2: Color::Rgb(0, 109, 117),
+    fg3: Color::Rgb(234, 114, 0),
+    fg2_dim: OnceLock::new(),
+    fg3_dim: OnceLock::new(),
+};
+
+pub static THEME_BRUINS: Theme = Theme {
+    name: "Bruins",
+    fg1: Color::Rgb(255, 255, 255),
+    fg2: Color::Rgb(252, 181, 20),
+    fg3: Color::Rgb(196, 196, 196),
+    fg2_dim: OnceLock::new(),
+    fg3_dim: OnceLock::new(),
+};
+
+pub static THEME_ISLANDERS: Theme = Theme {
+    name: "Islanders",
+    fg1: Color::Rgb(255, 255, 255),
+    fg2: Color::Rgb(252, 76, 2),
+    fg3: Color::Rgb(0, 58, 162),
+    fg2_dim: OnceLock::new(),
+    fg3_dim: OnceLock::new(),
+};
+
 pub static THEMES: phf::Map<&'static str, &Theme> = phf_map! {
     "orange" => &THEME_ORANGE,
     "green"  => &THEME_GREEN,
@@ -167,6 +197,9 @@ pub static THEMES: phf::Map<&'static str, &Theme> = phf_map! {
     "north_stars" => &THEME_NORTH_STARS,
     "habs" => &THEME_HABS,
     "sabres" => &THEME_SABRES,
+    "sharks" => &THEME_SHARKS,
+    "bruins" => &THEME_BRUINS,
+    "islanders" => &THEME_ISLANDERS,
 };
 
 impl Default for Theme {
