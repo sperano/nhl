@@ -83,6 +83,11 @@ pub fn reduce_settings(
                 "western_teams_first" => {
                     new_state.system.config.display_standings_western_first =
                         !new_state.system.config.display_standings_western_first;
+                    // Rebuild standings focusable metadata so team selection uses the new order
+                    let config = new_state.system.config.clone();
+                    let save_effect = save_config_effect(config);
+                    let rebuild_effect = Effect::Action(Action::RebuildStandingsFocusable);
+                    return (new_state, Effect::Batch(vec![save_effect, rebuild_effect]));
                 }
                 _ => {
                     debug!("SETTINGS: Unknown boolean setting: {}", key);
