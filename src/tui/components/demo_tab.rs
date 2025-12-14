@@ -215,9 +215,9 @@ impl Component for DemoTab {
             }
 
             DemoTabMsg::EnterFocus => {
-                // Focus first item and signal global focus state change
+                // Focus first item (global focus_in_content already set by reducer)
                 state.focus_first_item();
-                Effect::Action(Action::EnterContentFocus)
+                Effect::None
             }
 
             DemoTabMsg::ExitFocus => {

@@ -511,17 +511,8 @@ pub fn key_to_action(
 
     // 5. Handle navigation based on focus level
     if !content_focused {
-        // Demo tab special case: single Down press enters content AND focuses first item
-        #[cfg(feature = "development")]
-        if current_tab == Tab::Demo && key.code == KeyCode::Down {
-            debug!("KEY: Down pressed on tab bar (Demo tab) - entering content with focus");
-            return Some(Action::ComponentMessage {
-                path: DEMO_TAB_PATH.to_string(),
-                message: Box::new(DemoTabMsg::EnterFocus),
-            });
-        }
-
         // TAB BAR FOCUSED: delegate to tab bar handler
+        // Note: Demo tab focus initialization is handled by enter_content_focus reducer
         let action = handle_tab_bar_navigation(key.code);
         if action.is_some() {
             debug!("KEY: Tab bar navigation: {:?}", action);

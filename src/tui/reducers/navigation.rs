@@ -2,6 +2,10 @@ use tracing::{debug, trace};
 
 use crate::tui::action::Action;
 use crate::tui::component::Effect;
+#[cfg(feature = "development")]
+use crate::tui::components::demo_tab::DemoTabMsg;
+#[cfg(feature = "development")]
+use crate::tui::constants::DEMO_TAB_PATH;
 use crate::tui::state::AppState;
 use crate::tui::types::Tab;
 
@@ -79,8 +83,15 @@ fn enter_content_focus(state: AppState) -> (AppState, Effect) {
             .system
             .set_status_message("↑↓: move selection  Shift+↑↓: scroll  Esc: go back".to_string());
 
-        // Demo tab focus is managed by component state
-        // Component initializes focus to first element when needed
+        // Send EnterFocus to Demo tab component to focus first item
+        // This happens AFTER focus_in_content is set, avoiding visual flash
+        return (
+            new_state,
+            Effect::Action(Action::ComponentMessage {
+                path: DEMO_TAB_PATH.to_string(),
+                message: Box::new(DemoTabMsg::EnterFocus),
+            }),
+        );
     }
 
     (new_state, Effect::None)
