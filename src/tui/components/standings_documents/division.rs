@@ -123,9 +123,13 @@ impl Document for DivisionStandingsDocument {
         // Build right column (Group with 2 division tables)
         let right_group = Self::build_division_group(&right_divs, right_prefix, focus);
 
-        // Use Row element to place columns side-by-side
+        // Use Row element to place columns side-by-side with center alignment
+        const GAP: u16 = 4;
         DocumentBuilder::new()
-            .row(vec![left_group, right_group])
+            .element(DocumentElement::row_center_with_gap(
+                vec![left_group, right_group],
+                GAP,
+            ))
             .build()
     }
 

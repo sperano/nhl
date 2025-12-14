@@ -16,8 +16,8 @@ use super::{DocumentElement, RowAlignment};
 /// Fixed width for team boxscore
 pub const TEAM_BOXSCORE_WIDTH: u16 = 85;
 
-/// Gap between two team boxscores when displayed side by side
-pub const TEAM_BOXSCORE_GAP: u16 = 2;
+/// Gap between two team boxscores when displayed side by side (centered)
+pub const TEAM_BOXSCORE_GAP: u16 = 4;
 
 /// Minimum width needed to display two team boxscores side by side
 pub const TEAM_BOXSCORE_SIDE_BY_SIDE_WIDTH: u16 = TEAM_BOXSCORE_WIDTH * 2 + TEAM_BOXSCORE_GAP;
@@ -41,23 +41,31 @@ pub(super) fn render_row(
     if has_preferred_widths {
         // Calculate total width of all children
         let total_children_width: u16 = children.iter().filter_map(get_preferred_width).sum();
+        let num_gaps = children.len().saturating_sub(1) as u16;
+        let total_gaps_width = gap * num_gaps;
+        let total_content_width = total_children_width + total_gaps_width;
 
-        // Calculate gap based on alignment
-        let actual_gap = match align {
-            RowAlignment::Left => gap,
+        // Calculate starting x offset and actual gap based on alignment
+        let (start_x, actual_gap) = match align {
+            RowAlignment::Left => (area.x, gap),
             RowAlignment::Spread => {
                 // Calculate maximum gap to spread children across available width
-                let num_gaps = children.len().saturating_sub(1) as u16;
-                if num_gaps > 0 {
+                let actual_gap = if num_gaps > 0 {
                     let remaining_space = area.width.saturating_sub(total_children_width);
                     (remaining_space / num_gaps).max(gap)
                 } else {
                     0
-                }
+                };
+                (area.x, actual_gap)
+            }
+            RowAlignment::Center => {
+                // Center the group of children with minimum gap between them
+                let left_margin = area.width.saturating_sub(total_content_width) / 2;
+                (area.x + left_margin, gap)
             }
         };
 
-        let mut x_offset = area.x;
+        let mut x_offset = start_x;
         for child in children {
             let child_width = get_preferred_width(child).unwrap_or(0);
             let child_area = Rect::new(x_offset, area.y, child_width, area.height);

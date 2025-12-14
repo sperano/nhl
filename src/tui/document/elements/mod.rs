@@ -26,6 +26,8 @@ pub enum RowAlignment {
     /// Spread children across available width, maximizing gap
     #[default]
     Spread,
+    /// Center children with minimum gap between them
+    Center,
 }
 
 use render::{
@@ -750,6 +752,24 @@ impl DocumentElement {
             children,
             gap,
             align: RowAlignment::Left,
+        }
+    }
+
+    /// Create a horizontal row with center alignment
+    pub fn row_center(children: Vec<DocumentElement>) -> Self {
+        Self::Row {
+            children,
+            gap: 2,
+            align: RowAlignment::Center,
+        }
+    }
+
+    /// Create a horizontal row with center alignment and custom gap
+    pub fn row_center_with_gap(children: Vec<DocumentElement>, gap: u16) -> Self {
+        Self::Row {
+            children,
+            gap,
+            align: RowAlignment::Center,
         }
     }
 

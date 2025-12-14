@@ -282,13 +282,12 @@ impl Component for SettingsTab {
         let active_key = self.category_to_key(props.selected_category);
 
         // Create the base element (tabbed panel)
-        // Settings doesn't have browse mode, so content is focused when tab is active
         let base_element = TabbedPanel.view(
             &TabbedPanelProps {
                 active_key,
                 tabs,
-                focused: props.focused,
-                content_focused: props.focused,
+                focused: props.focused && !state.is_browse_mode(),
+                content_focused: props.focused && state.is_browse_mode(),
             },
             &(),
         );
