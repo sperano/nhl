@@ -210,7 +210,7 @@ pub(super) fn render_link(
 
     let prefix_len = prefix.chars().count() as u16;
 
-    buf.set_string(area.x, area.y, &prefix, base_style);
+    buf.set_string(area.x, area.y, &prefix, ctx.boxchar_style());
     buf.set_string(area.x + prefix_len, area.y, display, link_style);
 }
 

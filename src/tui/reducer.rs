@@ -159,7 +159,7 @@ mod tests {
 
         assert_eq!(new_state.navigation.current_tab, Tab::Settings);
         assert!(new_state.navigation.document_stack.is_empty());
-        assert!(!new_state.navigation.content_focused);
+        assert!(!new_state.navigation.focus_in_content);
     }
 
     #[test]

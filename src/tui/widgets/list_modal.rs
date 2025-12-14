@@ -10,7 +10,7 @@ use crate::tui::component::ElementWidget;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    widgets::{Block, Borders, Clear, Widget},
+    widgets::{Block, Borders, Widget},
 };
 use unicode_width::UnicodeWidthStr;
 
@@ -82,10 +82,18 @@ pub fn render_list_modal(
         height: modal_height.min(area.height),
     };
 
-    // Clear the area behind the modal
-    Clear.render(modal_area, buf);
+    // Fill modal area with theme background
+    let bg_style = ctx.base_style();
+    for y in modal_area.y..modal_area.bottom() {
+        for x in modal_area.x..modal_area.right() {
+            if let Some(cell) = buf.cell_mut((x, y)) {
+                cell.set_char(' ');
+                cell.set_style(bg_style);
+            }
+        }
+    }
 
-    // Render border with fg3
+    // Render border with boxchar_fg
     let border_style = if let Some(theme) = ctx.theme() {
         ctx.base_style().fg(theme.boxchar_fg)
     } else {
@@ -106,16 +114,16 @@ pub fn render_list_modal(
 
     let mut y = inner.y;
 
-    // Determine text style based on theme
+    // Text style uses theme fg with theme bg
     let text_style = if let Some(theme) = ctx.theme() {
         ctx.base_style().fg(theme.fg)
     } else {
         ctx.base_style()
     };
 
-    // Determine selector style based on theme
+    // Selector style uses boxchar_fg with theme bg
     let selector_style = if let Some(theme) = ctx.theme() {
-        ctx.base_style().fg(theme.fg)
+        ctx.base_style().fg(theme.boxchar_fg)
     } else {
         ctx.base_style()
     };

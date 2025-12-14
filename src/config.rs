@@ -5,8 +5,10 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
-//const DARKENING_FACTOR: f32 = 0.5;
-const DARKENING_FACTOR: f32 = 0.8;
+/// Default darkening factor for unfocused elements
+const DEFAULT_DARKENING_FACTOR: f32 = 0.5;
+/// Darkening factor for themes with bright backgrounds (like Habs)
+const BRIGHT_BG_DARKENING_FACTOR: f32 = 0.85;
 
 /// Default refresh interval in seconds for background data fetching
 pub const DEFAULT_REFRESH_INTERVAL_SECONDS: u32 = 60;
@@ -43,6 +45,8 @@ pub struct Theme {
     #[serde(deserialize_with = "deserialize_color")]
     #[serde(serialize_with = "serialize_color")]
     pub boxchar_fg: Color,
+    /// Factor for darkening colors when unfocused (0.0 = black, 1.0 = no change)
+    pub darkening_factor: f32,
     #[serde(skip)]
     fg_dim: OnceLock<Color>,
     #[serde(skip)]
@@ -73,6 +77,7 @@ impl Theme {
         boxchar_fg: Color,
         selection_text_fg: Color,
         selection_text_bg: Color,
+        darkening_factor: f32,
     ) -> Self {
         Self {
             name,
@@ -80,6 +85,7 @@ impl Theme {
             emphasis_fg,
             fg,
             boxchar_fg,
+            darkening_factor,
             fg_dim: OnceLock::new(),
             boxchar_fg_dim: OnceLock::new(),
             bg_dim: OnceLock::new(),
@@ -117,6 +123,7 @@ pub static THEME_ORANGE: Theme = Theme::new(
     Color::Rgb(226, 108, 34),
     Color::Rgb(0, 0, 0),
     Color::Rgb(255, 175, 64),
+    DEFAULT_DARKENING_FACTOR,
 );
 
 pub static THEME_GREEN: Theme = Theme::new(
@@ -127,6 +134,7 @@ pub static THEME_GREEN: Theme = Theme::new(
     Color::Rgb(0, 255, 0),
     Color::LightBlue,
     Color::Yellow,
+    DEFAULT_DARKENING_FACTOR,
 );
 
 pub static THEME_BLUE: Theme = Theme::new(
@@ -137,6 +145,7 @@ pub static THEME_BLUE: Theme = Theme::new(
     Color::Rgb(0, 95, 255),
     Color::LightBlue,
     Color::Yellow,
+    DEFAULT_DARKENING_FACTOR,
 );
 
 pub static THEME_PURPLE: Theme = Theme::new(
@@ -147,6 +156,7 @@ pub static THEME_PURPLE: Theme = Theme::new(
     Color::Rgb(135, 95, 175),
     Color::LightBlue,
     Color::Yellow,
+    DEFAULT_DARKENING_FACTOR,
 );
 
 pub static THEME_WHITE: Theme = Theme::new(
@@ -157,6 +167,7 @@ pub static THEME_WHITE: Theme = Theme::new(
     Color::Rgb(128, 128, 128),
     Color::LightBlue,
     Color::Yellow,
+    DEFAULT_DARKENING_FACTOR,
 );
 
 pub static THEME_RED: Theme = Theme::new(
@@ -167,6 +178,7 @@ pub static THEME_RED: Theme = Theme::new(
     Color::Rgb(255, 0, 0),
     Color::LightBlue,
     Color::Yellow,
+    DEFAULT_DARKENING_FACTOR,
 );
 
 pub static THEME_YELLOW: Theme = Theme::new(
@@ -177,6 +189,7 @@ pub static THEME_YELLOW: Theme = Theme::new(
     Color::Rgb(255, 215, 0),
     Color::LightBlue,
     Color::Yellow,
+    DEFAULT_DARKENING_FACTOR,
 );
 
 pub static THEME_CYAN: Theme = Theme::new(
@@ -187,6 +200,7 @@ pub static THEME_CYAN: Theme = Theme::new(
     Color::Rgb(0, 255, 255),
     Color::LightBlue,
     Color::Yellow,
+    DEFAULT_DARKENING_FACTOR,
 );
 
 pub static THEME_NORTH_STARS: Theme = Theme::new(
@@ -197,6 +211,7 @@ pub static THEME_NORTH_STARS: Theme = Theme::new(
     Color::Rgb(0, 122, 51),
     Color::LightBlue,
     Color::Yellow,
+    DEFAULT_DARKENING_FACTOR,
 );
 
 pub static THEME_HABS: Theme = Theme::new(
@@ -207,6 +222,7 @@ pub static THEME_HABS: Theme = Theme::new(
     Color::Rgb(45, 53, 124),
     Color::Rgb(255, 255, 255),
     Color::Rgb(45, 53, 124),
+    BRIGHT_BG_DARKENING_FACTOR,
 );
 
 pub static THEME_SABRES: Theme = Theme::new(
@@ -217,6 +233,7 @@ pub static THEME_SABRES: Theme = Theme::new(
     Color::Rgb(0, 48, 135),
     Color::LightBlue,
     Color::Yellow,
+    DEFAULT_DARKENING_FACTOR,
 );
 
 pub static THEME_SHARKS: Theme = Theme::new(
@@ -227,6 +244,7 @@ pub static THEME_SHARKS: Theme = Theme::new(
     Color::Rgb(234, 114, 0),
     Color::LightBlue,
     Color::Yellow,
+    DEFAULT_DARKENING_FACTOR,
 );
 
 pub static THEME_BRUINS: Theme = Theme::new(
@@ -237,6 +255,7 @@ pub static THEME_BRUINS: Theme = Theme::new(
     Color::Rgb(196, 196, 196),
     Color::LightBlue,
     Color::Yellow,
+    DEFAULT_DARKENING_FACTOR,
 );
 
 pub static THEME_ISLANDERS: Theme = Theme::new(
@@ -247,6 +266,7 @@ pub static THEME_ISLANDERS: Theme = Theme::new(
     Color::Rgb(0, 58, 162),
     Color::LightBlue,
     Color::Yellow,
+    DEFAULT_DARKENING_FACTOR,
 );
 
 pub static THEME_FLAMES: Theme = Theme::new(
@@ -257,6 +277,7 @@ pub static THEME_FLAMES: Theme = Theme::new(
     Color::Rgb(241, 190, 72),
     Color::LightBlue,
     Color::Yellow,
+    DEFAULT_DARKENING_FACTOR,
 );
 
 pub static THEME_RED_WINGS: Theme = Theme::new(
@@ -267,6 +288,7 @@ pub static THEME_RED_WINGS: Theme = Theme::new(
     Color::Rgb(255, 255, 255),
     Color::LightBlue,
     Color::Yellow,
+    DEFAULT_DARKENING_FACTOR,
 );
 
 pub static THEMES: phf::Map<&'static str, &Theme> = phf_map! {
@@ -295,46 +317,46 @@ impl Default for Theme {
 }
 
 impl Theme {
-    /// Get a 50% darker version of fg, computed lazily and cached
+    /// Get a darkened version of fg, computed lazily and cached
     pub fn fg_dark(&self) -> Color {
         *self
             .fg_dim
-            .get_or_init(|| darken_color(self.fg, DARKENING_FACTOR))
+            .get_or_init(|| darken_color(self.fg, self.darkening_factor))
     }
 
-    /// Get a 50% darker version of boxchar_fg, computed lazily and cached
+    /// Get a darkened version of boxchar_fg, computed lazily and cached
     pub fn boxchar_fg_dark(&self) -> Color {
         *self
             .boxchar_fg_dim
-            .get_or_init(|| darken_color(self.boxchar_fg, DARKENING_FACTOR))
+            .get_or_init(|| darken_color(self.boxchar_fg, self.darkening_factor))
     }
 
-    /// Get a 50% darker version of bg, computed lazily and cached
+    /// Get a darkened version of bg, computed lazily and cached
     pub fn bg_dark(&self) -> Option<Color> {
         *self
             .bg_dim
-            .get_or_init(|| self.bg.map(|c| darken_color(c, DARKENING_FACTOR)))
+            .get_or_init(|| self.bg.map(|c| darken_color(c, self.darkening_factor)))
     }
 
-    /// Get a 50% darker version of selection_text_fg, computed lazily and cached
+    /// Get a darkened version of selection_text_fg, computed lazily and cached
     pub fn selection_text_fg_dark(&self) -> Color {
         *self
             .selection_text_fg_dim
-            .get_or_init(|| darken_color(self.selection_text_fg, DARKENING_FACTOR))
+            .get_or_init(|| darken_color(self.selection_text_fg, self.darkening_factor))
     }
 
-    /// Get a 50% darker version of selection_text_bg, computed lazily and cached
+    /// Get a darkened version of selection_text_bg, computed lazily and cached
     pub fn selection_text_bg_dark(&self) -> Color {
         *self
             .selection_text_bg_dim
-            .get_or_init(|| darken_color(self.selection_text_bg, DARKENING_FACTOR))
+            .get_or_init(|| darken_color(self.selection_text_bg, self.darkening_factor))
     }
 
-    /// Get a 50% darker version of emphasis_fg, computed lazily and cached
+    /// Get a darkened version of emphasis_fg, computed lazily and cached
     pub fn emphasis_fg_dark(&self) -> Color {
         *self
             .emphasis_fg_dim
-            .get_or_init(|| darken_color(self.emphasis_fg, DARKENING_FACTOR))
+            .get_or_init(|| darken_color(self.emphasis_fg, self.darkening_factor))
     }
 }
 
@@ -1056,28 +1078,29 @@ theme = "{}"
 
     #[test]
     fn test_theme_dark_colors() {
-        // Test fg2_dark returns 50% darker (50% of original)
-        let orange_fg2 = THEME_ORANGE.fg;
-        let orange_fg2_dark = THEME_ORANGE.fg_dark();
+        // Test fg_dark returns darkened color based on theme's darkening_factor
+        let orange_fg = THEME_ORANGE.fg;
+        let orange_fg_dark = THEME_ORANGE.fg_dark();
+        let factor = THEME_ORANGE.darkening_factor;
 
-        match (orange_fg2, orange_fg2_dark) {
+        match (orange_fg, orange_fg_dark) {
             (Color::Rgb(r, g, b), Color::Rgb(rd, gd, bd)) => {
-                assert_eq!(rd, (r as f32 * DARKENING_FACTOR) as u8);
-                assert_eq!(gd, (g as f32 * DARKENING_FACTOR) as u8);
-                assert_eq!(bd, (b as f32 * DARKENING_FACTOR) as u8);
+                assert_eq!(rd, (r as f32 * factor) as u8);
+                assert_eq!(gd, (g as f32 * factor) as u8);
+                assert_eq!(bd, (b as f32 * factor) as u8);
             }
             _ => panic!("Expected RGB colors"),
         }
 
-        // Test fg3_dark returns 50% darker (50% of original)
-        let orange_fg3 = THEME_ORANGE.boxchar_fg;
-        let orange_fg3_dark = THEME_ORANGE.boxchar_fg_dark();
+        // Test boxchar_fg_dark returns darkened color based on theme's darkening_factor
+        let orange_boxchar_fg = THEME_ORANGE.boxchar_fg;
+        let orange_boxchar_fg_dark = THEME_ORANGE.boxchar_fg_dark();
 
-        match (orange_fg3, orange_fg3_dark) {
+        match (orange_boxchar_fg, orange_boxchar_fg_dark) {
             (Color::Rgb(r, g, b), Color::Rgb(rd, gd, bd)) => {
-                assert_eq!(rd, (r as f32 * DARKENING_FACTOR) as u8);
-                assert_eq!(gd, (g as f32 * DARKENING_FACTOR) as u8);
-                assert_eq!(bd, (b as f32 * DARKENING_FACTOR) as u8);
+                assert_eq!(rd, (r as f32 * factor) as u8);
+                assert_eq!(gd, (g as f32 * factor) as u8);
+                assert_eq!(bd, (b as f32 * factor) as u8);
             }
             _ => panic!("Expected RGB colors"),
         }

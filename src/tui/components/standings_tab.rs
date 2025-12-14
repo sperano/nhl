@@ -30,7 +30,7 @@ use crate::tui::types::StackedDocument;
 #[derive(Clone, Debug)]
 pub struct StandingsTabState {
     pub view: GroupBy,
-    // Document navigation state (embedded, browse_mode derived from focus_index)
+    // Document navigation state (embedded, has_item_focus derived from focus_index)
     // Contains focusable_ids, link_targets, positions, etc.
     pub doc_nav: DocumentNavState,
 }
@@ -141,7 +141,7 @@ impl Component for StandingsTab {
                     GroupBy::League => GroupBy::Conference,
                 };
                 // Reset focus/scroll when changing views
-                state.exit_browse_mode();
+                state.clear_item_focus();
                 // Signal that focusable metadata needs to be rebuilt
                 Effect::Action(crate::tui::action::Action::RebuildStandingsFocusable)
             }
@@ -153,16 +153,16 @@ impl Component for StandingsTab {
                     GroupBy::League => GroupBy::Wildcard,
                 };
                 // Reset focus/scroll when changing views
-                state.exit_browse_mode();
+                state.clear_item_focus();
                 // Signal that focusable metadata needs to be rebuilt
                 Effect::Action(crate::tui::action::Action::RebuildStandingsFocusable)
             }
             StandingsTabMsg::EnterBrowseMode => {
-                state.enter_browse_mode();
+                state.focus_first_item();
                 Effect::None
             }
             StandingsTabMsg::ExitBrowseMode => {
-                state.exit_browse_mode();
+                state.clear_item_focus();
                 Effect::None
             }
 
@@ -209,7 +209,7 @@ impl StandingsTab {
     fn handle_key(&mut self, key: KeyEvent, state: &mut StandingsTabState) -> Effect {
         use crate::tui::nav_handler::key_to_nav_msg;
 
-        if state.is_browse_mode() {
+        if state.has_item_focus() {
             // Browse mode - arrow keys navigate teams
 
             // Try standard navigation first (handles Tab, arrows, PageUp/Down, etc.)
@@ -263,8 +263,8 @@ impl StandingsTab {
             &TabbedPanelProps {
                 active_key: state.view.name().to_string(),
                 tabs,
-                focused: props.focused && !state.is_browse_mode(),
-                content_focused: props.focused && state.is_browse_mode(),
+                focused: props.focused && !state.has_item_focus(),
+                content_has_focus: props.focused && state.has_item_focus(),
             },
             &(),
         )
@@ -311,7 +311,7 @@ impl StandingsTab {
             props.config.clone(),
             state.doc_nav.focus_index,
             state.doc_nav.scroll_offset,
-            props.focused && state.is_browse_mode(),
+            props.focused && state.has_item_focus(),
         )))
     }
 
@@ -330,7 +330,7 @@ impl StandingsTab {
             props.config.clone(),
             state.doc_nav.focus_index,
             state.doc_nav.scroll_offset,
-            props.focused && state.is_browse_mode(),
+            props.focused && state.has_item_focus(),
         )))
     }
 
@@ -349,7 +349,7 @@ impl StandingsTab {
             props.config.clone(),
             state.doc_nav.focus_index,
             state.doc_nav.scroll_offset,
-            props.focused && state.is_browse_mode(),
+            props.focused && state.has_item_focus(),
         )))
     }
 
@@ -368,7 +368,7 @@ impl StandingsTab {
             props.config.clone(),
             state.doc_nav.focus_index,
             state.doc_nav.scroll_offset,
-            props.focused && state.is_browse_mode(),
+            props.focused && state.has_item_focus(),
         )))
     }
 
@@ -616,38 +616,38 @@ mod tests {
         let config = DisplayConfig::default();
         let buf = render_element_to_buffer(&element, RENDER_WIDTH, RENDER_HEIGHT, &config);
 
-        // Division view now uses document system with two Groups in a Row
+        // Division view now uses document system with two Groups in a Row (centered with gap 4)
         // Layout: Atlantic + Metropolitan on left, Central + Pacific on right
         // (when western_first = false, which is the default)
         // Note: Tab bar has leading space, document content has left/right margins
         assert_buffer(&buf, &[
             " Wildcard │ Division │ Conference │ League",
             "──────────┴──────────┴────────────┴─────────────────────────────────────────────────────────────────────────────────────",
-            "   Atlantic                                                    Central",
+            "   Atlantic                                                     Central",
             " ",
-            "   Team                          GP     W    L   OT    PTS     Team                          GP     W    L   OT    PTS",
-            "   ───────────────────────────────────────────────────────     ───────────────────────────────────────────────────────",
-            "   Panthers                      19    14    3    2     30     Avalanche                     19    16    2    1     33",
-            "   Bruins                        18    13    4    1     27     Stars                         20    14    4    2     30",
-            "   Maple Leafs                   19    12    5    2     26     Jets                          19    13    5    1     27",
-            "   Lightning                     18    11    6    1     23     Wild                          19    11    6    2     24",
-            "   Canadiens                     18    10    5    3     23     Predators                     19    10    7    2     22",
-            "   Senators                      18     9    7    2     20     Blues                         19     8    8    3     19",
-            "   Red Wings                     18     8    8    2     18     Blackhawks                    18     7   10    1     15",
-            "   Sabres                        18     6   10    2     14     Coyotes                       18     4   13    1      9",
+            "   Team                          GP     W    L   OT    PTS      Team                          GP     W    L   OT    PTS",
+            "   ───────────────────────────────────────────────────────      ───────────────────────────────────────────────────────",
+            "   Panthers                      19    14    3    2     30      Avalanche                     19    16    2    1     33",
+            "   Bruins                        18    13    4    1     27      Stars                         20    14    4    2     30",
+            "   Maple Leafs                   19    12    5    2     26      Jets                          19    13    5    1     27",
+            "   Lightning                     18    11    6    1     23      Wild                          19    11    6    2     24",
+            "   Canadiens                     18    10    5    3     23      Predators                     19    10    7    2     22",
+            "   Senators                      18     9    7    2     20      Blues                         19     8    8    3     19",
+            "   Red Wings                     18     8    8    2     18      Blackhawks                    18     7   10    1     15",
+            "   Sabres                        18     6   10    2     14      Coyotes                       18     4   13    1      9",
             " ",
-            "   Metropolitan                                                Pacific",
+            "   Metropolitan                                                 Pacific",
             " ",
-            "   Team                          GP     W    L   OT    PTS     Team                          GP     W    L   OT    PTS",
-            "   ───────────────────────────────────────────────────────     ───────────────────────────────────────────────────────",
-            "   Devils                        18    15    2    1     31     Golden Knights                19    15    3    1     31",
-            "   Hurricanes                    19    14    3    2     30     Oilers                        20    14    4    2     30",
-            "   Rangers                       18    12    5    1     25     Kings                         19    12    6    1     25",
-            "   Penguins                      19    11    6    2     24     Kraken                        19    11    6    2     24",
-            "   Capitals                      18    10    7    1     21     Canucks                       19    10    7    2     22",
-            "   Islanders                     18     9    7    2     20     Flames                        19     9    8    2     20",
-            "   Flyers                        18     8    9    1     17     Ducks                         19     7   10    2     16",
-            "   Blue Jackets                  18     5   11    2     12     Sharks                        18     5   12    1     11",
+            "   Team                          GP     W    L   OT    PTS      Team                          GP     W    L   OT    PTS",
+            "   ───────────────────────────────────────────────────────      ───────────────────────────────────────────────────────",
+            "   Devils                        18    15    2    1     31      Golden Knights                19    15    3    1     31",
+            "   Hurricanes                    19    14    3    2     30      Oilers                        20    14    4    2     30",
+            "   Rangers                       18    12    5    1     25      Kings                         19    12    6    1     25",
+            "   Penguins                      19    11    6    2     24      Kraken                        19    11    6    2     24",
+            "   Capitals                      18    10    7    1     21      Canucks                       19    10    7    2     22",
+            "   Islanders                     18     9    7    2     20      Flames                        19     9    8    2     20",
+            "   Flyers                        18     8    9    1     17      Ducks                         19     7   10    2     16",
+            "   Blue Jackets                  18     5   11    2     12      Sharks                        18     5   12    1     11",
             " ",
             " ",
             " ",
@@ -686,31 +686,31 @@ mod tests {
         let config = DisplayConfig::default();
         let buf = render_element_to_buffer(&element, RENDER_WIDTH, RENDER_HEIGHT, &config);
 
-        // Conference view now uses document system with teams sorted by points
+        // Conference view now uses document system with teams sorted by points (centered with gap 4)
         // Note: Tab bar has leading space, document content has left/right margins (2 chars total)
         assert_buffer(&buf, &[
             " Wildcard │ Division │ Conference │ League",
             "──────────┴──────────┴────────────┴─────────────────────────────────────────────────────────────────────────────────────",
-            "   Eastern                                                     Western",
+            "   Eastern                                                      Western",
             " ",
-            "   Team                          GP     W    L   OT    PTS     Team                          GP     W    L   OT    PTS",
-            "   ───────────────────────────────────────────────────────     ───────────────────────────────────────────────────────",
-            "   Devils                        18    15    2    1     31     Avalanche                     19    16    2    1     33",
-            "   Panthers                      19    14    3    2     30     Golden Knights                19    15    3    1     31",
-            "   Hurricanes                    19    14    3    2     30     Stars                         20    14    4    2     30",
-            "   Bruins                        18    13    4    1     27     Oilers                        20    14    4    2     30",
-            "   Maple Leafs                   19    12    5    2     26     Jets                          19    13    5    1     27",
-            "   Rangers                       18    12    5    1     25     Kings                         19    12    6    1     25",
-            "   Penguins                      19    11    6    2     24     Wild                          19    11    6    2     24",
-            "   Lightning                     18    11    6    1     23     Kraken                        19    11    6    2     24",
-            "   Canadiens                     18    10    5    3     23     Predators                     19    10    7    2     22",
-            "   Capitals                      18    10    7    1     21     Canucks                       19    10    7    2     22",
-            "   Senators                      18     9    7    2     20     Flames                        19     9    8    2     20",
-            "   Islanders                     18     9    7    2     20     Blues                         19     8    8    3     19",
-            "   Red Wings                     18     8    8    2     18     Ducks                         19     7   10    2     16",
-            "   Flyers                        18     8    9    1     17     Blackhawks                    18     7   10    1     15",
-            "   Sabres                        18     6   10    2     14     Sharks                        18     5   12    1     11",
-            "   Blue Jackets                  18     5   11    2     12     Coyotes                       18     4   13    1      9",
+            "   Team                          GP     W    L   OT    PTS      Team                          GP     W    L   OT    PTS",
+            "   ───────────────────────────────────────────────────────      ───────────────────────────────────────────────────────",
+            "   Devils                        18    15    2    1     31      Avalanche                     19    16    2    1     33",
+            "   Panthers                      19    14    3    2     30      Golden Knights                19    15    3    1     31",
+            "   Hurricanes                    19    14    3    2     30      Stars                         20    14    4    2     30",
+            "   Bruins                        18    13    4    1     27      Oilers                        20    14    4    2     30",
+            "   Maple Leafs                   19    12    5    2     26      Jets                          19    13    5    1     27",
+            "   Rangers                       18    12    5    1     25      Kings                         19    12    6    1     25",
+            "   Penguins                      19    11    6    2     24      Wild                          19    11    6    2     24",
+            "   Lightning                     18    11    6    1     23      Kraken                        19    11    6    2     24",
+            "   Canadiens                     18    10    5    3     23      Predators                     19    10    7    2     22",
+            "   Capitals                      18    10    7    1     21      Canucks                       19    10    7    2     22",
+            "   Senators                      18     9    7    2     20      Flames                        19     9    8    2     20",
+            "   Islanders                     18     9    7    2     20      Blues                         19     8    8    3     19",
+            "   Red Wings                     18     8    8    2     18      Ducks                         19     7   10    2     16",
+            "   Flyers                        18     8    9    1     17      Blackhawks                    18     7   10    1     15",
+            "   Sabres                        18     6   10    2     14      Sharks                        18     5   12    1     11",
+            "   Blue Jackets                  18     5   11    2     12      Coyotes                       18     4   13    1      9",
             " ",
             " ",
             " ",
@@ -748,40 +748,40 @@ mod tests {
         let config = DisplayConfig::default();
         let buf = render_element_to_buffer(&element, RENDER_WIDTH, RENDER_HEIGHT, &config);
 
-        // Note: Tab bar has leading space, document content has left/right margins
+        // Note: Tab bar has leading space, document content has left/right margins (centered with gap 4)
         assert_buffer(&buf, &[
             " Wildcard │ Division │ Conference │ League",
             "──────────┴──────────┴────────────┴─────────────────────────────────────────────────────────────────────────────────────",
-            "   Atlantic                                                    Central",
+            "   Atlantic                                                     Central",
             " ",
-            "   Team                          GP     W    L   OT    PTS     Team                          GP     W    L   OT    PTS",
-            "   ───────────────────────────────────────────────────────     ───────────────────────────────────────────────────────",
-            "   Panthers                      19    14    3    2     30     Avalanche                     19    16    2    1     33",
-            "   Bruins                        18    13    4    1     27     Stars                         20    14    4    2     30",
-            "   Maple Leafs                   19    12    5    2     26     Jets                          19    13    5    1     27",
+            "   Team                          GP     W    L   OT    PTS      Team                          GP     W    L   OT    PTS",
+            "   ───────────────────────────────────────────────────────      ───────────────────────────────────────────────────────",
+            "   Panthers                      19    14    3    2     30      Avalanche                     19    16    2    1     33",
+            "   Bruins                        18    13    4    1     27      Stars                         20    14    4    2     30",
+            "   Maple Leafs                   19    12    5    2     26      Jets                          19    13    5    1     27",
             " ",
-            "   Metropolitan                                                Pacific",
+            "   Metropolitan                                                 Pacific",
             " ",
-            "   Team                          GP     W    L   OT    PTS     Team                          GP     W    L   OT    PTS",
-            "   ───────────────────────────────────────────────────────     ───────────────────────────────────────────────────────",
-            "   Devils                        18    15    2    1     31     Golden Knights                19    15    3    1     31",
-            "   Hurricanes                    19    14    3    2     30     Oilers                        20    14    4    2     30",
-            "   Rangers                       18    12    5    1     25     Kings                         19    12    6    1     25",
+            "   Team                          GP     W    L   OT    PTS      Team                          GP     W    L   OT    PTS",
+            "   ───────────────────────────────────────────────────────      ───────────────────────────────────────────────────────",
+            "   Devils                        18    15    2    1     31      Golden Knights                19    15    3    1     31",
+            "   Hurricanes                    19    14    3    2     30      Oilers                        20    14    4    2     30",
+            "   Rangers                       18    12    5    1     25      Kings                         19    12    6    1     25",
             " ",
-            "   Wildcard                                                    Wildcard",
+            "   Wildcard                                                     Wildcard",
             " ",
-            "   Team                          GP     W    L   OT    PTS     Team                          GP     W    L   OT    PTS",
-            "   ───────────────────────────────────────────────────────     ───────────────────────────────────────────────────────",
-            "   Penguins                      19    11    6    2     24     Wild                          19    11    6    2     24",
-            "   Lightning                     18    11    6    1     23     Kraken                        19    11    6    2     24",
-            "   Canadiens                     18    10    5    3     23     Predators                     19    10    7    2     22",
-            "   Capitals                      18    10    7    1     21     Canucks                       19    10    7    2     22",
-            "   Senators                      18     9    7    2     20     Flames                        19     9    8    2     20",
-            "   Islanders                     18     9    7    2     20     Blues                         19     8    8    3     19",
-            "   Red Wings                     18     8    8    2     18     Ducks                         19     7   10    2     16",
-            "   Flyers                        18     8    9    1     17     Blackhawks                    18     7   10    1     15",
-            "   Sabres                        18     6   10    2     14     Sharks                        18     5   12    1     11",
-            "   Blue Jackets                  18     5   11    2     12     Coyotes                       18     4   13    1      9",
+            "   Team                          GP     W    L   OT    PTS      Team                          GP     W    L   OT    PTS",
+            "   ───────────────────────────────────────────────────────      ───────────────────────────────────────────────────────",
+            "   Penguins                      19    11    6    2     24      Wild                          19    11    6    2     24",
+            "   Lightning                     18    11    6    1     23      Kraken                        19    11    6    2     24",
+            "   Canadiens                     18    10    5    3     23      Predators                     19    10    7    2     22",
+            "   Capitals                      18    10    7    1     21      Canucks                       19    10    7    2     22",
+            "   Senators                      18     9    7    2     20      Flames                        19     9    8    2     20",
+            "   Islanders                     18     9    7    2     20      Blues                         19     8    8    3     19",
+            "   Red Wings                     18     8    8    2     18      Ducks                         19     7   10    2     16",
+            "   Flyers                        18     8    9    1     17      Blackhawks                    18     7   10    1     15",
+            "   Sabres                        18     6   10    2     14      Sharks                        18     5   12    1     11",
+            "   Blue Jackets                  18     5   11    2     12      Coyotes                       18     4   13    1      9",
             " ",
             " ",
             " ",

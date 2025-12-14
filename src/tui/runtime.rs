@@ -511,7 +511,7 @@ mod tests {
         runtime.dispatch(Action::EnterContentFocus);
         let state = runtime.state();
         let component_states = runtime.component_states();
-        assert!(state.navigation.content_focused);
+        assert!(state.navigation.focus_in_content);
 
         // Now arrows should navigate dates on Scores tab (dispatches ComponentMessage)
         let key_right = KeyEvent::new(KeyCode::Right, KeyModifiers::empty());

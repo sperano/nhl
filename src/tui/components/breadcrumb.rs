@@ -79,13 +79,17 @@ impl ElementWidget for BreadcrumbWidget {
             return;
         }
 
+        const LEFT_MARGIN: u16 = 1;
+        let x = area.x + LEFT_MARGIN;
+        let width = area.width.saturating_sub(LEFT_MARGIN);
+
         let spans = self.build_breadcrumb_text(ctx.config);
         let line = Line::from(spans);
 
-        // Render the breadcrumb line
-        buf.set_line(area.x, area.y, &line, area.width);
+        // Render the breadcrumb line with left margin
+        buf.set_line(x, area.y, &line, width);
 
-        // Render the divider line on the second row
+        // Render the divider line on the second row (full width, no margin)
         if area.height >= 2 {
             let divider_style = if let Some(theme) = ctx.theme() {
                 ctx.base_style().fg(theme.boxchar_fg)
@@ -130,11 +134,11 @@ mod tests {
         let mut buf = Buffer::empty(Rect::new(0, 0, 80, 2));
         widget.render(buf.area, &mut buf, &ctx);
 
-        // With no documents, should just show the tab name and divider
+        // With no documents, should just show the tab name and divider (with 1 char left margin)
         assert_buffer(
             &buf,
             &[
-                "Scores",
+                " Scores",
                 "────────────────────────────────────────────────────────────────────────────────",
             ],
         );
@@ -159,7 +163,7 @@ mod tests {
         assert_buffer(
             &buf,
             &[
-                "Standings ▶ TOR",
+                " Standings ▶ TOR",
                 "────────────────────────────────────────────────────────────────────────────────",
             ],
         );
@@ -188,7 +192,7 @@ mod tests {
         assert_buffer(
             &buf,
             &[
-                "Scores ▶ TOR:3-BOS:2",
+                " Scores ▶ TOR:3-BOS:2",
                 "────────────────────────────────────────────────────────────────────────────────",
             ],
         );
@@ -227,7 +231,7 @@ mod tests {
         assert_buffer(
             &buf,
             &[
-                "Scores ▶ TOR:3-BOS:2 ▶ #87 Crosby",
+                " Scores ▶ TOR:3-BOS:2 ▶ #87 Crosby",
                 "────────────────────────────────────────────────────────────────────────────────",
             ],
         );
@@ -245,7 +249,7 @@ mod tests {
         assert_buffer(
             &buf,
             &[
-                "Standings",
+                " Standings",
                 "────────────────────────────────────────────────────────────────────────────────",
             ],
         );
@@ -263,7 +267,7 @@ mod tests {
         assert_buffer(
             &buf,
             &[
-                "Settings",
+                " Settings",
                 "────────────────────────────────────────────────────────────────────────────────",
             ],
         );
@@ -282,7 +286,7 @@ mod tests {
         assert_buffer(
             &buf,
             &[
-                "Demo",
+                " Demo",
                 "────────────────────────────────────────────────────────────────────────────────",
             ],
         );
@@ -359,7 +363,7 @@ mod tests {
         assert_buffer(
             &buf,
             &[
-                "Scores ▶ #97 McDavid",
+                " Scores ▶ #97 McDavid",
                 "────────────────────────────────────────────────────────────────────────────────",
             ],
         );
@@ -386,7 +390,7 @@ mod tests {
         assert_buffer(
             &buf,
             &[
-                "Scores ▶ Smith",
+                " Scores ▶ Smith",
                 "────────────────────────────────────────────────────────────────────────────────",
             ],
         );

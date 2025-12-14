@@ -43,8 +43,8 @@ pub enum Action {
     /// Hierarchical fallthrough:
     /// 1. If document stack not empty → pop document
     /// 2. Send NavigateUpMsg to current tab component
-    /// 3. Component returns whether it handled it (closed modal, exited browse mode)
-    /// 4. If not handled and content_focused → set content_focused = false
+    /// 3. Component returns whether it handled it (closed modal, cleared item focus)
+    /// 4. If not handled and focus_in_content → set focus_in_content = false
     NavigateUp,
 
     /// Route key events to stacked documents

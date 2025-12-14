@@ -127,30 +127,32 @@ impl ElementWidget for SettingsListWidget {
             } else {
                 "  ".to_string()
             };
+            let selector_width = selector.chars().count() as u16;
 
             // Format as "Key:  Value" with padding for alignment
             let key_with_colon = format!("{}:", key);
-            let line_text = format!(
-                "{}{:width$}  {}",
-                selector,
+            let rest_text = format!(
+                "{:width$}  {}",
                 key_with_colon,
                 display_value,
                 width = max_key_len
             );
 
-            // Apply fg2 style from theme (or default if no theme), with REVERSED and BOLD for selection
-            let style = if let Some(theme) = ctx.theme() {
+            // Apply boxchar_fg style for selector, text style for rest
+            let selector_style = ctx.boxchar_style();
+            let text_style = if let Some(theme) = ctx.theme() {
                 ctx.base_style().fg(theme.fg)
             } else {
                 ctx.base_style()
             };
 
-            let line = Line::from(line_text).style(style);
-
-            // Render the line
-            let line_width = line.width() as u16;
-            if x + line_width <= area.x + area.width {
-                buf.set_line(x, y, &line, line_width);
+            // Render selector with boxchar_fg
+            buf.set_string(x, y, &selector, selector_style);
+            // Render rest of line with text style
+            let rest_line = Line::from(rest_text).style(text_style);
+            let rest_width = rest_line.width() as u16;
+            if x + selector_width + rest_width <= area.x + area.width {
+                buf.set_line(x + selector_width, y, &rest_line, rest_width);
             }
 
             y += 1;

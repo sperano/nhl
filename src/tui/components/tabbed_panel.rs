@@ -33,9 +33,9 @@ pub struct TabbedPanelProps {
     pub tabs: Vec<TabItem>,
     /// Whether the tab bar is focused (affects tab bar styling)
     pub focused: bool,
-    /// Whether the content area is focused (affects content background)
+    /// Whether the content area has focus (affects content background)
     /// When true, content area is bright; when false, content area is dimmed
-    pub content_focused: bool,
+    pub content_has_focus: bool,
 }
 
 /// TabbedPanel component - renders a tab bar with associated content
@@ -74,7 +74,7 @@ impl Component for TabbedPanel {
         // Wrap content in FocusContext to propagate focus state and fill background
         // This ensures empty space below content is dimmed when content is unfocused
         let wrapped_content = Element::FocusContext {
-            focused: props.content_focused,
+            focused: props.content_has_focus,
             child: Box::new(active_content),
         };
 
@@ -363,7 +363,7 @@ mod tests {
                 TabItem::new("tab2", "Tab 2", Element::None),
             ],
             focused: true,
-            content_focused: false,
+            content_has_focus: false,
         };
 
         let element = panel.view(&props, &());
@@ -391,7 +391,7 @@ mod tests {
                 TabItem::new("tab2", "Tab 2", content2.clone()),
             ],
             focused: true,
-            content_focused: false,
+            content_has_focus: false,
         };
 
         let element = panel.view(&props, &());
@@ -419,7 +419,7 @@ mod tests {
             active_key: "none".into(),
             tabs: vec![],
             focused: true,
-            content_focused: false,
+            content_has_focus: false,
         };
 
         let element = panel.view(&props, &());
@@ -440,7 +440,7 @@ mod tests {
             active_key: "nonexistent".into(),
             tabs: vec![TabItem::new("tab1", "Tab 1", Element::None)],
             focused: true,
-            content_focused: false,
+            content_has_focus: false,
         };
 
         let element = panel.view(&props, &());

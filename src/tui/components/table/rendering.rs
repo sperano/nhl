@@ -95,7 +95,7 @@ impl TableWidget {
             };
 
             // Render selector
-            buf.set_string(area.x, y, &selector, ctx.text_style());
+            buf.set_string(area.x, y, &selector, ctx.boxchar_style());
 
             // Render cells
             let mut x = area.x + SELECTOR_WIDTH as u16;

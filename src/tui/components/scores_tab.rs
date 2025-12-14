@@ -162,11 +162,11 @@ impl Component for ScoresTab {
                 Effect::Action(Action::RefreshSchedule(state.game_date.clone()))
             }
             ScoresTabMsg::EnterBoxSelection => {
-                state.enter_browse_mode();
+                state.focus_first_item();
                 Effect::None
             }
             ScoresTabMsg::ExitBoxSelection => {
-                state.exit_browse_mode();
+                state.clear_item_focus();
                 Effect::None
             }
 
@@ -240,8 +240,8 @@ impl ScoresTab {
             &TabbedPanelProps {
                 active_key,
                 tabs,
-                focused: props.focused && !state.is_browse_mode(),
-                content_focused: props.focused && state.is_browse_mode(),
+                focused: props.focused && !state.has_item_focus(),
+                content_has_focus: props.focused && state.has_item_focus(),
             },
             &(),
         )
@@ -282,7 +282,7 @@ impl ScoresTab {
             focus_index: state.doc_nav.focus_index,
             scroll_offset: state.doc_nav.scroll_offset,
             animation_frame: props.animation_frame,
-            focused: props.focused && state.is_browse_mode(),
+            focused: props.focused && state.has_item_focus(),
         }))
     }
 
@@ -291,7 +291,7 @@ impl ScoresTab {
     /// This method handles all key logic that was previously in keys.rs.
     /// Returns an Effect which may be an Action to dispatch.
     fn handle_key(&mut self, key: KeyEvent, state: &mut ScoresTabState) -> Effect {
-        if state.is_browse_mode() {
+        if state.has_item_focus() {
             // Box selection mode - arrow keys navigate games
             match key.code {
                 KeyCode::Up => crate::tui::document_nav::handle_message(

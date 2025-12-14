@@ -72,7 +72,7 @@ pub enum SettingsTabMsg {
     /// Key event when this tab is focused
     Key(KeyEvent),
 
-    /// Navigate up request (ESC closes modal or exits browse mode)
+    /// Navigate up request (ESC closes modal or clears item focus)
     NavigateUp,
 
     /// Document navigation
@@ -146,9 +146,9 @@ impl Component for SettingsTab {
                     state.modal = None;
                     return Effect::Handled;
                 }
-                // Priority 2: Exit browse mode if active
-                if state.is_browse_mode() {
-                    state.exit_browse_mode();
+                // Priority 2: Clear item focus if active
+                if state.has_item_focus() {
+                    state.clear_item_focus();
                     return Effect::Handled;
                 }
                 // Otherwise let it bubble up
@@ -286,8 +286,8 @@ impl Component for SettingsTab {
             &TabbedPanelProps {
                 active_key,
                 tabs,
-                focused: props.focused && !state.is_browse_mode(),
-                content_focused: props.focused && state.is_browse_mode(),
+                focused: props.focused && !state.has_item_focus(),
+                content_has_focus: props.focused && state.has_item_focus(),
             },
             &(),
         );
@@ -331,13 +331,13 @@ impl SettingsTab {
             };
         }
 
-        // Check if in browse mode (has focus)
-        let in_browse_mode = state.doc_nav.focus_index.is_some();
+        // Check if an item has focus
+        let has_item_focus = state.doc_nav.focus_index.is_some();
 
-        if in_browse_mode {
-            // Browse mode - navigate settings
+        if has_item_focus {
+            // Item focus mode - navigate settings
 
-            // Handle Escape to exit browse mode
+            // Handle Escape to clear item focus
             if key.code == KeyCode::Esc {
                 return self.update(SettingsTabMsg::NavigateUp, state);
             }
@@ -402,7 +402,7 @@ impl SettingsTab {
             focus_index: state.doc_nav.focus_index,
             scroll_offset: state.doc_nav.scroll_offset,
             viewport_height: state.doc_nav.viewport_height,
-            focused: props.focused && state.is_browse_mode(),
+            focused: props.focused && state.has_item_focus(),
         }))
     }
 }
