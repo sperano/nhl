@@ -132,8 +132,8 @@ pub static THEME_GREEN: Theme = Theme::new(
     Color::Rgb(175, 255, 135),
     Color::Rgb(95, 255, 175),
     Color::Rgb(0, 255, 0),
-    Color::LightBlue,
-    Color::Yellow,
+    Color::Rgb(0, 0, 0),
+    Color::Rgb(95, 255, 175),
     DEFAULT_DARKENING_FACTOR,
 );
 
@@ -143,8 +143,8 @@ pub static THEME_BLUE: Theme = Theme::new(
     Color::Rgb(175, 255, 255),
     Color::Rgb(95, 135, 255),
     Color::Rgb(0, 95, 255),
-    Color::LightBlue,
-    Color::Yellow,
+    Color::Rgb(255, 255, 255),
+    Color::Rgb(95, 135, 255),
     DEFAULT_DARKENING_FACTOR,
 );
 
@@ -154,8 +154,8 @@ pub static THEME_PURPLE: Theme = Theme::new(
     Color::Rgb(255, 175, 255),
     Color::Rgb(175, 135, 255),
     Color::Rgb(135, 95, 175),
-    Color::LightBlue,
-    Color::Yellow,
+    Color::Rgb(0, 0, 0),
+    Color::Rgb(175, 135, 255),
     DEFAULT_DARKENING_FACTOR,
 );
 
@@ -165,8 +165,8 @@ pub static THEME_WHITE: Theme = Theme::new(
     Color::Rgb(255, 255, 255),
     Color::Rgb(192, 192, 192),
     Color::Rgb(128, 128, 128),
-    Color::LightBlue,
-    Color::Yellow,
+    Color::Rgb(0, 0, 0),
+    Color::Rgb(192, 192, 192),
     DEFAULT_DARKENING_FACTOR,
 );
 
@@ -176,8 +176,8 @@ pub static THEME_RED: Theme = Theme::new(
     Color::Rgb(255, 175, 175),
     Color::Rgb(255, 95, 95),
     Color::Rgb(255, 0, 0),
-    Color::LightBlue,
-    Color::Yellow,
+    Color::Rgb(0, 0, 0),
+    Color::Rgb(255, 95, 95),
     DEFAULT_DARKENING_FACTOR,
 );
 
@@ -187,8 +187,8 @@ pub static THEME_YELLOW: Theme = Theme::new(
     Color::Rgb(255, 255, 175),
     Color::Rgb(255, 255, 95),
     Color::Rgb(255, 215, 0),
-    Color::LightBlue,
-    Color::Yellow,
+    Color::Rgb(0, 0, 0),
+    Color::Rgb(255, 255, 95),
     DEFAULT_DARKENING_FACTOR,
 );
 
@@ -198,8 +198,8 @@ pub static THEME_CYAN: Theme = Theme::new(
     Color::Rgb(175, 255, 255),
     Color::Rgb(95, 255, 255),
     Color::Rgb(0, 255, 255),
-    Color::LightBlue,
-    Color::Yellow,
+    Color::Rgb(0, 0, 0),
+    Color::Rgb(95, 255, 255),
     DEFAULT_DARKENING_FACTOR,
 );
 
@@ -209,8 +209,8 @@ pub static THEME_NORTH_STARS: Theme = Theme::new(
     Color::Rgb(240, 240, 240),
     Color::Rgb(198, 146, 20),
     Color::Rgb(0, 122, 51),
-    Color::LightBlue,
-    Color::Yellow,
+    Color::Rgb(0, 0, 0),
+    Color::Rgb(198, 146, 20),
     DEFAULT_DARKENING_FACTOR,
 );
 
@@ -231,8 +231,8 @@ pub static THEME_SABRES: Theme = Theme::new(
     Color::Rgb(255, 255, 255),
     Color::Rgb(255, 184, 28),
     Color::Rgb(0, 48, 135),
-    Color::LightBlue,
-    Color::Yellow,
+    Color::Rgb(0, 0, 0),
+    Color::Rgb(255, 184, 28),
     DEFAULT_DARKENING_FACTOR,
 );
 
@@ -242,8 +242,8 @@ pub static THEME_SHARKS: Theme = Theme::new(
     Color::Rgb(255, 255, 255),
     Color::Rgb(0, 109, 117),
     Color::Rgb(234, 114, 0),
-    Color::LightBlue,
-    Color::Yellow,
+    Color::Rgb(255, 255, 255),
+    Color::Rgb(0, 109, 117),
     DEFAULT_DARKENING_FACTOR,
 );
 
@@ -253,8 +253,8 @@ pub static THEME_BRUINS: Theme = Theme::new(
     Color::Rgb(255, 255, 255),
     Color::Rgb(252, 181, 20),
     Color::Rgb(196, 196, 196),
-    Color::LightBlue,
-    Color::Yellow,
+    Color::Rgb(0, 0, 0),
+    Color::Rgb(252, 181, 20),
     DEFAULT_DARKENING_FACTOR,
 );
 
@@ -264,8 +264,8 @@ pub static THEME_ISLANDERS: Theme = Theme::new(
     Color::Rgb(255, 255, 255),
     Color::Rgb(252, 76, 2),
     Color::Rgb(0, 58, 162),
-    Color::LightBlue,
-    Color::Yellow,
+    Color::Rgb(0, 0, 0),
+    Color::Rgb(252, 76, 2),
     DEFAULT_DARKENING_FACTOR,
 );
 
@@ -275,8 +275,8 @@ pub static THEME_FLAMES: Theme = Theme::new(
     Color::Rgb(255, 255, 255),
     Color::Rgb(200, 16, 46),
     Color::Rgb(241, 190, 72),
-    Color::LightBlue,
-    Color::Yellow,
+    Color::Rgb(255, 255, 255),
+    Color::Rgb(200, 16, 46),
     DEFAULT_DARKENING_FACTOR,
 );
 
@@ -286,8 +286,8 @@ pub static THEME_RED_WINGS: Theme = Theme::new(
     Color::Rgb(255, 82, 102),
     Color::Rgb(206, 17, 38),
     Color::Rgb(255, 255, 255),
-    Color::LightBlue,
-    Color::Yellow,
+    Color::Rgb(255, 255, 255),
+    Color::Rgb(206, 17, 38),
     DEFAULT_DARKENING_FACTOR,
 );
 
