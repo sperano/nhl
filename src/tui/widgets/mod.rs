@@ -34,9 +34,6 @@ pub use big_score::BigScore;
 pub mod loading_animation;
 pub use loading_animation::LoadingAnimation;
 
-pub mod settings_list;
-pub use settings_list::SettingsListWidget;
-
 use crate::config::RenderContext;
 use ratatui::{buffer::Buffer, layout::Rect};
 

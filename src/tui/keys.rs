@@ -144,13 +144,13 @@ fn handle_number_keys(key_code: KeyCode) -> Option<Action> {
     }
 }
 
-/// Handle navigation when tab bar is focused (Left/Right/Down)
+/// Handle navigation when tab bar is focused (Left/Right/Down/Enter)
 fn handle_tab_bar_navigation(key_code: KeyCode) -> Option<Action> {
     match key_code {
         KeyCode::Left => Some(Action::NavigateTabLeft),
         KeyCode::Right => Some(Action::NavigateTabRight),
-        KeyCode::Down => {
-            debug!("KEY: Down pressed on tab bar - entering content focus");
+        KeyCode::Down | KeyCode::Enter => {
+            debug!("KEY: Down/Enter pressed on tab bar - entering content focus");
             Some(Action::EnterContentFocus)
         }
         _ => None,

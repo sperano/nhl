@@ -1,138 +1,138 @@
 use crate::config::DisplayConfig;
 
 /// Box-drawing characters for table borders
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BoxChars {
     // Single-line characters
-    pub horizontal: String,
-    pub vertical: String,
-    pub top_left: String,
-    pub top_right: String,
-    pub bottom_left: String,
-    pub bottom_right: String,
-    pub top_junction: String,
-    pub bottom_junction: String,
-    pub left_junction: String,
-    pub right_junction: String,
-    pub cross: String,
+    pub horizontal: &'static str,
+    pub vertical: &'static str,
+    pub top_left: &'static str,
+    pub top_right: &'static str,
+    pub bottom_left: &'static str,
+    pub bottom_right: &'static str,
+    pub top_junction: &'static str,
+    pub bottom_junction: &'static str,
+    pub left_junction: &'static str,
+    pub right_junction: &'static str,
+    pub cross: &'static str,
 
     // Double-line characters
-    pub double_horizontal: String,
-    pub double_vertical: String,
-    pub double_top_left: String,
-    pub double_top_right: String,
-    pub double_bottom_left: String,
-    pub double_bottom_right: String,
-    pub double_top_junction: String,
-    pub double_bottom_junction: String,
+    pub double_horizontal: &'static str,
+    pub double_vertical: &'static str,
+    pub double_top_left: &'static str,
+    pub double_top_right: &'static str,
+    pub double_bottom_left: &'static str,
+    pub double_bottom_right: &'static str,
+    pub double_top_junction: &'static str,
+    pub double_bottom_junction: &'static str,
 
     // Mixed double-vertical/single-horizontal junctions
-    pub mixed_left_junction: String,
-    pub mixed_right_junction: String,
+    pub mixed_left_junction: &'static str,
+    pub mixed_right_junction: &'static str,
 
     // Mixed double-horizontal/single-vertical (for TeamBoxscore borders)
-    pub mixed_dh_top_left: String,
-    pub mixed_dh_top_right: String,
-    pub mixed_dh_bottom_left: String,
-    pub mixed_dh_bottom_right: String,
-    pub mixed_dh_left_t: String,
-    pub mixed_dh_right_t: String,
+    pub mixed_dh_top_left: &'static str,
+    pub mixed_dh_top_right: &'static str,
+    pub mixed_dh_bottom_left: &'static str,
+    pub mixed_dh_bottom_right: &'static str,
+    pub mixed_dh_left_t: &'static str,
+    pub mixed_dh_right_t: &'static str,
 
     // Other characters
-    pub connector2: String,
-    pub connector3: String,
-    pub selector: String,
-    pub breadcrumb_separator: String,
+    pub connector2: &'static str,
+    pub connector3: &'static str,
+    pub selector: &'static str,
+    pub breadcrumb_separator: &'static str,
 }
 
 impl BoxChars {
     pub fn unicode() -> Self {
         Self {
             // Single-line
-            horizontal: "─".to_string(),
-            vertical: "│".to_string(),
-            top_left: "╭".to_string(),
-            top_right: "╮".to_string(),
-            bottom_left: "╰".to_string(),
-            bottom_right: "╯".to_string(),
-            top_junction: "┬".to_string(),
-            bottom_junction: "┴".to_string(),
-            left_junction: "├".to_string(),
-            right_junction: "┤".to_string(),
-            cross: "┼".to_string(),
+            horizontal: "─",
+            vertical: "│",
+            top_left: "╭",
+            top_right: "╮",
+            bottom_left: "╰",
+            bottom_right: "╯",
+            top_junction: "┬",
+            bottom_junction: "┴",
+            left_junction: "├",
+            right_junction: "┤",
+            cross: "┼",
 
             // Double-line
-            double_horizontal: "═".to_string(),
-            double_vertical: "║".to_string(),
-            double_top_left: "╔".to_string(),
-            double_top_right: "╗".to_string(),
-            double_bottom_left: "╚".to_string(),
-            double_bottom_right: "╝".to_string(),
-            double_top_junction: "╤".to_string(),
-            double_bottom_junction: "╧".to_string(),
+            double_horizontal: "═",
+            double_vertical: "║",
+            double_top_left: "╔",
+            double_top_right: "╗",
+            double_bottom_left: "╚",
+            double_bottom_right: "╝",
+            double_top_junction: "╤",
+            double_bottom_junction: "╧",
 
             // Mixed (double vertical, single horizontal)
-            mixed_left_junction: "╟".to_string(),
-            mixed_right_junction: "╢".to_string(),
+            mixed_left_junction: "╟",
+            mixed_right_junction: "╢",
 
             // Mixed (double horizontal, single vertical)
-            mixed_dh_top_left: "╒".to_string(),
-            mixed_dh_top_right: "╕".to_string(),
-            mixed_dh_bottom_left: "╘".to_string(),
-            mixed_dh_bottom_right: "╛".to_string(),
-            mixed_dh_left_t: "╞".to_string(),
-            mixed_dh_right_t: "╡".to_string(),
+            mixed_dh_top_left: "╒",
+            mixed_dh_top_right: "╕",
+            mixed_dh_bottom_left: "╘",
+            mixed_dh_bottom_right: "╛",
+            mixed_dh_left_t: "╞",
+            mixed_dh_right_t: "╡",
 
             // Other
-            connector2: "┴".to_string(),
-            connector3: "┬".to_string(),
-            selector: "▶".to_string(),
-            breadcrumb_separator: "▶".to_string(),
+            connector2: "┴",
+            connector3: "┬",
+            selector: "▶",
+            breadcrumb_separator: "▶",
         }
     }
 
     pub fn ascii() -> Self {
         Self {
             // Single-line
-            horizontal: "-".to_string(),
-            vertical: "|".to_string(),
-            top_left: "+".to_string(),
-            top_right: "+".to_string(),
-            bottom_left: "+".to_string(),
-            bottom_right: "+".to_string(),
-            top_junction: "+".to_string(),
-            bottom_junction: "+".to_string(),
-            left_junction: "+".to_string(),
-            right_junction: "+".to_string(),
-            cross: "+".to_string(),
+            horizontal: "-",
+            vertical: "|",
+            top_left: "+",
+            top_right: "+",
+            bottom_left: "+",
+            bottom_right: "+",
+            top_junction: "+",
+            bottom_junction: "+",
+            left_junction: "+",
+            right_junction: "+",
+            cross: "+",
 
             // Double-line
-            double_horizontal: "=".to_string(),
-            double_vertical: "|".to_string(),
-            double_top_left: "+".to_string(),
-            double_top_right: "+".to_string(),
-            double_bottom_left: "+".to_string(),
-            double_bottom_right: "+".to_string(),
-            double_top_junction: "+".to_string(),
-            double_bottom_junction: "+".to_string(),
+            double_horizontal: "=",
+            double_vertical: "|",
+            double_top_left: "+",
+            double_top_right: "+",
+            double_bottom_left: "+",
+            double_bottom_right: "+",
+            double_top_junction: "+",
+            double_bottom_junction: "+",
 
             // Mixed
-            mixed_left_junction: "+".to_string(),
-            mixed_right_junction: "+".to_string(),
+            mixed_left_junction: "+",
+            mixed_right_junction: "+",
 
             // Mixed (double horizontal, single vertical)
-            mixed_dh_top_left: "+".to_string(),
-            mixed_dh_top_right: "+".to_string(),
-            mixed_dh_bottom_left: "+".to_string(),
-            mixed_dh_bottom_right: "+".to_string(),
-            mixed_dh_left_t: "+".to_string(),
-            mixed_dh_right_t: "+".to_string(),
+            mixed_dh_top_left: "+",
+            mixed_dh_top_right: "+",
+            mixed_dh_bottom_left: "+",
+            mixed_dh_bottom_right: "+",
+            mixed_dh_left_t: "+",
+            mixed_dh_right_t: "+",
 
             // Other
-            connector2: "-".to_string(),
-            connector3: "-".to_string(),
-            selector: ">".to_string(),
-            breadcrumb_separator: ">".to_string(),
+            connector2: "-",
+            connector3: "-",
+            selector: ">",
+            breadcrumb_separator: ">",
         }
     }
 

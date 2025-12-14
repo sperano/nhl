@@ -99,7 +99,7 @@ impl ElementWidget for StatusBarWidget {
             .repeat((area.width.saturating_sub(bar_position + 1)) as usize);
         let line1 = Line::from(vec![
             Span::styled(left_part, separator_style),
-            Span::styled(&ctx.box_chars().connector3, separator_style),
+            Span::styled(ctx.box_chars().connector3, separator_style),
             Span::styled(right_part, separator_style),
         ]);
         lines.push(line1);
@@ -127,7 +127,7 @@ impl ElementWidget for StatusBarWidget {
         line2_spans.push(Span::raw(" ".repeat(padding_len)));
 
         // Right side: vertical bar + refresh text
-        line2_spans.push(Span::styled(&ctx.box_chars().vertical, separator_style));
+        line2_spans.push(Span::styled(ctx.box_chars().vertical, separator_style));
         line2_spans.push(Span::raw(" "));
         line2_spans.push(Span::styled(&right_text, text_style));
         line2_spans.push(Span::raw(" "));

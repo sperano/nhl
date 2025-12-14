@@ -39,16 +39,18 @@ pub struct Theme {
     #[serde(deserialize_with = "deserialize_color")]
     #[serde(serialize_with = "serialize_color")]
     pub emphasis_fg: Color,
+    #[serde(skip)]
+    emphasis_fg_dim: OnceLock<Color>,
     #[serde(deserialize_with = "deserialize_color")]
     #[serde(serialize_with = "serialize_color")]
     pub fg: Color,
+    #[serde(skip)]
+    fg_dim: OnceLock<Color>,
     #[serde(deserialize_with = "deserialize_color")]
     #[serde(serialize_with = "serialize_color")]
     pub boxchar_fg: Color,
     /// Factor for darkening colors when unfocused (0.0 = black, 1.0 = no change)
     pub darkening_factor: f32,
-    #[serde(skip)]
-    fg_dim: OnceLock<Color>,
     #[serde(skip)]
     boxchar_fg_dim: OnceLock<Color>,
     #[serde(skip)]
@@ -63,8 +65,6 @@ pub struct Theme {
     selection_text_fg_dim: OnceLock<Color>,
     #[serde(skip)]
     selection_text_bg_dim: OnceLock<Color>,
-    #[serde(skip)]
-    emphasis_fg_dim: OnceLock<Color>,
 }
 
 impl Theme {
@@ -84,17 +84,17 @@ impl Theme {
             name,
             bg,
             emphasis_fg,
+            emphasis_fg_dim: OnceLock::new(),
             fg,
+            fg_dim: OnceLock::new(),
             boxchar_fg,
             darkening_factor,
-            fg_dim: OnceLock::new(),
             boxchar_fg_dim: OnceLock::new(),
             bg_dim: OnceLock::new(),
             selection_text_fg,
             selection_text_bg,
             selection_text_fg_dim: OnceLock::new(),
             selection_text_bg_dim: OnceLock::new(),
-            emphasis_fg_dim: OnceLock::new(),
         }
     }
 }
@@ -144,8 +144,8 @@ pub static THEME_BLUE: Theme = Theme::new(
     Color::Rgb(175, 255, 255),
     Color::Rgb(95, 135, 255),
     Color::Rgb(0, 95, 255),
-    Color::Rgb(255, 255, 255),
-    Color::Rgb(95, 135, 255),
+    Color::White,
+    Color::Rgb(0, 95, 255),
     DEFAULT_DARKENING_FACTOR,
 );
 

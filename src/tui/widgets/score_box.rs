@@ -180,7 +180,7 @@ impl StandaloneWidget for ScoreBox {
 
         // Row 2: Away team ║ Team Name        │ SS ║
         // Render box chars and content separately for different styles
-        buf.set_string(x, y + 2, &bc.double_vertical, box_style);
+        buf.set_string(x, y + 2, bc.double_vertical, box_style);
         buf.set_string(x + 1, y + 2, " ", box_style);
         buf.set_string(
             x + 2,
@@ -188,14 +188,14 @@ impl StandaloneWidget for ScoreBox {
             Self::format_team_name(&self.away_team),
             text_style,
         );
-        buf.set_string(x + 19, y + 2, &bc.vertical, box_style);
+        buf.set_string(x + 19, y + 2, bc.vertical, box_style);
         buf.set_string(
             x + 20,
             y + 2,
             Self::format_score(self.away_score),
             text_style,
         );
-        buf.set_string(x + 24, y + 2, &bc.double_vertical, box_style);
+        buf.set_string(x + 24, y + 2, bc.double_vertical, box_style);
 
         // Row 3: Separator ╟──────────────────┼────╢
         let separator = format!(
@@ -209,7 +209,7 @@ impl StandaloneWidget for ScoreBox {
         buf.set_string(x, y + 3, &separator, box_style);
 
         // Row 4: Home team ║ Team Name        │ SS ║
-        buf.set_string(x, y + 4, &bc.double_vertical, box_style);
+        buf.set_string(x, y + 4, bc.double_vertical, box_style);
         buf.set_string(x + 1, y + 4, " ", box_style);
         buf.set_string(
             x + 2,
@@ -217,14 +217,14 @@ impl StandaloneWidget for ScoreBox {
             Self::format_team_name(&self.home_team),
             text_style,
         );
-        buf.set_string(x + 19, y + 4, &bc.vertical, box_style);
+        buf.set_string(x + 19, y + 4, bc.vertical, box_style);
         buf.set_string(
             x + 20,
             y + 4,
             Self::format_score(self.home_score),
             text_style,
         );
-        buf.set_string(x + 24, y + 4, &bc.double_vertical, box_style);
+        buf.set_string(x + 24, y + 4, bc.double_vertical, box_style);
 
         // Row 5: Bottom border ╚══════════════════╧════╝
         let bottom_border = format!(

@@ -1,7 +1,6 @@
 //! Settings document - displays settings in a document-based layout
 //!
-//! This module provides the document-based implementation for settings display,
-//! replacing the old SettingsListWidget approach with the modern document system.
+//! This module provides the document-based implementation for settings display.
 
 use crate::config::Config;
 use crate::tui::document::{Document, DocumentBuilder, DocumentElement, FocusContext, LinkTarget};
@@ -24,18 +23,31 @@ impl SettingsDocument {
         builder: DocumentBuilder,
         focus: &FocusContext,
     ) -> DocumentBuilder {
+        // Align labels: "Log Level:" is 10 chars (longest)
+        const LABEL_WIDTH: usize = 10;
+
         builder
             .spacer(1)
             .link_with_focus(
                 "log_level",
-                format!("Log Level: {}", self.config.log_level),
+                format!(
+                    "{:width$} {}",
+                    "Log Level:",
+                    self.config.log_level,
+                    width = LABEL_WIDTH
+                ),
                 LinkTarget::Action("edit:log_level".to_string()),
                 focus,
             )
             .spacer(1)
             .link_with_focus(
                 "log_file",
-                format!("Log File: {}", self.config.log_file),
+                format!(
+                    "{:width$} {}",
+                    "Log File:",
+                    self.config.log_file,
+                    width = LABEL_WIDTH
+                ),
                 LinkTarget::Action("edit:log_file".to_string()),
                 focus,
             )
@@ -47,6 +59,9 @@ impl SettingsDocument {
         builder: DocumentBuilder,
         focus: &FocusContext,
     ) -> DocumentBuilder {
+        // Align labels: "Use Unicode:" and "Error Color:" are 12 chars (longest)
+        const LABEL_WIDTH: usize = 12;
+
         let theme_name = self
             .config
             .display
@@ -59,21 +74,28 @@ impl SettingsDocument {
             .spacer(1)
             .link_with_focus(
                 "theme",
-                format!("Theme: {}", theme_name),
+                format!("{:width$} {}", "Theme:", theme_name, width = LABEL_WIDTH),
                 LinkTarget::Action("edit:theme".to_string()),
                 focus,
             )
             .spacer(1)
             .link_with_focus(
                 "use_unicode",
-                format!("Use Unicode: {}", self.config.display.use_unicode),
+                format!(
+                    "{:width$} {}",
+                    "Use Unicode:",
+                    self.config.display.use_unicode,
+                    width = LABEL_WIDTH
+                ),
                 LinkTarget::Action("toggle:use_unicode".to_string()),
                 focus,
             )
             .spacer(1)
             .text(format!(
-                "Error Color: {}",
-                format_color(&self.config.display.error_fg)
+                "{:width$} {}",
+                "Error Color:",
+                format_color(&self.config.display.error_fg),
+                width = LABEL_WIDTH
             ))
     }
 
@@ -83,11 +105,19 @@ impl SettingsDocument {
         builder: DocumentBuilder,
         focus: &FocusContext,
     ) -> DocumentBuilder {
+        // Align labels: "Western Teams First:" is 20 chars (longest)
+        const LABEL_WIDTH: usize = 20;
+
         builder
             .spacer(1)
             .link_with_focus(
                 "refresh_interval",
-                format!("Refresh Interval: {} seconds", self.config.refresh_interval),
+                format!(
+                    "{:width$} {} seconds",
+                    "Refresh Interval:",
+                    self.config.refresh_interval,
+                    width = LABEL_WIDTH
+                ),
                 LinkTarget::Action("edit:refresh_interval".to_string()),
                 focus,
             )
@@ -95,8 +125,10 @@ impl SettingsDocument {
             .link_with_focus(
                 "western_teams_first",
                 format!(
-                    "Western Teams First: {}",
-                    self.config.display_standings_western_first
+                    "{:width$} {}",
+                    "Western Teams First:",
+                    self.config.display_standings_western_first,
+                    width = LABEL_WIDTH
                 ),
                 LinkTarget::Action("toggle:western_teams_first".to_string()),
                 focus,
@@ -104,7 +136,12 @@ impl SettingsDocument {
             .spacer(1)
             .link_with_focus(
                 "time_format",
-                format!("Time Format: {}", self.config.time_format),
+                format!(
+                    "{:width$} {}",
+                    "Time Format:",
+                    self.config.time_format,
+                    width = LABEL_WIDTH
+                ),
                 LinkTarget::Action("edit:time_format".to_string()),
                 focus,
             )

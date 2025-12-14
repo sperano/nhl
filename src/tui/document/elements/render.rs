@@ -301,9 +301,9 @@ pub(super) fn render_team_boxscore(
 
     // Helper to render an empty bordered line
     let render_empty_bordered_line = |y: u16, buf: &mut Buffer| {
-        buf.set_string(area.x, y, &bc.vertical, border_style);
+        buf.set_string(area.x, y, bc.vertical, border_style);
         if width > 1 {
-            buf.set_string(area.x + width - 1, y, &bc.vertical, border_style);
+            buf.set_string(area.x + width - 1, y, bc.vertical, border_style);
         }
     };
 
@@ -333,10 +333,10 @@ pub(super) fn render_team_boxscore(
         let table_height = table.preferred_height().unwrap_or(0);
         for row in 0..table_height {
             // Left border
-            buf.set_string(area.x, y + row, &bc.vertical, border_style);
+            buf.set_string(area.x, y + row, bc.vertical, border_style);
             // Right border
             if width > 1 {
-                buf.set_string(area.x + width - 1, y + row, &bc.vertical, border_style);
+                buf.set_string(area.x + width - 1, y + row, bc.vertical, border_style);
             }
         }
 
@@ -385,7 +385,7 @@ fn render_section_header(
         bc.double_horizontal.repeat(2),
         &bc.mixed_dh_right_t,
     );
-    let title_suffix = bc.mixed_dh_left_t.clone();
+    let title_suffix = bc.mixed_dh_left_t;
 
     // Calculate remaining space for trailing ═
     let prefix_len = 4; // corner + 2x═ + ╡
@@ -403,7 +403,7 @@ fn render_section_header(
 
     // Render suffix (╞ + trailing ═ + corner)
     let suffix_x = x + 4 + title_with_space.chars().count() as u16;
-    buf.set_string(suffix_x, y, &title_suffix, border_style);
+    buf.set_string(suffix_x, y, title_suffix, border_style);
 
     // Trailing ═
     let trailing = bc.double_horizontal.repeat(remaining.saturating_sub(1));
@@ -419,7 +419,7 @@ fn render_bottom_border(x: u16, y: u16, width: u16, buf: &mut Buffer, ctx: &Rend
     let border_style = ctx.boxchar_style();
 
     // Left corner
-    buf.set_string(x, y, &bc.mixed_dh_bottom_left, border_style);
+    buf.set_string(x, y, bc.mixed_dh_bottom_left, border_style);
 
     // Middle ═
     let middle_width = width.saturating_sub(2) as usize;
@@ -428,6 +428,6 @@ fn render_bottom_border(x: u16, y: u16, width: u16, buf: &mut Buffer, ctx: &Rend
 
     // Right corner
     if width > 1 {
-        buf.set_string(x + width - 1, y, &bc.mixed_dh_bottom_right, border_style);
+        buf.set_string(x + width - 1, y, bc.mixed_dh_bottom_right, border_style);
     }
 }

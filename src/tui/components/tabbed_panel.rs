@@ -205,15 +205,15 @@ impl TabBarWidget {
         let mut pos = 0;
 
         // Add leading horizontal line (matches leading space in tab line)
-        segments.push((horizontal.clone(), box_style));
+        segments.push((horizontal.to_string(), box_style));
         pos += 1;
 
         for (i, label) in self.labels.iter().enumerate() {
             if i > 0 {
                 // Add horizontal line before separator (1 char)
-                segments.push((horizontal.clone(), box_style));
+                segments.push((horizontal.to_string(), box_style));
                 segments.push((connector.to_string(), box_style));
-                segments.push((horizontal.clone(), box_style));
+                segments.push((horizontal.to_string(), box_style));
                 pos += 3; // separator width: 1 + 1 + 1 (" │ ")
             }
             // Add horizontal line under tab
