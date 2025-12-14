@@ -34,7 +34,10 @@ impl BreadcrumbWidget {
         // Get styles from theme
         let (text_style, separator_style) = if let Some(theme) = &config.theme {
             (
-                config.base_style().fg(theme.fg).add_modifier(Modifier::BOLD),
+                config
+                    .base_style()
+                    .fg(theme.fg)
+                    .add_modifier(Modifier::BOLD),
                 config.base_style().fg(theme.boxchar_fg),
             )
         } else {

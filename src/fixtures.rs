@@ -279,6 +279,7 @@ fn create_game_matchup_final(overtime: bool) -> GameMatchup {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn create_matchup_team(
     abbrev: &str,
     name: &str,
@@ -324,8 +325,6 @@ pub fn create_mock_boxscore(game_id: i64) -> Boxscore {
         1
     } else if game_id == 2024020003 {
         2
-    } else if game_id == 2024020004 {
-        3
     } else {
         3
     };

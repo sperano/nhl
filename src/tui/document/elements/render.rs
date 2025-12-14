@@ -196,7 +196,8 @@ pub(super) fn render_link(
     let (prefix, link_style) = if focused {
         let prefix = format!("{} ", ctx.box_chars().selector);
         let style = if let Some(theme) = ctx.theme() {
-            base_style.fg(theme.selection_text_fg)
+            base_style
+                .fg(theme.selection_text_fg)
                 .bg(theme.selection_text_bg)
                 .add_modifier(SELECTION_STYLE_MODIFIER)
         } else {

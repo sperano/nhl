@@ -152,23 +152,26 @@ impl TabBarWidget {
                     } else {
                         (theme.fg, theme.bg)
                     }
+                } else if label.active {
+                    (
+                        theme.selection_text_fg_dark(),
+                        Some(theme.selection_text_bg_dark()),
+                    )
                 } else {
-                    if label.active {
-                        (theme.selection_text_fg_dark(), Some(theme.selection_text_bg_dark()))
-                    } else {
-                        (theme.fg_dark(), theme.bg_dark())
-                    }
+                    (theme.fg_dark(), theme.bg_dark())
                 };
                 let base = config.base_style().fg(fg_color);
-                if bg_color.is_some() {
-                    base.bg(bg_color.unwrap())
+                if let Some(bg) = bg_color {
+                    base.bg(bg)
                 } else {
                     base
                 }
             } else {
                 // No theme: use default style, reverse and bold for active
                 if label.active {
-                    config.base_style().add_modifier(THEMELESS_SELECTION_STYLE_MODIFIER)
+                    config
+                        .base_style()
+                        .add_modifier(THEMELESS_SELECTION_STYLE_MODIFIER)
                 } else {
                     config.base_style()
                 }

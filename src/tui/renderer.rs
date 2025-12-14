@@ -30,13 +30,7 @@ impl Renderer {
     ///
     /// This is the main entry point for rendering.
     /// Uses tree diffing to only re-render changed subtrees.
-    pub fn render(
-        &mut self,
-        element: Element,
-        area: Rect,
-        buf: &mut Buffer,
-        ctx: &RenderContext,
-    ) {
+    pub fn render(&mut self, element: Element, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
         // Check if we should skip rendering based on tree diffing
         if let Some(ref previous) = self.previous_tree {
             if Self::trees_equal(previous, &element) {

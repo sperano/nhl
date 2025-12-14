@@ -2,11 +2,7 @@
 //!
 //! Renders a pulsing dots animation that cycles quickly to indicate loading state.
 
-use ratatui::{
-    buffer::Buffer,
-    layout::Rect,
-    style::Modifier,
-};
+use ratatui::{buffer::Buffer, layout::Rect, style::Modifier};
 
 use super::StandaloneWidget;
 use crate::config::RenderContext;

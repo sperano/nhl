@@ -222,8 +222,10 @@ impl Document for BoxscoreDocumentContent {
             .unwrap_or(false);
 
         if wide_enough {
-            builder = builder
-                .element(DocumentElement::row_center_with_gap(vec![away_boxscore, home_boxscore], 4));
+            builder = builder.element(DocumentElement::row_center_with_gap(
+                vec![away_boxscore, home_boxscore],
+                4,
+            ));
         } else {
             builder = builder.element(away_boxscore);
             builder = builder.spacer(1);

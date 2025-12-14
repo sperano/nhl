@@ -149,10 +149,13 @@ impl StandaloneWidget for ScoreBox {
         let status_style = ctx.text_style(); // Status line never changes
         let (box_style, text_style) = if self.selected {
             let selected = if let Some(theme) = ctx.theme() {
-                ctx.text_style().fg(theme.selection_text_fg).bg(theme.selection_text_bg)
+                ctx.text_style()
+                    .fg(theme.selection_text_fg)
+                    .bg(theme.selection_text_bg)
                     .add_modifier(SELECTION_STYLE_MODIFIER)
             } else {
-                ctx.text_style().add_modifier(THEMELESS_SELECTION_STYLE_MODIFIER)
+                ctx.text_style()
+                    .add_modifier(THEMELESS_SELECTION_STYLE_MODIFIER)
             };
             (selected, selected)
         } else {

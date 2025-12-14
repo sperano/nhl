@@ -69,6 +69,7 @@ pub struct Theme {
 
 impl Theme {
     /// Create a new theme with the given colors
+    #[allow(clippy::too_many_arguments)]
     pub const fn new(
         name: &'static str,
         bg: Option<Color>,

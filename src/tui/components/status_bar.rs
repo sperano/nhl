@@ -178,11 +178,7 @@ mod tests {
                 let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
                 let config = DisplayConfig::default();
                 let ctx = RenderContext::focused(&config);
-                widget.render(
-                    Rect::new(0, 0, RENDER_WIDTH, 2),
-                    &mut buf,
-                    &ctx,
-                );
+                widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
                 assert_buffer(&buf, &[
                     "────────────────────────────────────────────────────────────────────┬───────────",
                     "                                                                    │ Loading...",
@@ -211,11 +207,7 @@ mod tests {
                 let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
                 let config = DisplayConfig::default();
                 let ctx = RenderContext::focused(&config);
-                widget.render(
-                    Rect::new(0, 0, RENDER_WIDTH, 2),
-                    &mut buf,
-                    &ctx,
-                );
+                widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
                 assert_buffer(&buf, &[
                     "────────────────────────────────────────────────────────────────┬───────────────",
                     "                                                                │ Refresh in 55s",
@@ -237,11 +229,7 @@ mod tests {
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
         let config = DisplayConfig::default();
         let ctx = RenderContext::focused(&config);
-        widget.render(
-            Rect::new(0, 0, RENDER_WIDTH, 2),
-            &mut buf,
-            &ctx,
-        );
+        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
 
         // Error message should appear on left side
         let line2 = (0..RENDER_WIDTH)
@@ -267,11 +255,7 @@ mod tests {
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
         let config = DisplayConfig::default();
         let ctx = RenderContext::focused(&config);
-        widget.render(
-            Rect::new(0, 0, RENDER_WIDTH, 2),
-            &mut buf,
-            &ctx,
-        );
+        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
 
         // Should show "Refreshing..." when time has elapsed
         let line2 = (0..RENDER_WIDTH)
@@ -298,11 +282,7 @@ mod tests {
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
         let config = DisplayConfig::default();
         let ctx = RenderContext::focused(&config);
-        widget.render(
-            Rect::new(0, 0, RENDER_WIDTH, 2),
-            &mut buf,
-            &ctx,
-        );
+        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
 
         // Should show "Refresh in ?s" when duration_since fails
         let line2 = (0..RENDER_WIDTH)
@@ -353,11 +333,7 @@ mod tests {
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
         let config = DisplayConfig::default();
         let ctx = RenderContext::focused(&config);
-        widget.render(
-            Rect::new(0, 0, RENDER_WIDTH, 2),
-            &mut buf,
-            &ctx,
-        );
+        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
 
         assert_buffer(
             &buf,
@@ -385,11 +361,7 @@ mod tests {
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
         let config = DisplayConfig::default();
         let ctx = RenderContext::focused(&config);
-        widget.render(
-            Rect::new(0, 0, RENDER_WIDTH, 2),
-            &mut buf,
-            &ctx,
-        );
+        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
 
         assert_buffer(
             &buf,
@@ -417,11 +389,7 @@ mod tests {
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
         let config = DisplayConfig::default();
         let ctx = RenderContext::focused(&config);
-        widget.render(
-            Rect::new(0, 0, RENDER_WIDTH, 2),
-            &mut buf,
-            &ctx,
-        );
+        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
 
         assert_buffer(
             &buf,
@@ -461,7 +429,10 @@ mod tests {
 
         // Check connector character (┬) on line 1
         if let Some(cell) = buf.cell((64, 0)) {
-            assert_eq!(cell.fg, THEME_ORANGE.boxchar_fg, "Connector should use theme fg3");
+            assert_eq!(
+                cell.fg, THEME_ORANGE.boxchar_fg,
+                "Connector should use theme fg3"
+            );
         }
 
         // Check vertical bar character (│) on line 2
@@ -622,11 +593,7 @@ mod tests {
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
         let config = DisplayConfig::default();
         let ctx = RenderContext::focused(&config);
-        widget.render(
-            Rect::new(0, 0, RENDER_WIDTH, 2),
-            &mut buf,
-            &ctx,
-        );
+        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
 
         // Should render without panic
         // The vertical bar should still be positioned correctly
@@ -653,11 +620,7 @@ mod tests {
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
         let config = DisplayConfig::default();
         let ctx = RenderContext::focused(&config);
-        widget.render(
-            Rect::new(0, 0, RENDER_WIDTH, 2),
-            &mut buf,
-            &ctx,
-        );
+        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
 
         // Should render without panic or incorrect layout
         let line1 = (0..RENDER_WIDTH)
@@ -686,11 +649,7 @@ mod tests {
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
         let config = DisplayConfig::default();
         let ctx = RenderContext::focused(&config);
-        widget.render(
-            Rect::new(0, 0, RENDER_WIDTH, 2),
-            &mut buf,
-            &ctx,
-        );
+        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
 
         // Should render without panic
         // Layout should still be functional

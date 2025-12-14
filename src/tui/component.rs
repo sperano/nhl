@@ -79,10 +79,7 @@ pub enum Element {
     /// 1. The child is rendered with the specified focus state
     /// 2. The entire area is filled with the appropriate background color
     ///    (including empty space that the child doesn't render to)
-    FocusContext {
-        focused: bool,
-        child: Box<Element>,
-    },
+    FocusContext { focused: bool, child: Box<Element> },
 
     /// Nothing to render
     None,

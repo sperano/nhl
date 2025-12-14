@@ -177,12 +177,7 @@ pub trait Document: Send + Sync {
 
     /// Render the document to a buffer at full height
     /// Returns the buffer and the actual height used
-    fn render_full(
-        &self,
-        width: u16,
-        ctx: &RenderContext,
-        focus: &FocusContext,
-    ) -> (Buffer, u16) {
+    fn render_full(&self, width: u16, ctx: &RenderContext, focus: &FocusContext) -> (Buffer, u16) {
         let elements = self.build(focus);
         let height = elements.iter().map(|e| e.height()).sum();
 
@@ -526,7 +521,8 @@ impl DocumentView {
 
                 for x in 0..content_width {
                     let src_idx = (src_y * content_width + x) as usize;
-                    let dst_idx = (dst_y * buf.area.width + (area.x + HORIZONTAL_MARGIN + x)) as usize;
+                    let dst_idx =
+                        (dst_y * buf.area.width + (area.x + HORIZONTAL_MARGIN + x)) as usize;
 
                     if src_idx < full_buffer.content.len() && dst_idx < buf.content.len() {
                         buf.content[dst_idx] = full_buffer.content[src_idx].clone();

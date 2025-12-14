@@ -9,12 +9,12 @@ use crossterm::event::KeyModifiers;
 
 use super::action::{Action, SettingsAction};
 use super::component_store::ComponentStateStore;
+#[cfg(feature = "development")]
+use super::components::demo_tab::DemoTabMsg;
 use super::components::scores_tab::ScoresTabMsg;
 use super::components::scores_tab::ScoresTabState;
 use super::components::standings_tab::StandingsTabMsg;
 use super::components::standings_tab::StandingsTabState;
-#[cfg(feature = "development")]
-use super::components::demo_tab::DemoTabMsg;
 #[cfg(feature = "development")]
 use super::constants::DEMO_TAB_PATH;
 use super::constants::{SCORES_TAB_PATH, SETTINGS_TAB_PATH, STANDINGS_TAB_PATH};
@@ -538,8 +538,7 @@ pub fn key_to_action(
             // Demo tab - Up handled by handle_demo_tab_keys (both plain and Shift)
         } else if current_tab == Tab::Settings {
             // Settings tab - Up handled by handle_settings_tab_keys (both plain and Shift)
-        } else if current_tab == Tab::Standings && has_standings_item_focus(component_states)
-        {
+        } else if current_tab == Tab::Standings && has_standings_item_focus(component_states) {
             // Standings browse mode - Up handled by handle_standings_league_keys (both plain and Shift)
         } else {
             // Not in nested mode - Up returns to tab bar
@@ -549,8 +548,7 @@ pub fn key_to_action(
         #[cfg(not(feature = "development"))]
         if current_tab == Tab::Settings {
             // Settings tab - Up handled by handle_settings_tab_keys (both plain and Shift)
-        } else if current_tab == Tab::Standings && has_standings_item_focus(component_states)
-        {
+        } else if current_tab == Tab::Standings && has_standings_item_focus(component_states) {
             // Standings browse mode - Up handled by handle_standings_league_keys (both plain and Shift)
         } else {
             // Not in nested mode - Up returns to tab bar
