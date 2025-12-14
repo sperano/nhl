@@ -37,7 +37,7 @@ pub use loading_animation::LoadingAnimation;
 pub mod settings_list;
 pub use settings_list::SettingsListWidget;
 
-use crate::config::DisplayConfig;
+use crate::config::RenderContext;
 use ratatui::{buffer::Buffer, layout::Rect};
 
 /// Core trait for standalone renderable widgets
@@ -66,8 +66,8 @@ pub trait StandaloneWidget {
     ///
     /// * `area` - The rectangular area to render into
     /// * `buf` - The buffer to write to
-    /// * `config` - Display configuration (colors, box chars, etc.)
-    fn render(&self, area: Rect, buf: &mut Buffer, config: &DisplayConfig);
+    /// * `ctx` - Render context with display configuration and focus state
+    fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext);
 
     /// Get the preferred height of this widget
     ///
@@ -94,7 +94,7 @@ mod tests {
     struct TestWidget;
 
     impl StandaloneWidget for TestWidget {
-        fn render(&self, _area: Rect, _buf: &mut Buffer, _config: &DisplayConfig) {
+        fn render(&self, _area: Rect, _buf: &mut Buffer, _ctx: &RenderContext) {
             // Minimal implementation for testing
         }
     }

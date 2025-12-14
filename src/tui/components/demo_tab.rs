@@ -15,7 +15,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 
 use crate::component_message_impl;
-use crate::config::DisplayConfig;
+use crate::config::RenderContext;
 use crate::tui::action::Action;
 use crate::tui::component::{Component, Effect, Element, ElementWidget};
 use crate::tui::components::create_standings_table_with_selection;
@@ -269,7 +269,7 @@ struct DemoTabWidget {
 }
 
 impl ElementWidget for DemoTabWidget {
-    fn render(&self, area: Rect, buf: &mut Buffer, config: &DisplayConfig) {
+    fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
         // Create document view with state from AppState
         let standings = (*self.standings).clone();
         let doc = Arc::new(DemoDocument::new(standings));
@@ -283,7 +283,12 @@ impl ElementWidget for DemoTabWidget {
         // Apply scroll offset from AppState
         view.set_scroll_offset(self.scroll_offset);
 
-        view.render(area, buf, config);
+        // Create child RenderContext with our focus state
+        // Document is only focused when in browse mode (navigating within the document)
+        let is_browse_mode = self.focus_index.is_some();
+        let child_ctx = RenderContext::new(ctx.config, self.content_focused && is_browse_mode);
+
+        view.render(area, buf, &child_ctx);
     }
 
     fn clone_box(&self) -> Box<dyn ElementWidget> {
@@ -461,6 +466,7 @@ impl Document for DemoDocument {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{DisplayConfig, RenderContext};
     use crate::tui::testing::assert_buffer;
 
     #[test]
@@ -519,18 +525,19 @@ mod tests {
 
         let mut buf = Buffer::empty(Rect::new(0, 0, 60, 5));
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        widget.render(buf.area, &mut buf, &config);
+        widget.render(buf.area, &mut buf, &ctx);
 
         // Should render the heading and first lines of content
         assert_buffer(
             &buf,
             &[
-                "Document System Demo",
-                "════════════════════",
+                " Document System Demo",
+                " ════════════════════",
                 "",
-                "This tab demonstrates the new document system for the NHL TU",
-                "Press Tab/Shift-Tab to navigate between focusable elements.",
+                " This tab demonstrates the new document system for the NHL",
+                " Press Tab/Shift-Tab to navigate between focusable elements",
             ],
         );
     }

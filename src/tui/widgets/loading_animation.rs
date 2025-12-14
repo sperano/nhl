@@ -5,11 +5,11 @@
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Modifier, Style},
+    style::Modifier,
 };
 
 use super::StandaloneWidget;
-use crate::config::DisplayConfig;
+use crate::config::RenderContext;
 
 /// Number of dots in the animation
 const DOT_COUNT: usize = 3;
@@ -40,7 +40,7 @@ impl LoadingAnimation {
 }
 
 impl StandaloneWidget for LoadingAnimation {
-    fn render(&self, area: Rect, buf: &mut Buffer, config: &DisplayConfig) {
+    fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
         if area.width == 0 || area.height == 0 {
             return;
         }
@@ -53,10 +53,10 @@ impl StandaloneWidget for LoadingAnimation {
         let y = area.y + area.height / 2;
 
         if y < area.y + area.height {
-            let style = if let Some(theme) = &config.theme {
-                Style::default().fg(theme.fg2).add_modifier(Modifier::BOLD)
+            let style = if let Some(theme) = ctx.theme() {
+                ctx.base_style().fg(theme.fg).add_modifier(Modifier::BOLD)
             } else {
-                Style::default().add_modifier(Modifier::BOLD)
+                ctx.base_style().add_modifier(Modifier::BOLD)
             };
 
             buf.set_string(x, y, text, style);
@@ -75,6 +75,7 @@ impl StandaloneWidget for LoadingAnimation {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{DisplayConfig, RenderContext};
     use crate::tui::testing::assert_buffer;
 
     #[test]
@@ -93,8 +94,9 @@ mod tests {
         let area = Rect::new(0, 0, 9, 3);
         let mut buf = Buffer::empty(area);
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        widget.render(area, &mut buf, &config);
+        widget.render(area, &mut buf, &ctx);
 
         // Should be centered: (9-3)/2 = 3, middle row = 1
         assert_buffer(&buf, &["         ", "   ●○○   ", "         "]);
@@ -106,8 +108,9 @@ mod tests {
         let area = Rect::new(0, 0, 7, 1);
         let mut buf = Buffer::empty(area);
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        widget.render(area, &mut buf, &config);
+        widget.render(area, &mut buf, &ctx);
 
         assert_buffer(&buf, &["  ○○●  "]);
     }

@@ -25,7 +25,6 @@ impl SettingsDocument {
         focus: &FocusContext,
     ) -> DocumentBuilder {
         builder
-            .heading(2, "Logging Settings")
             .spacer(1)
             .link_with_focus(
                 "log_level",
@@ -57,7 +56,6 @@ impl SettingsDocument {
             .unwrap_or_else(|| "none".to_string());
 
         builder
-            .heading(2, "Display Settings")
             .spacer(1)
             .link_with_focus(
                 "theme",
@@ -86,7 +84,6 @@ impl SettingsDocument {
         focus: &FocusContext,
     ) -> DocumentBuilder {
         builder
-            .heading(2, "Data Settings")
             .spacer(1)
             .link_with_focus(
                 "refresh_interval",

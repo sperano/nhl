@@ -7,7 +7,7 @@ use nhl_api::{DailySchedule, GameDate, GameMatchup};
 
 use crate::commands::scores_format::PeriodScores;
 use crate::component_message_impl;
-use crate::config::DisplayConfig;
+use crate::config::RenderContext;
 use crate::tui::action::Action;
 use crate::tui::component::{Component, Effect, Element, ElementWidget};
 use crate::tui::document::DocumentView;
@@ -241,6 +241,7 @@ impl ScoresTab {
                 active_key,
                 tabs,
                 focused: props.focused && !state.is_browse_mode(),
+                content_focused: props.focused && state.is_browse_mode(),
             },
             &(),
         )
@@ -273,6 +274,7 @@ impl ScoresTab {
         _date: &GameDate,
     ) -> Element {
         // Wrap in ScoreBoxesDocumentWidget which calculates boxes_per_row at render time
+        // Document is only focused when in browse mode (navigating within the document)
         Element::Widget(Box::new(ScoreBoxesDocumentWidget {
             schedule: props.schedule.clone(),
             game_info: props.game_info.clone(),
@@ -280,6 +282,7 @@ impl ScoresTab {
             focus_index: state.doc_nav.focus_index,
             scroll_offset: state.doc_nav.scroll_offset,
             animation_frame: props.animation_frame,
+            focused: props.focused && state.is_browse_mode(),
         }))
     }
 
@@ -339,10 +342,12 @@ struct ScoreBoxesDocumentWidget {
     focus_index: Option<usize>,
     scroll_offset: u16,
     animation_frame: u8,
+    /// Whether this widget has focus (affects dim/bright rendering)
+    focused: bool,
 }
 
 impl ElementWidget for ScoreBoxesDocumentWidget {
-    fn render(&self, area: Rect, buf: &mut Buffer, display_config: &DisplayConfig) {
+    fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
         // Calculate boxes_per_row based on actual viewport width
         let boxes_per_row = ScoreBoxesDocument::boxes_per_row_for_width(area.width);
 
@@ -366,8 +371,11 @@ impl ElementWidget for ScoreBoxesDocumentWidget {
         // Apply scroll offset
         view.set_scroll_offset(self.scroll_offset);
 
+        // Create child RenderContext with our focus state
+        let child_ctx = RenderContext::new(ctx.config, self.focused);
+
         // Render the document
-        view.render(area, buf, display_config);
+        view.render(area, buf, &child_ctx);
     }
 
     fn clone_box(&self) -> Box<dyn ElementWidget> {
@@ -378,6 +386,7 @@ impl ElementWidget for ScoreBoxesDocumentWidget {
             focus_index: self.focus_index,
             scroll_offset: self.scroll_offset,
             animation_frame: self.animation_frame,
+            focused: self.focused,
         })
     }
 

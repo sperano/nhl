@@ -1,4 +1,4 @@
-use crate::config::{DisplayConfig, SELECTION_STYLE_MODIFIER};
+use crate::config::{DisplayConfig, RenderContext, THEMELESS_SELECTION_STYLE_MODIFIER};
 use crate::tui::component::{vertical, Component, Constraint, Element};
 use ratatui::style::Style;
 
@@ -31,8 +31,11 @@ pub struct TabbedPanelProps {
     pub active_key: String,
     /// List of tabs with their content
     pub tabs: Vec<TabItem>,
-    /// Whether the tab bar is focused (affects styling)
+    /// Whether the tab bar is focused (affects tab bar styling)
     pub focused: bool,
+    /// Whether the content area is focused (affects content background)
+    /// When true, content area is bright; when false, content area is dimmed
+    pub content_focused: bool,
 }
 
 /// TabbedPanel component - renders a tab bar with associated content
@@ -68,6 +71,13 @@ impl Component for TabbedPanel {
             })
             .collect();
 
+        // Wrap content in FocusContext to propagate focus state and fill background
+        // This ensures empty space below content is dimmed when content is unfocused
+        let wrapped_content = Element::FocusContext {
+            focused: props.content_focused,
+            child: Box::new(active_content),
+        };
+
         vertical(
             [
                 Constraint::Length(2), // Tab bar (2 lines: labels + separator)
@@ -75,7 +85,7 @@ impl Component for TabbedPanel {
             ],
             vec![
                 self.render_tab_bar(&tab_labels, props.focused),
-                active_content,
+                wrapped_content,
             ],
         )
     }
@@ -106,53 +116,71 @@ struct TabBarWidget {
 }
 
 impl TabBarWidget {
-    /// Get the style for box characters (borders/separators) based on focus state and theme
+    /// Get the style for box characters (borders/separators) based on focus state
     fn box_char_style(&self, config: &DisplayConfig) -> Style {
-        if let Some(theme) = &config.theme {
-            if self.focused {
-                Style::default().fg(theme.fg3)
-            } else {
-                Style::default().fg(theme.fg3_dark())
-            }
+        if self.focused {
+            config.boxchar_style()
         } else {
-            Style::default()
+            config.boxchar_style_dim()
         }
     }
 
     /// Build segments for the tab line with separators
-    fn build_tab_line(&self, config: &DisplayConfig) -> Vec<(String, Style)> {
+    fn build_tab_line(&self, config: &DisplayConfig, area_width: usize) -> Vec<(String, Style)> {
+        use unicode_width::UnicodeWidthStr;
+
         let box_style = self.box_char_style(config);
         let separator = format!(" {} ", config.box_chars.vertical);
         let mut segments = Vec::new();
+        let mut pos = 0;
+
+        // Add leading margin for first tab (matches separator's leading space)
+        segments.push((" ".to_string(), box_style));
+        pos += 1;
 
         for (i, label) in self.labels.iter().enumerate() {
             if i > 0 {
                 segments.push((separator.clone(), box_style));
+                pos += separator.width();
             }
 
             let style = if let Some(theme) = &config.theme {
                 // When theme is set: use fg2 (focused) or fg2_dark (unfocused)
-                let fg_color = if self.focused {
-                    theme.fg2
+                let (fg_color, bg_color) = if self.focused {
+                    if label.active {
+                        (theme.selection_text_fg, Some(theme.selection_text_bg))
+                    } else {
+                        (theme.fg, theme.bg)
+                    }
                 } else {
-                    theme.fg2_dark()
+                    if label.active {
+                        (theme.selection_text_fg_dark(), Some(theme.selection_text_bg_dark()))
+                    } else {
+                        (theme.fg_dark(), theme.bg_dark())
+                    }
                 };
-                let base = Style::default().fg(fg_color);
-                if label.active {
-                    base.add_modifier(SELECTION_STYLE_MODIFIER)
+                let base = config.base_style().fg(fg_color);
+                if bg_color.is_some() {
+                    base.bg(bg_color.unwrap())
                 } else {
                     base
                 }
             } else {
                 // No theme: use default style, reverse and bold for active
                 if label.active {
-                    Style::default().add_modifier(SELECTION_STYLE_MODIFIER)
+                    config.base_style().add_modifier(THEMELESS_SELECTION_STYLE_MODIFIER)
                 } else {
-                    Style::default()
+                    config.base_style()
                 }
             };
 
             segments.push((label.title.clone(), style));
+            pos += label.title.width();
+        }
+
+        // Fill remaining space with box_style (uses bg_dark when unfocused)
+        if pos < area_width {
+            segments.push((" ".repeat(area_width - pos), box_style));
         }
 
         segments
@@ -172,6 +200,10 @@ impl TabBarWidget {
 
         let mut segments = Vec::new();
         let mut pos = 0;
+
+        // Add leading horizontal line (matches leading space in tab line)
+        segments.push((horizontal.clone(), box_style));
+        pos += 1;
 
         for (i, label) in self.labels.iter().enumerate() {
             if i > 0 {
@@ -201,7 +233,7 @@ impl crate::tui::component::ElementWidget for TabBarWidget {
         &self,
         area: ratatui::layout::Rect,
         buf: &mut ratatui::buffer::Buffer,
-        config: &DisplayConfig,
+        ctx: &RenderContext,
     ) {
         use unicode_width::UnicodeWidthStr;
 
@@ -209,8 +241,8 @@ impl crate::tui::component::ElementWidget for TabBarWidget {
             return;
         }
 
-        let tab_segments = self.build_tab_line(config);
-        let separator_segments = self.build_separator_line(area.width as usize, config);
+        let tab_segments = self.build_tab_line(ctx.config, area.width as usize);
+        let separator_segments = self.build_separator_line(area.width as usize, ctx.config);
 
         // Render tab line
         let mut x = area.x;
@@ -248,7 +280,7 @@ impl crate::tui::component::ElementWidget for TabBarWidget {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::DisplayConfig;
+    use crate::config::{DisplayConfig, RenderContext};
     use crate::formatting::BoxChars;
     use crate::tui::component::Element;
     use crate::tui::testing::{assert_buffer, RENDER_WIDTH};
@@ -287,7 +319,8 @@ mod tests {
     ) -> Buffer {
         let mut buf = Buffer::empty(Rect::new(0, 0, width, height));
         let config = test_config();
-        widget.render(buf.area, &mut buf, &config);
+        let ctx = RenderContext::focused(&config);
+        widget.render(buf.area, &mut buf, &ctx);
         buf
     }
 
@@ -298,7 +331,8 @@ mod tests {
         config: &DisplayConfig,
     ) -> Buffer {
         let mut buf = Buffer::empty(Rect::new(0, 0, width, height));
-        widget.render(buf.area, &mut buf, config);
+        let ctx = RenderContext::focused(config);
+        widget.render(buf.area, &mut buf, &ctx);
         buf
     }
 
@@ -329,6 +363,7 @@ mod tests {
                 TabItem::new("tab2", "Tab 2", Element::None),
             ],
             focused: true,
+            content_focused: false,
         };
 
         let element = panel.view(&props, &());
@@ -356,6 +391,7 @@ mod tests {
                 TabItem::new("tab2", "Tab 2", content2.clone()),
             ],
             focused: true,
+            content_focused: false,
         };
 
         let element = panel.view(&props, &());
@@ -383,6 +419,7 @@ mod tests {
             active_key: "none".into(),
             tabs: vec![],
             focused: true,
+            content_focused: false,
         };
 
         let element = panel.view(&props, &());
@@ -403,6 +440,7 @@ mod tests {
             active_key: "nonexistent".into(),
             tabs: vec![TabItem::new("tab1", "Tab 1", Element::None)],
             focused: true,
+            content_focused: false,
         };
 
         let element = panel.view(&props, &());
@@ -446,8 +484,8 @@ mod tests {
         assert_buffer(
             &buf,
             &[
-                "Home │ Profile │ Settings",
-                "─────┴─────────┴────────────────────────────────────────────────────────────────",
+                " Home │ Profile │ Settings",
+                "──────┴─────────┴───────────────────────────────────────────────────────────────",
             ],
         );
     }
@@ -467,7 +505,7 @@ mod tests {
         assert_buffer(
             &buf,
             &[
-                "Only Tab",
+                " Only Tab",
                 "────────────────────────────────────────────────────────────────────────────────",
             ],
         );
@@ -513,7 +551,7 @@ mod tests {
         assert_buffer(
             &buf,
             &[
-                "Tab A | Tab B",
+                " Tab A | Tab B",
                 "--------------------------------------------------------------------------------",
             ],
         );
@@ -626,18 +664,19 @@ mod tests {
 
         // When unfocused with no theme, all tabs use default style (Reset)
         // Active tab gets REVERSED modifier
+        // Note: positions shifted by 1 due to leading margin
 
-        // Check inactive tab (Profile at position 9+)
-        let profile_cell = &buf[(9, 0)]; // 'P' in Profile
+        // Check inactive tab (Profile at position 10+)
+        let profile_cell = &buf[(10, 0)]; // 'P' in Profile
         assert_eq!(profile_cell.fg, ratatui::style::Color::Reset);
         assert!(!profile_cell.modifier.contains(Modifier::REVERSED));
 
-        // Check separator (│ at position 5) - uses default style when no theme
-        let separator_cell = &buf[(5, 0)];
+        // Check separator (│ at position 6) - uses default style when no theme
+        let separator_cell = &buf[(6, 0)];
         assert_eq!(separator_cell.fg, ratatui::style::Color::Reset);
 
         // Check active tab uses default style with REVERSED modifier
-        let home_cell = &buf[(0, 0)]; // 'H' in Home
+        let home_cell = &buf[(1, 0)]; // 'H' in Home (position 1 due to leading margin)
         assert_eq!(home_cell.fg, ratatui::style::Color::Reset);
         assert!(home_cell.modifier.contains(Modifier::REVERSED));
     }
@@ -680,7 +719,7 @@ mod tests {
             &self,
             _area: ratatui::layout::Rect,
             _buf: &mut ratatui::buffer::Buffer,
-            _config: &DisplayConfig,
+            _ctx: &RenderContext,
         ) {
         }
         fn clone_box(&self) -> Box<dyn crate::tui::component::ElementWidget> {

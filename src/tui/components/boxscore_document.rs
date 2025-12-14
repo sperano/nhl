@@ -5,7 +5,7 @@ use ratatui::{buffer::Buffer, layout::Rect};
 use nhl_api::{Boxscore, GoalieStats, SkaterStats};
 
 use super::table::TableWidget;
-use crate::config::DisplayConfig;
+use crate::config::RenderContext;
 use crate::tui::component::{Component, Element, ElementWidget};
 use crate::tui::document::{
     Document, DocumentBuilder, DocumentElement, DocumentView, FocusContext,
@@ -365,10 +365,13 @@ struct BoxscoreDocumentWidget {
 }
 
 impl ElementWidget for BoxscoreDocumentWidget {
-    fn render(&self, area: Rect, buf: &mut Buffer, config: &DisplayConfig) {
+    fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
+        // Create child RenderContext with our focus state
+        let child_ctx = RenderContext::new(ctx.config, self.focused);
+
         // Show animation if loading or data hasn't arrived yet
         if self.loading || self.boxscore.is_none() {
-            LoadingAnimation::new(self.animation_frame).render(area, buf, config);
+            LoadingAnimation::new(self.animation_frame).render(area, buf, &child_ctx);
             return;
         }
 
@@ -394,7 +397,7 @@ impl ElementWidget for BoxscoreDocumentWidget {
         view.set_scroll_offset(self.scroll_offset);
 
         // Render the document
-        view.render(area, buf, config);
+        view.render(area, buf, &child_ctx);
     }
 
     fn clone_box(&self) -> Box<dyn ElementWidget> {
@@ -414,6 +417,7 @@ impl ElementWidget for BoxscoreDocumentWidget {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{DisplayConfig, RenderContext};
     use crate::tui::document::FocusContext;
     use nhl_api::{
         Boxscore, BoxscoreTeam, GameClock, GameState, GoalieDecision, GoalieStats, LocalizedString,
@@ -617,8 +621,9 @@ mod tests {
         let area = Rect::new(0, 0, 80, 30);
         let mut buf = Buffer::empty(area);
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        widget.render(area, &mut buf, &config);
+        widget.render(area, &mut buf, &ctx);
 
         // Should render without panic
         assert_eq!(*buf.area(), area);
@@ -640,8 +645,9 @@ mod tests {
         let area = Rect::new(0, 0, 80, 30);
         let mut buf = Buffer::empty(area);
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        widget.render(area, &mut buf, &config);
+        widget.render(area, &mut buf, &ctx);
 
         // Should render without panic
         assert_eq!(*buf.area(), area);
@@ -664,8 +670,9 @@ mod tests {
         let area = Rect::new(0, 0, 100, 50);
         let mut buf = Buffer::empty(area);
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        widget.render(area, &mut buf, &config);
+        widget.render(area, &mut buf, &ctx);
 
         // Should render without panic
         assert_eq!(*buf.area(), area);

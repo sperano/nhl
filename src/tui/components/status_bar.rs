@@ -1,14 +1,14 @@
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Color, Style},
+    style::Color,
     text::{Line, Span},
     widgets::Paragraph,
 };
 use std::time::SystemTime;
 use unicode_width::UnicodeWidthStr;
 
-use crate::config::DisplayConfig;
+use crate::config::RenderContext;
 use crate::tui::{
     component::{Component, Element, ElementWidget},
     state::SystemState,
@@ -44,7 +44,7 @@ struct StatusBarWidget {
 }
 
 impl ElementWidget for StatusBarWidget {
-    fn render(&self, area: Rect, buf: &mut Buffer, config: &DisplayConfig) {
+    fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
         let mut lines = Vec::new();
 
         // Left side: status message (if any)
@@ -79,27 +79,27 @@ impl ElementWidget for StatusBarWidget {
             .saturating_sub(right_text_with_margin.width() as u16 + 1);
 
         // Determine styles based on theme
-        let separator_style = if let Some(theme) = &config.theme {
-            Style::default().fg(theme.fg3)
+        let separator_style = if let Some(theme) = ctx.theme() {
+            ctx.base_style().fg(theme.boxchar_fg)
         } else {
-            Style::default()
+            ctx.base_style()
         };
 
-        let text_style = if let Some(theme) = &config.theme {
-            Style::default().fg(theme.fg2)
+        let text_style = if let Some(theme) = ctx.theme() {
+            ctx.base_style().fg(theme.fg)
         } else {
-            Style::default()
+            ctx.base_style()
         };
 
         // First line: horizontal separator with connector
-        let left_part = config.box_chars.horizontal.repeat(bar_position as usize);
-        let right_part = config
-            .box_chars
+        let left_part = ctx.box_chars().horizontal.repeat(bar_position as usize);
+        let right_part = ctx
+            .box_chars()
             .horizontal
             .repeat((area.width.saturating_sub(bar_position + 1)) as usize);
         let line1 = Line::from(vec![
             Span::styled(left_part, separator_style),
-            Span::styled(&config.box_chars.connector3, separator_style),
+            Span::styled(&ctx.box_chars().connector3, separator_style),
             Span::styled(right_part, separator_style),
         ]);
         lines.push(line1);
@@ -111,7 +111,7 @@ impl ElementWidget for StatusBarWidget {
         if !left_text.is_empty() {
             line2_spans.push(Span::raw(" "));
             if self.is_error {
-                line2_spans.push(Span::styled(&left_text, Style::default().fg(Color::Red)));
+                line2_spans.push(Span::styled(&left_text, ctx.base_style().fg(Color::Red)));
             } else {
                 line2_spans.push(Span::styled(&left_text, text_style));
             }
@@ -127,7 +127,7 @@ impl ElementWidget for StatusBarWidget {
         line2_spans.push(Span::raw(" ".repeat(padding_len)));
 
         // Right side: vertical bar + refresh text
-        line2_spans.push(Span::styled(&config.box_chars.vertical, separator_style));
+        line2_spans.push(Span::styled(&ctx.box_chars().vertical, separator_style));
         line2_spans.push(Span::raw(" "));
         line2_spans.push(Span::styled(&right_text, text_style));
         line2_spans.push(Span::raw(" "));
@@ -155,7 +155,7 @@ impl ElementWidget for StatusBarWidget {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::Config;
+    use crate::config::{Config, DisplayConfig, RenderContext};
     use crate::tui::testing::{assert_buffer, RENDER_WIDTH};
     use ratatui::buffer::Buffer;
 
@@ -176,10 +176,12 @@ mod tests {
         match element {
             Element::Widget(widget) => {
                 let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
+                let config = DisplayConfig::default();
+                let ctx = RenderContext::focused(&config);
                 widget.render(
                     Rect::new(0, 0, RENDER_WIDTH, 2),
                     &mut buf,
-                    &DisplayConfig::default(),
+                    &ctx,
                 );
                 assert_buffer(&buf, &[
                     "────────────────────────────────────────────────────────────────────┬───────────",
@@ -207,10 +209,12 @@ mod tests {
         match element {
             Element::Widget(widget) => {
                 let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
+                let config = DisplayConfig::default();
+                let ctx = RenderContext::focused(&config);
                 widget.render(
                     Rect::new(0, 0, RENDER_WIDTH, 2),
                     &mut buf,
-                    &DisplayConfig::default(),
+                    &ctx,
                 );
                 assert_buffer(&buf, &[
                     "────────────────────────────────────────────────────────────────┬───────────────",
@@ -231,10 +235,12 @@ mod tests {
         };
 
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
+        let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
         widget.render(
             Rect::new(0, 0, RENDER_WIDTH, 2),
             &mut buf,
-            &DisplayConfig::default(),
+            &ctx,
         );
 
         // Error message should appear on left side
@@ -259,10 +265,12 @@ mod tests {
         };
 
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
+        let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
         widget.render(
             Rect::new(0, 0, RENDER_WIDTH, 2),
             &mut buf,
-            &DisplayConfig::default(),
+            &ctx,
         );
 
         // Should show "Refreshing..." when time has elapsed
@@ -288,10 +296,12 @@ mod tests {
         };
 
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
+        let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
         widget.render(
             Rect::new(0, 0, RENDER_WIDTH, 2),
             &mut buf,
-            &DisplayConfig::default(),
+            &ctx,
         );
 
         // Should show "Refresh in ?s" when duration_since fails
@@ -341,10 +351,12 @@ mod tests {
         };
 
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
+        let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
         widget.render(
             Rect::new(0, 0, RENDER_WIDTH, 2),
             &mut buf,
-            &DisplayConfig::default(),
+            &ctx,
         );
 
         assert_buffer(
@@ -371,10 +383,12 @@ mod tests {
         };
 
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
+        let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
         widget.render(
             Rect::new(0, 0, RENDER_WIDTH, 2),
             &mut buf,
-            &DisplayConfig::default(),
+            &ctx,
         );
 
         assert_buffer(
@@ -401,10 +415,12 @@ mod tests {
         };
 
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
+        let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
         widget.render(
             Rect::new(0, 0, RENDER_WIDTH, 2),
             &mut buf,
-            &DisplayConfig::default(),
+            &ctx,
         );
 
         assert_buffer(
@@ -429,28 +445,29 @@ mod tests {
 
         let mut config = DisplayConfig::default();
         config.theme = Some(THEME_ORANGE.clone());
+        let ctx = RenderContext::focused(&config);
 
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
-        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &config);
+        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
 
         // Verify separator characters are styled with fg3
         // Check horizontal line character on line 1
         if let Some(cell) = buf.cell((0, 0)) {
             assert_eq!(
-                cell.fg, THEME_ORANGE.fg3,
+                cell.fg, THEME_ORANGE.boxchar_fg,
                 "Horizontal separator should use theme fg3"
             );
         }
 
         // Check connector character (┬) on line 1
         if let Some(cell) = buf.cell((64, 0)) {
-            assert_eq!(cell.fg, THEME_ORANGE.fg3, "Connector should use theme fg3");
+            assert_eq!(cell.fg, THEME_ORANGE.boxchar_fg, "Connector should use theme fg3");
         }
 
         // Check vertical bar character (│) on line 2
         if let Some(cell) = buf.cell((64, 1)) {
             assert_eq!(
-                cell.fg, THEME_ORANGE.fg3,
+                cell.fg, THEME_ORANGE.boxchar_fg,
                 "Vertical bar should use theme fg3"
             );
         }
@@ -466,9 +483,10 @@ mod tests {
         };
 
         let config = DisplayConfig::default(); // No theme set
+        let ctx = RenderContext::focused(&config);
 
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
-        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &config);
+        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
 
         // Verify separator characters use default color (Reset)
         // Check horizontal line character on line 1
@@ -503,14 +521,15 @@ mod tests {
 
         let mut config = DisplayConfig::default();
         config.theme = Some(THEME_ORANGE.clone());
+        let ctx = RenderContext::focused(&config);
 
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
-        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &config);
+        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
 
         // Verify success message uses fg2
         if let Some(cell) = buf.cell((1, 1)) {
             assert_eq!(
-                cell.fg, THEME_ORANGE.fg2,
+                cell.fg, THEME_ORANGE.fg,
                 "Success message should use theme fg2"
             );
         }
@@ -519,7 +538,7 @@ mod tests {
         // Find the refresh text (right side of the vertical bar)
         if let Some(cell) = buf.cell((66, 1)) {
             assert_eq!(
-                cell.fg, THEME_ORANGE.fg2,
+                cell.fg, THEME_ORANGE.fg,
                 "Refresh text should use theme fg2"
             );
         }
@@ -538,9 +557,10 @@ mod tests {
 
         let mut config = DisplayConfig::default();
         config.theme = Some(THEME_ORANGE.clone());
+        let ctx = RenderContext::focused(&config);
 
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
-        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &config);
+        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
 
         // Verify error message still uses Color::Red, not theme fg2
         if let Some(cell) = buf.cell((1, 1)) {
@@ -550,7 +570,7 @@ mod tests {
                 "Error message should use Color::Red even with theme set"
             );
             assert_ne!(
-                cell.fg, THEME_ORANGE.fg2,
+                cell.fg, THEME_ORANGE.fg,
                 "Error message should NOT use theme fg2"
             );
         }
@@ -566,9 +586,10 @@ mod tests {
         };
 
         let config = DisplayConfig::default(); // No theme set
+        let ctx = RenderContext::focused(&config);
 
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
-        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &config);
+        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
 
         // Verify success message uses default color when no theme
         if let Some(cell) = buf.cell((1, 1)) {
@@ -599,10 +620,12 @@ mod tests {
         };
 
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
+        let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
         widget.render(
             Rect::new(0, 0, RENDER_WIDTH, 2),
             &mut buf,
-            &DisplayConfig::default(),
+            &ctx,
         );
 
         // Should render without panic
@@ -628,10 +651,12 @@ mod tests {
         };
 
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
+        let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
         widget.render(
             Rect::new(0, 0, RENDER_WIDTH, 2),
             &mut buf,
-            &DisplayConfig::default(),
+            &ctx,
         );
 
         // Should render without panic or incorrect layout
@@ -659,10 +684,12 @@ mod tests {
         };
 
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
+        let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
         widget.render(
             Rect::new(0, 0, RENDER_WIDTH, 2),
             &mut buf,
-            &DisplayConfig::default(),
+            &ctx,
         );
 
         // Should render without panic

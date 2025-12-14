@@ -10,7 +10,7 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 
 use crate::big_digits::BIG_DIGIT_HEIGHT;
-use crate::config::DisplayConfig;
+use crate::config::RenderContext;
 use crate::tui::component::ElementWidget;
 use crate::tui::components::TableWidget;
 use crate::tui::widgets::{BigScore, ScoreBox, StandaloneWidget};
@@ -90,7 +90,7 @@ pub enum DocumentElement {
     /// Used for complex widgets like tables that manage their own focus
     Custom {
         /// Render function that draws to a buffer
-        render_fn: fn(Rect, &mut Buffer, &DisplayConfig),
+        render_fn: fn(Rect, &mut Buffer, &RenderContext),
         /// Height of the element
         height: u16,
         /// Focusable elements within this custom element
@@ -489,43 +489,43 @@ impl DocumentElement {
     }
 
     /// Render this element to a buffer
-    pub fn render(&self, area: Rect, buf: &mut Buffer, config: &DisplayConfig) {
+    pub fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
         match self {
             Self::Text { content, style } => {
-                render_text(content, *style, area, buf, config);
+                render_text(content, *style, area, buf, ctx);
             }
             Self::Heading { level, content } => {
-                render_heading(*level, content, area, buf, config);
+                render_heading(*level, content, area, buf, ctx);
             }
             Self::SectionTitle { content, underline } => {
-                render_section_title(content, *underline, area, buf, config);
+                render_section_title(content, *underline, area, buf, ctx);
             }
             Self::Link {
                 display, focused, ..
             } => {
-                render_link(display, *focused, area, buf, config);
+                render_link(display, *focused, area, buf, ctx);
             }
             Self::Separator => {
-                render_separator(area, buf, config);
+                render_separator(area, buf, ctx);
             }
             Self::Spacer { .. } => {
                 // Just empty space, nothing to render
             }
             Self::Group { children, style } => {
-                render_group(children, *style, area, buf, config);
+                render_group(children, *style, area, buf, ctx);
             }
             Self::Custom { render_fn, .. } => {
-                render_fn(area, buf, config);
+                render_fn(area, buf, ctx);
             }
             Self::Table { widget, .. } => {
-                widget.render(area, buf, config);
+                widget.render(area, buf, ctx);
             }
             Self::Row {
                 children,
                 gap,
                 align,
             } => {
-                render_row(children, *gap, *align, area, buf, config);
+                render_row(children, *gap, *align, area, buf, ctx);
             }
             Self::ScoreBoxElement {
                 score_box, focused, ..
@@ -533,14 +533,14 @@ impl DocumentElement {
                 // Clone and set selection based on focus state
                 let mut box_to_render = score_box.clone();
                 box_to_render.selected = *focused;
-                box_to_render.render(area, buf, config);
+                box_to_render.render(area, buf, ctx);
             }
             Self::Indented { element, margin } => {
                 // Render inner element with adjusted area (shifted right by margin)
                 if area.width > *margin {
                     let indented_area =
                         Rect::new(area.x + margin, area.y, area.width - margin, area.height);
-                    element.render(indented_area, buf, config);
+                    element.render(indented_area, buf, ctx);
                 }
             }
             Self::TeamBoxscore {
@@ -557,11 +557,11 @@ impl DocumentElement {
                     goalies_table,
                     area,
                     buf,
-                    config,
+                    ctx,
                 );
             }
             Self::BigScoreElement { big_score } => {
-                big_score.render(area, buf, config);
+                big_score.render(area, buf, ctx);
             }
         }
     }
@@ -915,6 +915,7 @@ impl DocumentElement {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{DisplayConfig, RenderContext};
     use crate::tui::document::link::DocumentLink;
     use ratatui::style::Color;
 
@@ -1033,8 +1034,9 @@ mod tests {
         let elem = DocumentElement::text("Hello");
         let mut buf = Buffer::empty(Rect::new(0, 0, 20, 5));
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        elem.render(Rect::new(0, 0, 20, 5), &mut buf, &config);
+        elem.render(Rect::new(0, 0, 20, 5), &mut buf, &ctx);
 
         // Check that "Hello" was rendered
         assert_eq!(buf.cell((0, 0)).unwrap().symbol(), "H");
@@ -1049,8 +1051,9 @@ mod tests {
         let elem = DocumentElement::heading(1, "Title");
         let mut buf = Buffer::empty(Rect::new(0, 0, 20, 5));
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        elem.render(Rect::new(0, 0, 20, 5), &mut buf, &config);
+        elem.render(Rect::new(0, 0, 20, 5), &mut buf, &ctx);
 
         // Check heading text
         assert_eq!(buf.cell((0, 0)).unwrap().symbol(), "T");
@@ -1064,8 +1067,9 @@ mod tests {
             DocumentElement::link("test_link", "Click", LinkTarget::Action("test".to_string()));
         let mut buf = Buffer::empty(Rect::new(0, 0, 20, 5));
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        elem.render(Rect::new(0, 0, 20, 5), &mut buf, &config);
+        elem.render(Rect::new(0, 0, 20, 5), &mut buf, &ctx);
 
         // Unfocused links have "  " prefix for alignment
         assert_eq!(buf.cell((0, 0)).unwrap().symbol(), " ");
@@ -1085,8 +1089,9 @@ mod tests {
         );
         let mut buf = Buffer::empty(Rect::new(0, 0, 20, 5));
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        elem.render(Rect::new(0, 0, 20, 5), &mut buf, &config);
+        elem.render(Rect::new(0, 0, 20, 5), &mut buf, &ctx);
 
         // Focused links have "▶ " prefix
         assert_eq!(buf.cell((0, 0)).unwrap().symbol(), "▶");
@@ -1105,8 +1110,9 @@ mod tests {
         let elem = DocumentElement::separator();
         let mut buf = Buffer::empty(Rect::new(0, 0, 10, 1));
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        elem.render(Rect::new(0, 0, 10, 1), &mut buf, &config);
+        elem.render(Rect::new(0, 0, 10, 1), &mut buf, &ctx);
 
         // All cells should be horizontal line
         for x in 0..10 {
@@ -1126,8 +1132,9 @@ mod tests {
             }
         }
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        elem.render(Rect::new(0, 0, 10, 3), &mut buf, &config);
+        elem.render(Rect::new(0, 0, 10, 3), &mut buf, &ctx);
 
         // Spacer doesn't change buffer - cells should still be 'X'
         assert_eq!(buf.cell((0, 0)).unwrap().symbol(), "X");
@@ -1140,8 +1147,9 @@ mod tests {
 
         let mut buf = Buffer::empty(Rect::new(0, 0, 20, 1));
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        elem.render(Rect::new(0, 0, 20, 1), &mut buf, &config);
+        elem.render(Rect::new(0, 0, 20, 1), &mut buf, &ctx);
 
         assert_eq!(buf.cell((0, 0)).unwrap().style().fg, Some(Color::Red));
     }
@@ -1333,8 +1341,9 @@ mod tests {
 
         let mut buf = Buffer::empty(Rect::new(0, 0, 15, 5));
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        elem.render(Rect::new(0, 0, 15, 5), &mut buf, &config);
+        elem.render(Rect::new(0, 0, 15, 5), &mut buf, &ctx);
 
         // Verify the table renders with margin, column header and data
         // TableWidget adds 2 space margin on left
@@ -1377,7 +1386,8 @@ mod tests {
         // Spread should put gap of 10 between them
         let mut buf = Buffer::empty(Rect::new(0, 0, 60, 6));
         let config = DisplayConfig::default();
-        row.render(Rect::new(0, 0, 60, 6), &mut buf, &config);
+        let ctx = RenderContext::focused(&config);
+        row.render(Rect::new(0, 0, 60, 6), &mut buf, &ctx);
 
         // Second box should start at position 35 (25 + 10 gap)
         // Check the status line of the second box
@@ -1426,7 +1436,8 @@ mod tests {
         // Second box should start at 25 + 2 = 27
         let mut buf = Buffer::empty(Rect::new(0, 0, 60, 6));
         let config = DisplayConfig::default();
-        row.render(Rect::new(0, 0, 60, 6), &mut buf, &config);
+        let ctx = RenderContext::focused(&config);
+        row.render(Rect::new(0, 0, 60, 6), &mut buf, &ctx);
 
         // Check that second box status line starts near position 27
         let line0 = (0..60).map(|x| buf[(x, 0)].symbol()).collect::<String>();
@@ -1477,7 +1488,8 @@ mod tests {
         // But minimum gap is 5, so it should use 5
         let mut buf = Buffer::empty(Rect::new(0, 0, 52, 6));
         let config = DisplayConfig::default();
-        row.render(Rect::new(0, 0, 52, 6), &mut buf, &config);
+        let ctx = RenderContext::focused(&config);
+        row.render(Rect::new(0, 0, 52, 6), &mut buf, &ctx);
 
         // Second box should start at position 30 (25 + 5 minimum gap)
         let line0 = (0..52).map(|x| buf[(x, 0)].symbol()).collect::<String>();

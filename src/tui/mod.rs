@@ -133,6 +133,13 @@ pub async fn run(client: Arc<dyn NHLDataProvider>, config: Config) -> Result<(),
             let area = f.area();
             terminal_width = area.width; // Capture width for key handling
 
+            // Set global background color if theme specifies one
+            let theme = &runtime.state().system.config.display.theme;
+            if let Some(bg_color) = theme.as_ref().and_then(|t| t.bg) {
+                f.buffer_mut()
+                    .set_style(area, ratatui::style::Style::default().bg(bg_color));
+            }
+
             // Build virtual tree from current state
             // This creates component states if they don't exist yet
             let element = runtime.build();
@@ -143,8 +150,9 @@ pub async fn run(client: Arc<dyn NHLDataProvider>, config: Config) -> Result<(),
 
             // Render virtual tree to ratatui buffer
             let config = &runtime.state().system.config.display;
+            let ctx = crate::config::RenderContext::focused(config);
             let mut renderer = Renderer::new();
-            renderer.render(element, area, f.buffer_mut(), config);
+            renderer.render(element, area, f.buffer_mut(), &ctx);
 
             // Clone buffer if screenshot requested
             #[cfg(feature = "development")]

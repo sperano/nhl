@@ -1,4 +1,4 @@
-use crate::config::DisplayConfig;
+use crate::config::RenderContext;
 use crate::tui::component::ElementWidget;
 /// ListModalWidget - renders a centered popup modal for list selection
 ///
@@ -10,7 +10,6 @@ use crate::tui::component::ElementWidget;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::Style,
     widgets::{Block, Borders, Clear, Widget},
 };
 use unicode_width::UnicodeWidthStr;
@@ -41,7 +40,7 @@ impl ListModalWidget {
 }
 
 impl ElementWidget for ListModalWidget {
-    fn render(&self, area: Rect, buf: &mut Buffer, config: &DisplayConfig) {
+    fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
         render_list_modal(
             &self.options,
             self.selected_index,
@@ -49,7 +48,7 @@ impl ElementWidget for ListModalWidget {
             self.position_y,
             area,
             buf,
-            config,
+            ctx,
         );
     }
 
@@ -68,7 +67,7 @@ pub fn render_list_modal(
     position_y: u16,
     area: Rect,
     buf: &mut Buffer,
-    config: &DisplayConfig,
+    ctx: &RenderContext,
 ) -> Rect {
     // Calculate modal size
     let modal_height = options.len() as u16 + 2; // +2 for borders
@@ -87,10 +86,10 @@ pub fn render_list_modal(
     Clear.render(modal_area, buf);
 
     // Render border with fg3
-    let border_style = if let Some(theme) = &config.theme {
-        Style::default().fg(theme.fg3)
+    let border_style = if let Some(theme) = ctx.theme() {
+        ctx.base_style().fg(theme.boxchar_fg)
     } else {
-        Style::default()
+        ctx.base_style()
     };
     let border_block = Block::default()
         .borders(Borders::ALL)
@@ -108,17 +107,17 @@ pub fn render_list_modal(
     let mut y = inner.y;
 
     // Determine text style based on theme
-    let text_style = if let Some(theme) = &config.theme {
-        Style::default().fg(theme.fg2)
+    let text_style = if let Some(theme) = ctx.theme() {
+        ctx.base_style().fg(theme.fg)
     } else {
-        Style::default()
+        ctx.base_style()
     };
 
     // Determine selector style based on theme
-    let selector_style = if let Some(theme) = &config.theme {
-        Style::default().fg(theme.fg2)
+    let selector_style = if let Some(theme) = ctx.theme() {
+        ctx.base_style().fg(theme.fg)
     } else {
-        Style::default()
+        ctx.base_style()
     };
 
     // Render options
@@ -130,11 +129,11 @@ pub fn render_list_modal(
         let is_selected = idx == selected_index;
 
         if is_selected {
-            let selector = format!(" {} ", config.box_chars.selector);
+            let selector = format!(" {} ", ctx.box_chars().selector);
             buf.set_string(inner.x, y, &selector, selector_style);
             buf.set_string(inner.x + 3, y, option, text_style);
         } else {
-            buf.set_string(inner.x, y, "   ", Style::default());
+            buf.set_string(inner.x, y, "   ", ctx.base_style());
             buf.set_string(inner.x + 3, y, option, text_style);
         }
 
@@ -147,12 +146,14 @@ pub fn render_list_modal(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::RenderContext;
     use crate::tui::testing::{assert_buffer, RENDER_WIDTH};
     use crate::tui::widgets::testing::test_config;
 
     #[test]
     fn test_list_modal_basic_render() {
         let config = test_config();
+        let ctx = RenderContext::focused(&config);
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 24));
         let area = Rect::new(0, 0, RENDER_WIDTH, 24);
 
@@ -161,7 +162,7 @@ mod tests {
         let modal_area = render_list_modal(
             &options, 0, 10, // position_x
             5,  // position_y
-            area, &mut buf, &config,
+            area, &mut buf, &ctx,
         );
 
         // Modal should be positioned at specified coordinates
@@ -172,6 +173,7 @@ mod tests {
     #[test]
     fn test_list_modal_no_title() {
         let config = test_config();
+        let ctx = RenderContext::focused(&config);
         let mut buf = Buffer::empty(Rect::new(0, 0, 40, 10));
         let area = Rect::new(0, 0, 40, 10);
 
@@ -180,7 +182,7 @@ mod tests {
         render_list_modal(
             &options, 0, 5, // position_x
             2, // position_y
-            area, &mut buf, &config,
+            area, &mut buf, &ctx,
         );
 
         // Modal should appear at position with option immediately inside border (no title)
@@ -204,6 +206,7 @@ mod tests {
     #[test]
     fn test_list_modal_selection_first() {
         let config = test_config();
+        let ctx = RenderContext::focused(&config);
         let mut buf = Buffer::empty(Rect::new(0, 0, 30, 8));
         let area = Rect::new(0, 0, 30, 8);
 
@@ -213,7 +216,7 @@ mod tests {
             &options, 0, // Select first
             5, // position_x
             1, // position_y
-            area, &mut buf, &config,
+            area, &mut buf, &ctx,
         );
 
         // First option should have selection indicator (▸)
@@ -235,6 +238,7 @@ mod tests {
     #[test]
     fn test_list_modal_selection_second() {
         let config = test_config();
+        let ctx = RenderContext::focused(&config);
         let mut buf = Buffer::empty(Rect::new(0, 0, 30, 8));
         let area = Rect::new(0, 0, 30, 8);
 
@@ -244,7 +248,7 @@ mod tests {
             &options, 1, // Select second
             5, // position_x
             1, // position_y
-            area, &mut buf, &config,
+            area, &mut buf, &ctx,
         );
 
         // Second option should have selection indicator (▸)
@@ -266,6 +270,7 @@ mod tests {
     #[test]
     fn test_list_modal_sizing() {
         let config = test_config();
+        let ctx = RenderContext::focused(&config);
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 24));
         let area = Rect::new(0, 0, RENDER_WIDTH, 24);
 
@@ -277,7 +282,7 @@ mod tests {
         let modal_area = render_list_modal(
             &options, 0, 10, // position_x
             5,  // position_y
-            area, &mut buf, &config,
+            area, &mut buf, &ctx,
         );
 
         // Width should accommodate the longest option
@@ -291,6 +296,7 @@ mod tests {
     #[test]
     fn test_list_modal_empty_options() {
         let config = test_config();
+        let ctx = RenderContext::focused(&config);
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 24));
         let area = Rect::new(0, 0, RENDER_WIDTH, 24);
 
@@ -299,7 +305,7 @@ mod tests {
         let modal_area = render_list_modal(
             &options, 0, 10, // position_x
             5,  // position_y
-            area, &mut buf, &config,
+            area, &mut buf, &ctx,
         );
 
         // Should still render with minimal height (borders only, no title)
@@ -309,6 +315,7 @@ mod tests {
     #[test]
     fn test_list_modal_positioning() {
         let config = test_config();
+        let ctx = RenderContext::focused(&config);
         let mut buf = Buffer::empty(Rect::new(0, 0, 100, 30));
         let area = Rect::new(0, 0, 100, 30);
 
@@ -317,7 +324,7 @@ mod tests {
         let modal_area = render_list_modal(
             &options, 0, 15, // position_x
             10, // position_y
-            area, &mut buf, &config,
+            area, &mut buf, &ctx,
         );
 
         // Modal should be positioned at specified coordinates
@@ -339,13 +346,14 @@ mod tests {
     #[test]
     fn test_list_modal_widget_render() {
         let config = test_config();
+        let ctx = RenderContext::focused(&config);
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 24));
         let area = Rect::new(0, 0, RENDER_WIDTH, 24);
 
         let options = vec!["First".to_string(), "Second".to_string()];
         let widget = ListModalWidget::new(options, 0, 10, 5);
 
-        widget.render(area, &mut buf, &config);
+        widget.render(area, &mut buf, &ctx);
 
         // Widget should have rendered via ElementWidget trait
         // Check that something was rendered in the buffer
@@ -374,6 +382,7 @@ mod tests {
     #[test]
     fn test_list_modal_truncation_when_too_tall() {
         let config = test_config();
+        let ctx = RenderContext::focused(&config);
         let mut buf = Buffer::empty(Rect::new(0, 0, 40, 8)); // Small height
         let area = Rect::new(0, 0, 40, 8);
 
@@ -394,7 +403,7 @@ mod tests {
         let modal_area = render_list_modal(
             &options, 0, 5, // position_x
             2, // position_y
-            area, &mut buf, &config,
+            area, &mut buf, &ctx,
         );
 
         // Modal height should be limited by available area
@@ -414,6 +423,7 @@ mod tests {
     #[test]
     fn test_list_modal_with_emoji() {
         let config = test_config();
+        let ctx = RenderContext::focused(&config);
         let mut buf = Buffer::empty(Rect::new(0, 0, 40, 8));
         let area = Rect::new(0, 0, 40, 8);
 
@@ -423,7 +433,7 @@ mod tests {
         let modal_area = render_list_modal(
             &options, 0, 5, // position_x
             2, // position_y
-            area, &mut buf, &config,
+            area, &mut buf, &ctx,
         );
 
         // Modal should accommodate the display width properly
@@ -438,6 +448,7 @@ mod tests {
     #[test]
     fn test_list_modal_with_cjk_characters() {
         let config = test_config();
+        let ctx = RenderContext::focused(&config);
         let mut buf = Buffer::empty(Rect::new(0, 0, 50, 8));
         let area = Rect::new(0, 0, 50, 8);
 
@@ -447,7 +458,7 @@ mod tests {
         let modal_area = render_list_modal(
             &options, 0, 5, // position_x
             2, // position_y
-            area, &mut buf, &config,
+            area, &mut buf, &ctx,
         );
 
         // "日本語" has display width of 6 (3 chars × 2 width each)
@@ -461,6 +472,7 @@ mod tests {
     #[test]
     fn test_list_modal_with_mixed_unicode() {
         let config = test_config();
+        let ctx = RenderContext::focused(&config);
         let mut buf = Buffer::empty(Rect::new(0, 0, 50, 10));
         let area = Rect::new(0, 0, 50, 10);
 
@@ -474,7 +486,7 @@ mod tests {
         let modal_area = render_list_modal(
             &options, 1, 5, // position_x
             2, // position_y
-            area, &mut buf, &config,
+            area, &mut buf, &ctx,
         );
 
         // Should render without panic or overflow

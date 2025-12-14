@@ -128,6 +128,7 @@ impl App {
                 tabs,
                 focused: !state.navigation.content_focused
                     && state.navigation.document_stack.is_empty(),
+                content_focused: state.navigation.content_focused,
             },
             &(),
         )
@@ -216,6 +217,7 @@ impl App {
                 tabs,
                 focused: !state.navigation.content_focused
                     && state.navigation.document_stack.is_empty(),
+                content_focused: state.navigation.content_focused,
             },
             &(),
         )
@@ -261,6 +263,7 @@ impl App {
                     selected_index: doc_entry.nav.focus_index,
                     scroll_offset: doc_entry.nav.scroll_offset,
                     animation_frame: state.system.animation_frame,
+                    focused: true, // Stacked documents are always focused
                 };
                 TeamDetailDocument.view(&props, &())
             }
@@ -275,6 +278,7 @@ impl App {
                     selected_index: doc_entry.nav.focus_index,
                     scroll_offset: doc_entry.nav.scroll_offset,
                     animation_frame: state.system.animation_frame,
+                    focused: true, // Stacked documents are always focused
                 };
                 PlayerDetailDocument.view(&props, &())
             }

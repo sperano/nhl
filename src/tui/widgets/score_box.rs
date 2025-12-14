@@ -6,7 +6,7 @@
 //!
 //! Width: 25 characters, Height: 6 rows
 
-use crate::config::{DisplayConfig, SELECTION_STYLE_MODIFIER};
+use crate::config::{RenderContext, SELECTION_STYLE_MODIFIER, THEMELESS_SELECTION_STYLE_MODIFIER};
 use crate::layout_constants::{SCORE_BOX_HEIGHT, SCORE_BOX_WIDTH};
 use ratatui::{buffer::Buffer, layout::Rect};
 
@@ -130,24 +130,33 @@ impl ScoreBox {
 }
 
 impl StandaloneWidget for ScoreBox {
-    fn render(&self, area: Rect, buf: &mut Buffer, config: &DisplayConfig) {
+    fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
         // Ensure we have enough space
         if area.width < SCORE_BOX_WIDTH || area.height < SCORE_BOX_HEIGHT {
             return;
         }
 
-        let bc = &config.box_chars;
+        // Fill area with background color first
+        let score_box_area = Rect::new(area.x, area.y, SCORE_BOX_WIDTH, SCORE_BOX_HEIGHT);
+        buf.set_style(score_box_area, ctx.base_style());
+
+        let bc = ctx.box_chars();
         let x = area.x;
         let y = area.y;
 
         // Styles: fg3 for box chars, fg2 for team names and scores
         // When selected, both box and text use fg2 with reverse video
-        let status_style = config.text_style(); // Status line never changes
+        let status_style = ctx.text_style(); // Status line never changes
         let (box_style, text_style) = if self.selected {
-            let selected = config.text_style().add_modifier(SELECTION_STYLE_MODIFIER);
+            let selected = if let Some(theme) = ctx.theme() {
+                ctx.text_style().fg(theme.selection_text_fg).bg(theme.selection_text_bg)
+                    .add_modifier(SELECTION_STYLE_MODIFIER)
+            } else {
+                ctx.text_style().add_modifier(THEMELESS_SELECTION_STYLE_MODIFIER)
+            };
             (selected, selected)
         } else {
-            (config.muted_style(), config.text_style()) // fg3 for box, fg2 for text
+            (ctx.boxchar_style(), ctx.text_style()) // fg3 for box, fg2 for text
         };
 
         // Row 0: Status line with leading space (never reversed)

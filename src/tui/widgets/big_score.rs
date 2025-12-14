@@ -10,7 +10,7 @@
 //! ```
 
 use crate::big_digits::{BIG_DIGITS, BIG_DIGIT_HEIGHT, BIG_DIGIT_WIDTH};
-use crate::config::DisplayConfig;
+use crate::config::RenderContext;
 use ratatui::{buffer::Buffer, layout::Rect};
 
 use super::StandaloneWidget;
@@ -79,12 +79,12 @@ impl BigScore {
 }
 
 impl StandaloneWidget for BigScore {
-    fn render(&self, area: Rect, buf: &mut Buffer, config: &DisplayConfig) {
+    fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
         if area.height < BIG_DIGIT_HEIGHT + 1 || area.width < self.total_score_width() {
             return;
         }
 
-        let text_style = config.text_style();
+        let text_style = ctx.text_style();
         let x = area.x;
         let y = area.y;
 

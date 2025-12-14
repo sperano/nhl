@@ -45,6 +45,15 @@ fn is_settings_modal_open(component_states: &ComponentStateStore) -> bool {
         .unwrap_or(false)
 }
 
+/// Helper to check if settings tab is in browse mode
+fn is_settings_browse_mode_active(component_states: &ComponentStateStore) -> bool {
+    use super::components::settings_tab::SettingsTabState;
+    component_states
+        .get::<SettingsTabState>(SETTINGS_TAB_PATH)
+        .map(|s| s.is_browse_mode())
+        .unwrap_or(false)
+}
+
 /// Handle global keys that work regardless of tab or focus state
 fn handle_global_keys(key_code: KeyCode) -> Option<Action> {
     match key_code {
@@ -88,6 +97,15 @@ fn handle_esc_key(state: &AppState, component_states: &ComponentStateStore) -> O
         return Some(Action::ComponentMessage {
             path: STANDINGS_TAB_PATH.to_string(),
             message: Box::new(StandingsTabMsg::ExitBrowseMode),
+        });
+    }
+
+    // Priority 4.5: If in browse mode on Settings tab, exit browse mode
+    if is_settings_browse_mode_active(component_states) {
+        debug!("KEY: ESC pressed in Settings browse mode - exiting browse mode");
+        return Some(Action::ComponentMessage {
+            path: SETTINGS_TAB_PATH.to_string(),
+            message: Box::new(SettingsTabMsg::NavigateUp),
         });
     }
 

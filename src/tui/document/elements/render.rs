@@ -6,7 +6,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 
-use crate::config::DisplayConfig;
+use crate::config::RenderContext;
 use crate::tui::component::ElementWidget;
 use crate::tui::components::TableWidget;
 use crate::tui::widgets::StandaloneWidget;
@@ -29,7 +29,7 @@ pub(super) fn render_row(
     align: RowAlignment,
     area: Rect,
     buf: &mut Buffer,
-    config: &DisplayConfig,
+    ctx: &RenderContext,
 ) {
     if children.is_empty() || area.width == 0 {
         return;
@@ -61,7 +61,7 @@ pub(super) fn render_row(
         for child in children {
             let child_width = get_preferred_width(child).unwrap_or(0);
             let child_area = Rect::new(x_offset, area.y, child_width, area.height);
-            child.render(child_area, buf, config);
+            child.render(child_area, buf, ctx);
             x_offset += child_width + actual_gap;
         }
     } else {
@@ -74,7 +74,7 @@ pub(super) fn render_row(
         let mut x_offset = area.x;
         for child in children {
             let child_area = Rect::new(x_offset, area.y, child_width, area.height);
-            child.render(child_area, buf, config);
+            child.render(child_area, buf, ctx);
             x_offset += child_width + gap;
         }
     }
@@ -95,9 +95,9 @@ pub(super) fn render_text(
     style: Option<Style>,
     area: Rect,
     buf: &mut Buffer,
-    config: &DisplayConfig,
+    ctx: &RenderContext,
 ) {
-    let default_style = config.text_style();
+    let default_style = ctx.text_style();
 
     for (i, line) in content.lines().enumerate() {
         if i as u16 >= area.height {
@@ -123,9 +123,9 @@ pub(super) fn render_heading(
     content: &str,
     area: Rect,
     buf: &mut Buffer,
-    config: &DisplayConfig,
+    ctx: &RenderContext,
 ) {
-    let style = config.heading_style(level);
+    let style = ctx.heading_style(level);
 
     // Render heading text
     for (x, ch) in content.chars().enumerate() {
@@ -141,7 +141,7 @@ pub(super) fn render_heading(
 
     // Render underline for level 1 with muted color
     if level == 1 && area.height > 1 {
-        let underline_style = config.muted_style();
+        let underline_style = ctx.boxchar_style();
 
         for x in 0..area.width.min(content.chars().count() as u16) {
             let cell = buf.cell_mut((area.x + x, area.y + 1));
@@ -159,31 +159,16 @@ pub(super) fn render_section_title(
     underline: bool,
     area: Rect,
     buf: &mut Buffer,
-    config: &DisplayConfig,
+    ctx: &RenderContext,
 ) {
-    use ratatui::style::Modifier;
-
-    // Bold style with theme fg1 color if available
-    let style = if let Some(theme) = &config.theme {
-        Style::default().fg(theme.fg1).add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().add_modifier(Modifier::BOLD)
-    };
-
-    // Render title text
-    buf.set_string(area.x, area.y, content, style);
+    // Render title text with emphasis style (handles dimming automatically)
+    buf.set_string(area.x, area.y, content, ctx.emphasis_style());
 
     // Render underline if enabled
     if underline && area.height > 1 {
-        let underline_style = if let Some(theme) = &config.theme {
-            Style::default().fg(theme.fg2)
-        } else {
-            Style::default()
-        };
-
         //TODO: use Boxchar instead of hardcoded unicode character
         let underline_str: String = "═".repeat(content.chars().count());
-        buf.set_string(area.x, area.y + 1, &underline_str, underline_style);
+        buf.set_string(area.x, area.y + 1, &underline_str, ctx.text_style());
     }
 }
 
@@ -193,15 +178,22 @@ pub(super) fn render_link(
     focused: bool,
     area: Rect,
     buf: &mut Buffer,
-    config: &DisplayConfig,
+    ctx: &RenderContext,
 ) {
     use crate::config::SELECTION_STYLE_MODIFIER;
+    use crate::config::THEMELESS_SELECTION_STYLE_MODIFIER;
 
-    let base_style = config.text_style();
+    let base_style = ctx.text_style();
 
     let (prefix, link_style) = if focused {
-        let prefix = format!("{} ", config.box_chars.selector);
-        let style = base_style.add_modifier(SELECTION_STYLE_MODIFIER);
+        let prefix = format!("{} ", ctx.box_chars().selector);
+        let style = if let Some(theme) = ctx.theme() {
+            base_style.fg(theme.selection_text_fg)
+                .bg(theme.selection_text_bg)
+                .add_modifier(SELECTION_STYLE_MODIFIER)
+        } else {
+            base_style.add_modifier(THEMELESS_SELECTION_STYLE_MODIFIER)
+        };
         (prefix, style)
     } else {
         // Use spaces to align with focused items
@@ -215,10 +207,10 @@ pub(super) fn render_link(
 }
 
 /// Render a separator element
-pub(super) fn render_separator(area: Rect, buf: &mut Buffer, config: &DisplayConfig) {
-    let sep_str = &config.box_chars.horizontal;
+pub(super) fn render_separator(area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
+    let sep_str = &ctx.box_chars().horizontal;
     let sep_char = sep_str.chars().next().unwrap_or('-');
-    let style = config.muted_style();
+    let style = ctx.boxchar_style();
 
     for x in 0..area.width {
         let cell = buf.cell_mut((area.x + x, area.y));
@@ -235,7 +227,7 @@ pub(super) fn render_group(
     style: Option<Style>,
     area: Rect,
     buf: &mut Buffer,
-    config: &DisplayConfig,
+    ctx: &RenderContext,
 ) {
     let mut y_offset = 0;
     for child in children {
@@ -249,7 +241,7 @@ pub(super) fn render_group(
             area.width,
             child_height.min(area.height - y_offset),
         );
-        child.render(child_area, buf, config);
+        child.render(child_area, buf, ctx);
         y_offset += child_height;
     }
 
@@ -286,10 +278,10 @@ pub(super) fn render_team_boxscore(
     goalies_table: &TableWidget,
     area: Rect,
     buf: &mut Buffer,
-    config: &DisplayConfig,
+    ctx: &RenderContext,
 ) {
-    let bc = &config.box_chars;
-    let border_style = config.muted_style();
+    let bc = ctx.box_chars();
+    let border_style = ctx.boxchar_style();
 
     // Use fixed width but respect area constraints
     let width = TEAM_BOXSCORE_WIDTH.min(area.width);
@@ -320,7 +312,7 @@ pub(super) fn render_team_boxscore(
 
         // Section header with embedded title
         let title = format!("{} - {}", team_name, section_name);
-        render_section_header(area.x, y, width, &title, is_first_section, buf, config);
+        render_section_header(area.x, y, width, &title, is_first_section, buf, ctx);
         y += 1;
         is_first_section = false;
 
@@ -341,7 +333,7 @@ pub(super) fn render_team_boxscore(
 
         // Render table content inside borders
         let table_area = Rect::new(area.x + 1, y, inner_width, table_height);
-        table.render(table_area, buf, config);
+        table.render(table_area, buf, ctx);
         y += table_height;
 
         // Blank line after table (before next section or bottom border)
@@ -350,7 +342,7 @@ pub(super) fn render_team_boxscore(
     }
 
     // Bottom border
-    render_bottom_border(area.x, y, width, buf, config);
+    render_bottom_border(area.x, y, width, buf, ctx);
 }
 
 /// Render section header with embedded title
@@ -364,11 +356,11 @@ fn render_section_header(
     title: &str,
     is_first: bool,
     buf: &mut Buffer,
-    config: &DisplayConfig,
+    ctx: &RenderContext,
 ) {
-    let bc = &config.box_chars;
-    let border_style = config.muted_style();
-    let title_style = config.text_style();
+    let bc = ctx.box_chars();
+    let border_style = ctx.boxchar_style();
+    let title_style = ctx.text_style();
 
     // Choose corner characters based on whether this is first section
     let (left_corner, right_corner) = if is_first {
@@ -413,9 +405,9 @@ fn render_section_header(
 }
 
 /// Render bottom border: ╘═══════════════════════════════════════════════╛
-fn render_bottom_border(x: u16, y: u16, width: u16, buf: &mut Buffer, config: &DisplayConfig) {
-    let bc = &config.box_chars;
-    let border_style = config.muted_style();
+fn render_bottom_border(x: u16, y: u16, width: u16, buf: &mut Buffer, ctx: &RenderContext) {
+    let bc = ctx.box_chars();
+    let border_style = ctx.boxchar_style();
 
     // Left corner
     buf.set_string(x, y, &bc.mixed_dh_bottom_left, border_style);

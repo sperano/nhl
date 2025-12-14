@@ -1,11 +1,11 @@
-use crate::config::{Config, DisplayConfig};
+use crate::config::{Config, RenderContext};
 use crate::tui::component::ElementWidget;
 use crate::tui::SettingsCategory;
 /// SettingsListWidget - displays a read-only list of settings with their current values
 ///
 /// This widget renders a simple key-value table for configuration settings.
 /// Settings are displayed as "Setting Name: Current Value" pairs.
-use ratatui::{buffer::Buffer, layout::Rect, style::Style, text::Line};
+use ratatui::{buffer::Buffer, layout::Rect, text::Line};
 
 /// Widget for displaying settings list
 #[derive(Debug, Clone)]
@@ -90,7 +90,7 @@ impl SettingsListWidget {
 }
 
 impl ElementWidget for SettingsListWidget {
-    fn render(&self, area: Rect, buf: &mut Buffer, config: &DisplayConfig) {
+    fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
         let settings = self.get_settings();
         let x = area.x + self.margin;
         let mut y = area.y + 1;
@@ -123,7 +123,7 @@ impl ElementWidget for SettingsListWidget {
 
             // Format selector indicator
             let selector = if is_selected {
-                format!("{} ", config.box_chars.selector)
+                format!("{} ", ctx.box_chars().selector)
             } else {
                 "  ".to_string()
             };
@@ -139,10 +139,10 @@ impl ElementWidget for SettingsListWidget {
             );
 
             // Apply fg2 style from theme (or default if no theme), with REVERSED and BOLD for selection
-            let style = if let Some(theme) = &config.theme {
-                Style::default().fg(theme.fg2)
+            let style = if let Some(theme) = ctx.theme() {
+                ctx.base_style().fg(theme.fg)
             } else {
-                Style::default()
+                ctx.base_style()
             };
 
             let line = Line::from(line_text).style(style);
@@ -194,6 +194,7 @@ fn format_color(color: &ratatui::style::Color) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{DisplayConfig, RenderContext};
     use crate::tui::testing::{assert_buffer, RENDER_WIDTH};
     use ratatui::{buffer::Buffer, layout::Rect};
 
@@ -213,8 +214,9 @@ mod tests {
         let area = Rect::new(0, 0, RENDER_WIDTH, 3);
         let mut buf = Buffer::empty(area);
         let display_config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&display_config);
 
-        widget.render(area, &mut buf, &display_config);
+        widget.render(area, &mut buf, &ctx);
 
         // Verify both settings are rendered with aligned values (margin + selector space)
         assert_buffer(
@@ -296,8 +298,9 @@ mod tests {
         let area = Rect::new(0, 0, RENDER_WIDTH, 3);
         let mut buf = Buffer::empty(area);
         let display_config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&display_config);
 
-        widget.render(area, &mut buf, &display_config);
+        widget.render(area, &mut buf, &ctx);
 
         // Log File should show with edit cursor
         assert_buffer(
@@ -328,8 +331,9 @@ mod tests {
         let area = Rect::new(0, 0, RENDER_WIDTH, 3);
         let mut buf = Buffer::empty(area);
         let display_config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&display_config);
 
-        widget.render(area, &mut buf, &display_config);
+        widget.render(area, &mut buf, &ctx);
 
         // Log File should show without edit cursor
         assert_buffer(
@@ -360,8 +364,9 @@ mod tests {
         let area = Rect::new(0, 0, RENDER_WIDTH, 3);
         let mut buf = Buffer::empty(area);
         let display_config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&display_config);
 
-        widget.render(area, &mut buf, &display_config);
+        widget.render(area, &mut buf, &ctx);
 
         // Log File should show with just cursor
         assert_buffer(&buf, &["", "    Log Level:  info", "  ▶ Log File:   █"]);
@@ -384,8 +389,9 @@ mod tests {
         let area = Rect::new(0, 0, 80, 1);
         let mut buf = Buffer::empty(area);
         let display_config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&display_config);
 
-        widget.render(area, &mut buf, &display_config);
+        widget.render(area, &mut buf, &ctx);
 
         // Should render only first setting without panicking
         // Logging has 2 settings, but only 1 should render

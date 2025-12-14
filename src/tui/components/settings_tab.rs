@@ -10,7 +10,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 
 use crate::component_message_impl;
-use crate::config::{Config, DisplayConfig};
+use crate::config::{Config, RenderContext};
 use crate::tui::component::{Component, Effect, Element, ElementWidget};
 use crate::tui::components::{SettingsDocument, TabItem, TabbedPanel, TabbedPanelProps};
 use crate::tui::document::{DocumentView, FocusableId};
@@ -282,11 +282,13 @@ impl Component for SettingsTab {
         let active_key = self.category_to_key(props.selected_category);
 
         // Create the base element (tabbed panel)
+        // Settings doesn't have browse mode, so content is focused when tab is active
         let base_element = TabbedPanel.view(
             &TabbedPanelProps {
                 active_key,
                 tabs,
                 focused: props.focused,
+                content_focused: props.focused,
             },
             &(),
         );
@@ -335,6 +337,11 @@ impl SettingsTab {
 
         if in_browse_mode {
             // Browse mode - navigate settings
+
+            // Handle Escape to exit browse mode
+            if key.code == KeyCode::Esc {
+                return self.update(SettingsTabMsg::NavigateUp, state);
+            }
 
             // Try standard navigation first (handles Tab, arrows, PageUp/Down, etc.)
             if let Some(nav_msg) = key_to_nav_msg(key) {
@@ -389,12 +396,14 @@ impl SettingsTab {
         props: &SettingsTabProps,
         state: &SettingsTabState,
     ) -> Element {
+        // Document is only focused when in browse mode (navigating within the document)
         Element::Widget(Box::new(SettingsTabWidget {
             category,
             config: props.config.clone(),
             focus_index: state.doc_nav.focus_index,
             scroll_offset: state.doc_nav.scroll_offset,
             viewport_height: state.doc_nav.viewport_height,
+            focused: props.focused && state.is_browse_mode(),
         }))
     }
 }
@@ -409,13 +418,13 @@ struct SettingsTabWithModal {
 }
 
 impl ElementWidget for SettingsTabWithModal {
-    fn render(&self, area: Rect, buf: &mut Buffer, config: &DisplayConfig) {
+    fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
         use crate::tui::renderer::Renderer;
         use crate::tui::widgets::ListModalWidget;
 
         // Render the base element first
         let mut renderer = Renderer::new();
-        renderer.render(self.base_element.clone(), area, buf, config);
+        renderer.render(self.base_element.clone(), area, buf, ctx);
 
         // Render the modal on top
         let modal = ListModalWidget::new(
@@ -424,7 +433,7 @@ impl ElementWidget for SettingsTabWithModal {
             self.modal_position_x,
             self.modal_position_y,
         );
-        modal.render(area, buf, config);
+        modal.render(area, buf, ctx);
     }
 
     fn clone_box(&self) -> Box<dyn ElementWidget> {
@@ -449,10 +458,12 @@ struct SettingsTabWidget {
     focus_index: Option<usize>,
     scroll_offset: u16,
     viewport_height: u16,
+    /// Whether this widget has focus (affects dim/bright rendering)
+    focused: bool,
 }
 
 impl ElementWidget for SettingsTabWidget {
-    fn render(&self, area: Rect, buf: &mut Buffer, config: &DisplayConfig) {
+    fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
         // Create document for the current category
         let doc = Arc::new(SettingsDocument::new(self.category, self.config.clone()));
         let mut view = DocumentView::new(doc, area.height);
@@ -465,7 +476,10 @@ impl ElementWidget for SettingsTabWidget {
         // Apply scroll offset
         view.set_scroll_offset(self.scroll_offset);
 
-        view.render(area, buf, config);
+        // Create child RenderContext with our focus state
+        let child_ctx = RenderContext::new(ctx.config, self.focused);
+
+        view.render(area, buf, &child_ctx);
     }
 
     fn clone_box(&self) -> Box<dyn ElementWidget> {
@@ -475,6 +489,7 @@ impl ElementWidget for SettingsTabWidget {
             focus_index: self.focus_index,
             scroll_offset: self.scroll_offset,
             viewport_height: self.viewport_height,
+            focused: self.focused,
         })
     }
 

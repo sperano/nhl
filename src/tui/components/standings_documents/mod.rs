@@ -14,7 +14,7 @@ use nhl_api::Standing;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 
-use crate::config::{Config, DisplayConfig};
+use crate::config::{Config, RenderContext};
 use crate::tui::component::ElementWidget;
 use crate::tui::document::{Document, DocumentView};
 
@@ -33,6 +33,8 @@ pub struct StandingsDocumentWidget {
     doc: Arc<dyn Document>,
     focus_index: Option<usize>,
     scroll_offset: u16,
+    /// Whether this widget has focus (affects dim/bright rendering)
+    focused: bool,
 }
 
 impl StandingsDocumentWidget {
@@ -42,11 +44,13 @@ impl StandingsDocumentWidget {
         config: Config,
         focus_index: Option<usize>,
         scroll_offset: u16,
+        focused: bool,
     ) -> Self {
         Self {
             doc: Arc::new(LeagueStandingsDocument::new(standings, config)),
             focus_index,
             scroll_offset,
+            focused,
         }
     }
 
@@ -56,11 +60,13 @@ impl StandingsDocumentWidget {
         config: Config,
         focus_index: Option<usize>,
         scroll_offset: u16,
+        focused: bool,
     ) -> Self {
         Self {
             doc: Arc::new(ConferenceStandingsDocument::new(standings, config)),
             focus_index,
             scroll_offset,
+            focused,
         }
     }
 
@@ -70,11 +76,13 @@ impl StandingsDocumentWidget {
         config: Config,
         focus_index: Option<usize>,
         scroll_offset: u16,
+        focused: bool,
     ) -> Self {
         Self {
             doc: Arc::new(DivisionStandingsDocument::new(standings, config)),
             focus_index,
             scroll_offset,
+            focused,
         }
     }
 
@@ -84,17 +92,19 @@ impl StandingsDocumentWidget {
         config: Config,
         focus_index: Option<usize>,
         scroll_offset: u16,
+        focused: bool,
     ) -> Self {
         Self {
             doc: Arc::new(WildcardStandingsDocument::new(standings, config)),
             focus_index,
             scroll_offset,
+            focused,
         }
     }
 }
 
 impl ElementWidget for StandingsDocumentWidget {
-    fn render(&self, area: Rect, buf: &mut Buffer, display_config: &DisplayConfig) {
+    fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
         // Create DocumentView with viewport height
         let mut view = DocumentView::new(self.doc.clone(), area.height);
 
@@ -106,8 +116,11 @@ impl ElementWidget for StandingsDocumentWidget {
         // Apply scroll offset from AppState
         view.set_scroll_offset(self.scroll_offset);
 
+        // Create child RenderContext with our focus state
+        let child_ctx = RenderContext::new(ctx.config, self.focused);
+
         // Render the document
-        view.render(area, buf, display_config);
+        view.render(area, buf, &child_ctx);
     }
 
     fn clone_box(&self) -> Box<dyn ElementWidget> {
@@ -115,6 +128,7 @@ impl ElementWidget for StandingsDocumentWidget {
             doc: self.doc.clone(),
             focus_index: self.focus_index,
             scroll_offset: self.scroll_offset,
+            focused: self.focused,
         })
     }
 
@@ -126,7 +140,7 @@ impl ElementWidget for StandingsDocumentWidget {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::DisplayConfig;
+    use crate::config::{DisplayConfig, RenderContext};
     use crate::tui::document::{DocumentElement, FocusContext};
     use crate::tui::testing::{assert_buffer, create_test_standings};
     use std::sync::Arc;
@@ -161,7 +175,8 @@ mod tests {
         let doc = LeagueStandingsDocument::new(standings, config);
 
         let display_config = DisplayConfig::default();
-        let (buf, height) = doc.render_full(60, &display_config, &FocusContext::default());
+        let ctx = RenderContext::focused(&display_config);
+        let (buf, height) = doc.render_full(60, &ctx, &FocusContext::default());
 
         // Height should be: column headers (1) + separator (1) + 32 teams = 34 lines
         assert_eq!(height, 34);
