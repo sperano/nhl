@@ -13,8 +13,8 @@ use crate::tui::widgets::StandaloneWidget;
 
 use super::{DocumentElement, RowAlignment};
 
-/// Fixed width for team boxscore
-pub const TEAM_BOXSCORE_WIDTH: u16 = 85;
+/// Fixed width for team boxscore (includes # column: 2 width + 2 gap = 4 extra chars)
+pub const TEAM_BOXSCORE_WIDTH: u16 = 89;
 
 /// Gap between two team boxscores when displayed side by side (centered)
 pub const TEAM_BOXSCORE_GAP: u16 = 4;

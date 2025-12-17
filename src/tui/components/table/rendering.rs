@@ -12,9 +12,10 @@ use crate::tui::CellValue;
 use super::{TableWidget, SELECTOR_WIDTH};
 
 impl TableWidget {
-    /// Get the style for a cell based on whether it's the focused link cell
+    /// Get the style for a cell based on whether it receives selection styling
     ///
-    /// Only link cells in focused rows get the selection style.
+    /// Cells that receive selection style (StyledText, PlayerLink, TeamLink)
+    /// get selection styling when the row is focused.
     /// Other cells use normal styling.
     pub(super) fn get_cell_style(
         &self,
@@ -23,10 +24,10 @@ impl TableWidget {
         ctx: &RenderContext,
     ) -> Style {
         let base = ctx.base_style();
-        let is_focused_link = is_row_focused && cell_value.is_link();
+        let is_styled = is_row_focused && cell_value.receives_selection_style();
 
-        if is_focused_link {
-            // Focused link cell: use REVERSED + BOLD modifier
+        if is_styled {
+            // Styled cell in focused row: use selection colors
             if let Some(theme) = ctx.theme() {
                 base.fg(theme.selection_text_fg)
                     .bg(theme.selection_text_bg)
@@ -35,7 +36,7 @@ impl TableWidget {
                 base.add_modifier(crate::config::THEMELESS_SELECTION_STYLE_MODIFIER)
             }
         } else {
-            // Not focused or not a link: use text_style (handles dimming automatically)
+            // Not focused or not styled: use text_style (handles dimming automatically)
             ctx.text_style()
         }
     }
@@ -108,6 +109,18 @@ impl TableWidget {
                 let style = self.get_cell_style(is_row_focused, cell_value, ctx);
 
                 buf.set_string(x, y, &formatted, style);
+
+                // Style the gap if current cell is styled AND next cell is also styled
+                let next_cell = row_cells.get(col_idx + 1);
+                let current_styled = is_row_focused && cell_value.receives_selection_style();
+                let next_styled = next_cell
+                    .map(|c| is_row_focused && c.receives_selection_style())
+                    .unwrap_or(false);
+
+                if current_styled && next_styled {
+                    buf.set_string(x + width as u16, y, "  ", style);
+                }
+
                 x += width as u16 + 2;
             }
 

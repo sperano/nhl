@@ -250,6 +250,9 @@ impl Document for BoxscoreDocumentContent {
 /// Column definitions for game-level skater stats
 fn game_skater_columns() -> Vec<ColumnDef<SkaterStats>> {
     vec![
+        ColumnDef::new("#", 2, Alignment::Right, |s: &SkaterStats| {
+            CellValue::StyledText(s.sweater_number.to_string())
+        }),
         ColumnDef::new("Player", 20, Alignment::Left, |s: &SkaterStats| {
             CellValue::PlayerLink {
                 display: s.name.default.clone(),
@@ -299,6 +302,9 @@ fn game_skater_columns() -> Vec<ColumnDef<SkaterStats>> {
 /// Column definitions for game-level goalie stats
 fn game_goalie_columns() -> Vec<ColumnDef<GoalieStats>> {
     vec![
+        ColumnDef::new("#", 2, Alignment::Right, |g: &GoalieStats| {
+            CellValue::StyledText(g.sweater_number.to_string())
+        }),
         ColumnDef::new("Player", 20, Alignment::Left, |g: &GoalieStats| {
             CellValue::PlayerLink {
                 display: g.name.default.clone(),
