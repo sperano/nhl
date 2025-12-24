@@ -1,3 +1,4 @@
+use nhl_api::GameDate;
 use tracing::debug;
 
 use super::action::Action;
@@ -5,6 +6,17 @@ use super::component::Effect;
 use super::component_store::ComponentStateStore;
 use super::state::AppState;
 use super::types::StackedDocument;
+
+/// Format GameDate for breadcrumb display (MM/DD)
+fn format_date_for_breadcrumb(date: &GameDate) -> String {
+    match date {
+        GameDate::Date(naive_date) => naive_date.format("%m/%d").to_string(),
+        GameDate::Now => chrono::Local::now()
+            .date_naive()
+            .format("%m/%d")
+            .to_string(),
+    }
+}
 
 // Import sub-reducers from the parent framework module
 use crate::tui::reducers::{
@@ -70,6 +82,9 @@ pub fn reduce(
 
         // Scores: SelectGame pushes boxscore document onto stack
         Action::SelectGame(game_id) => {
+            // Format the current date for breadcrumb display
+            let game_date = format_date_for_breadcrumb(&state.ui.scores.game_date);
+
             // Look up game data from schedule to get team abbrevs and scores
             let (away_abbrev, home_abbrev, away_score, home_score) =
                 if let Some(schedule) = &*state.data.schedule {
@@ -98,6 +113,7 @@ pub fn reduce(
                     home_abbrev,
                     away_score,
                     home_score,
+                    game_date,
                 }),
             )
             .unwrap_or_else(|s| (s, Effect::None))

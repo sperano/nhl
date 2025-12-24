@@ -10,7 +10,7 @@ use ratatui::{
 };
 
 use crate::config::{DisplayConfig, RenderContext};
-use crate::tui::{component::ElementWidget, state::DocumentStackEntry, Tab};
+use crate::tui::{component::ElementWidget, state::DocumentStackEntry, StackedDocument, Tab};
 
 /// Breadcrumb widget that renders a navigation path
 #[derive(Clone)]
@@ -49,16 +49,18 @@ impl BreadcrumbWidget {
 
         let separator = format!(" {} ", config.box_chars.breadcrumb_separator);
 
-        // Start with the current tab name
-        let tab_name = match self.current_tab {
-            Tab::Scores => "Scores",
-            Tab::Standings => "Standings",
-            Tab::Settings => "Settings",
-            #[cfg(feature = "development")]
-            Tab::Demo => "Demo",
+        // Check if first document is a Boxscore - if so, use its game_date instead of tab name
+        let first_label = if let Some(first_doc) = self.document_stack.first() {
+            if let StackedDocument::Boxscore { game_date, .. } = &first_doc.document {
+                game_date.clone()
+            } else {
+                self.tab_name().to_string()
+            }
+        } else {
+            self.tab_name().to_string()
         };
 
-        spans.push(Span::styled(tab_name.to_string(), text_style));
+        spans.push(Span::styled(first_label, text_style));
 
         // Add each document in the stack
         for doc_entry in &self.document_stack {
@@ -70,6 +72,16 @@ impl BreadcrumbWidget {
         }
 
         spans
+    }
+
+    fn tab_name(&self) -> &'static str {
+        match self.current_tab {
+            Tab::Scores => "Scores",
+            Tab::Standings => "Standings",
+            Tab::Settings => "Settings",
+            #[cfg(feature = "development")]
+            Tab::Demo => "Demo",
+        }
     }
 }
 
@@ -181,6 +193,7 @@ mod tests {
                 home_abbrev: "BOS".to_string(),
                 away_score: 3,
                 home_score: 2,
+                game_date: "12/24".to_string(),
             },
             None,
         )];
@@ -195,7 +208,7 @@ mod tests {
         assert_buffer(
             &buf,
             &[
-                " Scores ▶ TOR:3-BOS:2",
+                " 12/24 ▶ TOR:3-BOS:2",
                 "────────────────────────────────────────────────────────────────────────────────",
             ],
         );
@@ -211,6 +224,7 @@ mod tests {
                     home_abbrev: "BOS".to_string(),
                     away_score: 3,
                     home_score: 2,
+                    game_date: "12/24".to_string(),
                 },
                 None,
             ),
@@ -234,7 +248,7 @@ mod tests {
         assert_buffer(
             &buf,
             &[
-                " Scores ▶ TOR:3-BOS:2 ▶ #87 Crosby",
+                " 12/24 ▶ TOR:3-BOS:2 ▶ #87 Crosby",
                 "────────────────────────────────────────────────────────────────────────────────",
             ],
         );

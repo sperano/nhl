@@ -11,7 +11,7 @@ use crate::tui::document::{
     Document, DocumentBuilder, DocumentElement, DocumentView, FocusContext,
     TEAM_BOXSCORE_SIDE_BY_SIDE_WIDTH,
 };
-use crate::tui::widgets::{LoadingAnimation, StandaloneWidget};
+use crate::tui::widgets::{LoadingAnimation, ScoreBoxStatus, StandaloneWidget};
 use crate::tui::{Alignment, CellValue, ColumnDef};
 
 /// View mode for boxscore panel
@@ -72,56 +72,19 @@ impl BoxscoreDocumentContent {
         }
     }
 
-    /// Build header section with game info
-    fn build_header(&self) -> Vec<DocumentElement> {
-        let boxscore = &self.boxscore;
-
-        let title = format!(
-            "{} @ {}",
-            boxscore.away_team.common_name.default, boxscore.home_team.common_name.default
-        );
-
-        let date_venue = format!(
-            "Date: {} | Venue: {}",
-            boxscore.game_date, boxscore.venue.default
-        );
-
-        let period_text = format_period_text(
-            &boxscore.period_descriptor.number,
-            boxscore.period_descriptor.period_type,
-        );
-        let status_period = format!(
-            "Status: {} | Period: {}",
-            format_game_state(&boxscore.game_state),
-            period_text
-        );
-
-        let time_info = if boxscore.clock.running || !boxscore.clock.in_intermission {
-            format!("Time: {}", boxscore.clock.time_remaining)
-        } else if boxscore.clock.in_intermission {
-            "INTERMISSION".to_string()
-        } else {
-            String::new()
-        };
-
-        vec![
-            DocumentElement::heading(1, &title),
-            DocumentElement::text(&date_venue),
-            DocumentElement::text(&status_period),
-            DocumentElement::text(&time_info),
-        ]
-    }
-
     /// Build score section - uses big digits if unicode enabled, otherwise text
     fn build_score(&self, focus: &FocusContext) -> Vec<DocumentElement> {
         let boxscore = &self.boxscore;
 
         if focus.use_unicode {
+            let status = boxscore_to_status(boxscore);
             vec![DocumentElement::big_score(
-                &boxscore.away_team.abbrev,
-                &boxscore.home_team.abbrev,
+                &boxscore.away_team.common_name.default,
+                &boxscore.home_team.common_name.default,
                 boxscore.away_team.score,
                 boxscore.home_team.score,
+                status,
+                &boxscore.venue.default,
             )]
         } else {
             let score_text = format!(
@@ -199,12 +162,6 @@ impl BoxscoreDocumentContent {
 impl Document for BoxscoreDocumentContent {
     fn build(&self, focus: &FocusContext) -> Vec<DocumentElement> {
         let mut builder = DocumentBuilder::new();
-
-        // Header section
-        for elem in self.build_header() {
-            builder = builder.element(elem);
-        }
-        builder = builder.spacer(1);
 
         // Score section
         for elem in self.build_score(focus) {
@@ -358,6 +315,37 @@ fn format_period_text(number: &i32, period_type: nhl_api::PeriodType) -> String 
         nhl_api::PeriodType::Regulation => format!("{}", number),
         nhl_api::PeriodType::Overtime => "OT".to_string(),
         nhl_api::PeriodType::Shootout => "SO".to_string(),
+    }
+}
+
+fn boxscore_to_status(boxscore: &Boxscore) -> ScoreBoxStatus {
+    match boxscore.game_state {
+        nhl_api::GameState::Future | nhl_api::GameState::PreGame => ScoreBoxStatus::Scheduled {
+            start_time: boxscore.start_time_utc.clone(),
+        },
+        nhl_api::GameState::Live | nhl_api::GameState::Critical => {
+            let period = format_period_text(
+                &boxscore.period_descriptor.number,
+                boxscore.period_descriptor.period_type,
+            );
+            let time = if boxscore.clock.time_remaining.is_empty() {
+                None
+            } else {
+                Some(boxscore.clock.time_remaining.clone())
+            };
+            ScoreBoxStatus::Live {
+                period,
+                time,
+                intermission: boxscore.clock.in_intermission,
+            }
+        }
+        nhl_api::GameState::Final | nhl_api::GameState::Off => ScoreBoxStatus::Final {
+            overtime: boxscore.period_descriptor.period_type == nhl_api::PeriodType::Overtime,
+            shootout: boxscore.period_descriptor.period_type == nhl_api::PeriodType::Shootout,
+        },
+        nhl_api::GameState::Postponed | nhl_api::GameState::Suspended => ScoreBoxStatus::Scheduled {
+            start_time: "TBD".to_string(),
+        },
     }
 }
 

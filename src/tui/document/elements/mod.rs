@@ -13,7 +13,7 @@ use crate::big_digits::BIG_DIGIT_HEIGHT;
 use crate::config::RenderContext;
 use crate::tui::component::ElementWidget;
 use crate::tui::components::TableWidget;
-use crate::tui::widgets::{BigScore, ScoreBox, StandaloneWidget};
+use crate::tui::widgets::{BigScore, ScoreBox, ScoreBoxStatus, StandaloneWidget};
 
 use super::focus::{FocusableElement, FocusableId, RowPosition};
 use super::link::LinkTarget;
@@ -271,8 +271,8 @@ impl std::fmt::Debug for DocumentElement {
                 .finish(),
             Self::BigScoreElement { big_score } => f
                 .debug_struct("BigScoreElement")
-                .field("away", &big_score.away_abbrev)
-                .field("home", &big_score.home_abbrev)
+                .field("away", &big_score.away_name)
+                .field("home", &big_score.home_name)
                 .finish(),
         }
     }
@@ -916,18 +916,22 @@ impl DocumentElement {
     /// Create a big score element
     ///
     /// # Arguments
-    /// - `away_abbrev`: Away team abbreviation (e.g., "NJD")
-    /// - `home_abbrev`: Home team abbreviation (e.g., "BUF")
+    /// - `away_name`: Away team common name (e.g., "Devils")
+    /// - `home_name`: Home team common name (e.g., "Sabres")
     /// - `away_score`: Away team score
     /// - `home_score`: Home team score
+    /// - `status`: Game status (Final, Live, Scheduled)
+    /// - `venue`: Venue name (e.g., "TD Garden")
     pub fn big_score(
-        away_abbrev: impl Into<String>,
-        home_abbrev: impl Into<String>,
+        away_name: impl Into<String>,
+        home_name: impl Into<String>,
         away_score: i32,
         home_score: i32,
+        status: ScoreBoxStatus,
+        venue: impl Into<String>,
     ) -> Self {
         Self::BigScoreElement {
-            big_score: BigScore::new(away_abbrev, home_abbrev, away_score, home_score),
+            big_score: BigScore::new(away_name, home_name, away_score, home_score, status, venue),
         }
     }
 }

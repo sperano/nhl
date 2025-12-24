@@ -22,6 +22,8 @@ pub enum StackedDocument {
         home_abbrev: String,
         away_score: i32,
         home_score: i32,
+        /// Game date formatted for breadcrumb display (e.g., "12/24")
+        game_date: String,
     },
     TeamDetail {
         abbrev: String,
