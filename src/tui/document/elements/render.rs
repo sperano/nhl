@@ -13,8 +13,12 @@ use crate::tui::widgets::StandaloneWidget;
 
 use super::{DocumentElement, RowAlignment};
 
-/// Fixed width for team boxscore (includes # column: 2 width + 2 gap = 4 extra chars)
-pub const TEAM_BOXSCORE_WIDTH: u16 = 89;
+/// Fixed width for team boxscore
+/// Calculation: SELECTOR(2) + sum(column_widths) + gaps(2 * (num_columns - 1)) + borders(2)
+/// Skater: 2 + 69 + 32 + 2 = 105 (17 columns)
+/// Goalie: 2 + 63 + 24 + 2 = 91 (13 columns)
+/// Using skater width as it's the wider table
+pub const TEAM_BOXSCORE_WIDTH: u16 = 105;
 
 /// Gap between two team boxscores when displayed side by side (centered)
 pub const TEAM_BOXSCORE_GAP: u16 = 4;

@@ -37,7 +37,7 @@ pub use viewport::Viewport;
 pub use widget::DocumentElementWidget;
 
 /// Focus context passed when building a document
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FocusContext {
     /// The currently focused element (if any)
     pub focused_id: Option<FocusableId>,
@@ -45,6 +45,19 @@ pub struct FocusContext {
     pub available_width: Option<u16>,
     /// Whether to use unicode characters for rendering
     pub use_unicode: bool,
+    /// Box drawing characters for rendering
+    pub box_chars: crate::formatting::BoxChars,
+}
+
+impl Default for FocusContext {
+    fn default() -> Self {
+        Self {
+            focused_id: None,
+            available_width: None,
+            use_unicode: true,
+            box_chars: crate::formatting::BoxChars::unicode(),
+        }
+    }
 }
 
 impl FocusContext {
@@ -54,6 +67,7 @@ impl FocusContext {
             focused_id: Some(id.clone()),
             available_width: None,
             use_unicode: true,
+            box_chars: crate::formatting::BoxChars::unicode(),
         }
     }
 
@@ -63,6 +77,7 @@ impl FocusContext {
             focused_id: Some(FocusableId::link(id)),
             available_width: None,
             use_unicode: true,
+            box_chars: crate::formatting::BoxChars::unicode(),
         }
     }
 
@@ -72,6 +87,7 @@ impl FocusContext {
             focused_id: Some(FocusableId::table_cell(table_name, row, col)),
             available_width: None,
             use_unicode: true,
+            box_chars: crate::formatting::BoxChars::unicode(),
         }
     }
 
@@ -84,6 +100,12 @@ impl FocusContext {
     /// Set whether to use unicode characters
     pub fn with_unicode(mut self, use_unicode: bool) -> Self {
         self.use_unicode = use_unicode;
+        self
+    }
+
+    /// Set the box drawing characters
+    pub fn with_box_chars(mut self, box_chars: crate::formatting::BoxChars) -> Self {
+        self.box_chars = box_chars;
         self
     }
 
@@ -484,7 +506,8 @@ impl DocumentView {
             .map(|id| FocusContext::from_id(id).with_width(content_width))
             .unwrap_or_default()
             .with_width(content_width)
-            .with_unicode(ctx.use_unicode());
+            .with_unicode(ctx.use_unicode())
+            .with_box_chars(ctx.config.box_chars);
 
         let (full_buf, height) = self.document.render_full(content_width, ctx, &focus);
         self.full_buffer = Some(full_buf);

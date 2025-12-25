@@ -1,7 +1,7 @@
 use crate::config::DisplayConfig;
 
 /// Box-drawing characters for table borders
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BoxChars {
     // Single-line characters
     pub horizontal: &'static str,
@@ -43,6 +43,7 @@ pub struct BoxChars {
     pub connector3: &'static str,
     pub selector: &'static str,
     pub breadcrumb_separator: &'static str,
+    pub checkmark: &'static str,
 }
 
 impl BoxChars {
@@ -88,6 +89,7 @@ impl BoxChars {
             connector3: "┬",
             selector: "▶",
             breadcrumb_separator: "▶",
+            checkmark: "✓",
         }
     }
 
@@ -133,6 +135,7 @@ impl BoxChars {
             connector3: "-",
             selector: ">",
             breadcrumb_separator: ">",
+            checkmark: "*",
         }
     }
 

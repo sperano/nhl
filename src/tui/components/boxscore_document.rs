@@ -120,7 +120,7 @@ impl BoxscoreDocumentContent {
         table_id: &str,
         focus: &FocusContext,
     ) -> TableWidget {
-        let columns = game_goalie_columns();
+        let columns = game_goalie_columns(&focus.box_chars);
         TableWidget::from_data(&columns, goalies.to_vec())
             .with_focused_row(focus.focused_table_row(table_id))
     }
@@ -228,6 +228,9 @@ fn game_skater_columns() -> Vec<ColumnDef<SkaterStats>> {
         ColumnDef::new("PTS", 3, Alignment::Right, |s: &SkaterStats| {
             CellValue::Text(s.points.to_string())
         }),
+        ColumnDef::new("PPG", 3, Alignment::Right, |s: &SkaterStats| {
+            CellValue::Text(s.power_play_goals.to_string())
+        }),
         ColumnDef::new("+/-", 3, Alignment::Right, |s: &SkaterStats| {
             CellValue::Text(format!("{:+}", s.plus_minus))
         }),
@@ -240,6 +243,12 @@ fn game_skater_columns() -> Vec<ColumnDef<SkaterStats>> {
         ColumnDef::new("Blk", 3, Alignment::Right, |s: &SkaterStats| {
             CellValue::Text(s.blocked_shots.to_string())
         }),
+        ColumnDef::new("GA", 2, Alignment::Right, |s: &SkaterStats| {
+            CellValue::Text(s.giveaways.to_string())
+        }),
+        ColumnDef::new("TA", 2, Alignment::Right, |s: &SkaterStats| {
+            CellValue::Text(s.takeaways.to_string())
+        }),
         ColumnDef::new("PIM", 3, Alignment::Right, |s: &SkaterStats| {
             CellValue::Text(s.pim.to_string())
         }),
@@ -250,6 +259,9 @@ fn game_skater_columns() -> Vec<ColumnDef<SkaterStats>> {
                 CellValue::Text("-".to_string())
             }
         }),
+        ColumnDef::new("SH", 3, Alignment::Right, |s: &SkaterStats| {
+            CellValue::Text(s.shifts.to_string())
+        }),
         ColumnDef::new("TOI", 6, Alignment::Right, |s: &SkaterStats| {
             CellValue::Text(s.toi.clone())
         }),
@@ -257,7 +269,8 @@ fn game_skater_columns() -> Vec<ColumnDef<SkaterStats>> {
 }
 
 /// Column definitions for game-level goalie stats
-fn game_goalie_columns() -> Vec<ColumnDef<GoalieStats>> {
+fn game_goalie_columns(box_chars: &crate::formatting::BoxChars) -> Vec<ColumnDef<GoalieStats>> {
+    let checkmark = box_chars.checkmark.to_string();
     vec![
         ColumnDef::new("#", 2, Alignment::Right, |g: &GoalieStats| {
             CellValue::StyledText(g.sweater_number.to_string())
@@ -267,6 +280,20 @@ fn game_goalie_columns() -> Vec<ColumnDef<GoalieStats>> {
                 display: g.name.default.clone(),
                 player_id: g.player_id,
             }
+        }),
+        ColumnDef::new("DEC", 3, Alignment::Center, |g: &GoalieStats| {
+            let text = match &g.decision {
+                Some(d) => d.to_string(),
+                None => "-".to_string(),
+            };
+            CellValue::Text(text)
+        }),
+        ColumnDef::new("S", 1, Alignment::Center, move |g: &GoalieStats| {
+            let text = match g.starter {
+                Some(true) => checkmark.clone(),
+                _ => " ".to_string(),
+            };
+            CellValue::Text(text)
         }),
         ColumnDef::new("SA", 3, Alignment::Right, |g: &GoalieStats| {
             CellValue::Text(g.shots_against.to_string())
@@ -283,6 +310,15 @@ fn game_goalie_columns() -> Vec<ColumnDef<GoalieStats>> {
             } else {
                 CellValue::Text("-".to_string())
             }
+        }),
+        ColumnDef::new("ES", 6, Alignment::Right, |g: &GoalieStats| {
+            CellValue::Text(g.even_strength_shots_against.clone())
+        }),
+        ColumnDef::new("PP", 4, Alignment::Right, |g: &GoalieStats| {
+            CellValue::Text(g.power_play_shots_against.clone())
+        }),
+        ColumnDef::new("SH", 4, Alignment::Right, |g: &GoalieStats| {
+            CellValue::Text(g.shorthanded_shots_against.clone())
         }),
         ColumnDef::new("TOI", 7, Alignment::Right, |g: &GoalieStats| {
             CellValue::Text(g.toi.clone())
