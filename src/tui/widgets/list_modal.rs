@@ -83,10 +83,13 @@ pub fn render_list_modal(
     };
 
     // Fill modal area with theme background
+    // Reset cells first to clear any underlying styling (prevents bleed-through
+    // from selected items when theme has no explicit background)
     let bg_style = ctx.base_style();
     for y in modal_area.y..modal_area.bottom() {
         for x in modal_area.x..modal_area.right() {
             if let Some(cell) = buf.cell_mut((x, y)) {
+                cell.reset();
                 cell.set_char(' ');
                 cell.set_style(bg_style);
             }
