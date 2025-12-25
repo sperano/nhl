@@ -132,7 +132,13 @@ impl BigScore {
         let away_digits = Self::score_width(self.away_score);
         let home_digits = Self::score_width(self.home_score);
         // Layout: away_name_box + gap + away_digits + separator + home_digits + gap + home_name_box
-        away_box + NAME_DIGIT_GAP + away_digits + SEPARATOR_WIDTH + home_digits + NAME_DIGIT_GAP + home_box
+        away_box
+            + NAME_DIGIT_GAP
+            + away_digits
+            + SEPARATOR_WIDTH
+            + home_digits
+            + NAME_DIGIT_GAP
+            + home_box
     }
 }
 
@@ -202,7 +208,12 @@ impl StandaloneWidget for BigScore {
             }
 
             // Separator
-            buf.set_string(current_x, digits_y + row, SEPARATOR[row as usize], text_style);
+            buf.set_string(
+                current_x,
+                digits_y + row,
+                SEPARATOR[row as usize],
+                text_style,
+            );
             current_x += SEPARATOR_WIDTH;
 
             // Home score digits (with gaps between them)

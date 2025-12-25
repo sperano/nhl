@@ -297,19 +297,6 @@ fn game_goalie_columns() -> Vec<ColumnDef<GoalieStats>> {
     ]
 }
 
-fn format_game_state(state: &nhl_api::GameState) -> &str {
-    match state {
-        nhl_api::GameState::Future => "SCHEDULED",
-        nhl_api::GameState::PreGame => "PRE-GAME",
-        nhl_api::GameState::Live => "LIVE",
-        nhl_api::GameState::Final => "FINAL",
-        nhl_api::GameState::Off => "OFF",
-        nhl_api::GameState::Postponed => "POSTPONED",
-        nhl_api::GameState::Suspended => "SUSPENDED",
-        nhl_api::GameState::Critical => "CRITICAL",
-    }
-}
-
 fn format_period_text(number: &i32, period_type: nhl_api::PeriodType) -> String {
     match period_type {
         nhl_api::PeriodType::Regulation => format!("{}", number),
@@ -343,9 +330,11 @@ fn boxscore_to_status(boxscore: &Boxscore) -> ScoreBoxStatus {
             overtime: boxscore.period_descriptor.period_type == nhl_api::PeriodType::Overtime,
             shootout: boxscore.period_descriptor.period_type == nhl_api::PeriodType::Shootout,
         },
-        nhl_api::GameState::Postponed | nhl_api::GameState::Suspended => ScoreBoxStatus::Scheduled {
-            start_time: "TBD".to_string(),
-        },
+        nhl_api::GameState::Postponed | nhl_api::GameState::Suspended => {
+            ScoreBoxStatus::Scheduled {
+                start_time: "TBD".to_string(),
+            }
+        }
     }
 }
 
