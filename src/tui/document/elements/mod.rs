@@ -920,6 +920,8 @@ impl DocumentElement {
     /// - `home_name`: Home team common name (e.g., "Sabres")
     /// - `away_score`: Away team score
     /// - `home_score`: Home team score
+    /// - `away_sog`: Away team shots on goal
+    /// - `home_sog`: Home team shots on goal
     /// - `status`: Game status (Final, Live, Scheduled)
     /// - `venue`: Venue name (e.g., "TD Garden")
     pub fn big_score(
@@ -927,11 +929,15 @@ impl DocumentElement {
         home_name: impl Into<String>,
         away_score: i32,
         home_score: i32,
+        away_sog: i32,
+        home_sog: i32,
         status: ScoreBoxStatus,
         venue: impl Into<String>,
     ) -> Self {
         Self::BigScoreElement {
-            big_score: BigScore::new(away_name, home_name, away_score, home_score, status, venue),
+            big_score: BigScore::new(
+                away_name, home_name, away_score, home_score, away_sog, home_sog, status, venue,
+            ),
         }
     }
 }

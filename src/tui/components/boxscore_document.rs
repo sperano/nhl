@@ -83,16 +83,20 @@ impl BoxscoreDocumentContent {
                 &boxscore.home_team.common_name.default,
                 boxscore.away_team.score,
                 boxscore.home_team.score,
+                boxscore.away_team.sog,
+                boxscore.home_team.sog,
                 status,
                 &boxscore.venue.default,
             )]
         } else {
             let score_text = format!(
-                "{}: {}  |  {}: {}",
+                "{}: {}  |  {}: {}  (SOG: {} - {})",
                 boxscore.away_team.abbrev,
                 boxscore.away_team.score,
                 boxscore.home_team.abbrev,
-                boxscore.home_team.score
+                boxscore.home_team.score,
+                boxscore.away_team.sog,
+                boxscore.home_team.sog,
             );
             vec![
                 DocumentElement::heading(2, "SCORE"),

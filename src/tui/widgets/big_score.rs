@@ -41,17 +41,18 @@ const DIGIT_GAP: u16 = 1;
 /// Header height: status line + blank line
 const HEADER_HEIGHT: u16 = 2;
 
-/// Footer height: blank line + venue line
-const FOOTER_HEIGHT: u16 = 2;
+/// Footer height: blank line + SOG line + venue line
+const FOOTER_HEIGHT: u16 = 3;
 
 /// Widget that displays a game score using big digits
 ///
-/// Layout (8 rows):
+/// Layout (9 rows):
 /// - Status line centered (row 0)
 /// - Blank line (row 1)
 /// - Big digit scores with team names on sides (rows 2-5)
 /// - Blank line (row 6)
-/// - Venue centered (row 7)
+/// - SOG line centered (row 7)
+/// - Venue centered (row 8)
 #[derive(Debug, Clone)]
 pub struct BigScore {
     /// Away team common name (e.g., "Devils")
@@ -62,6 +63,10 @@ pub struct BigScore {
     pub away_score: i32,
     /// Home team score
     pub home_score: i32,
+    /// Away team shots on goal
+    pub away_sog: i32,
+    /// Home team shots on goal
+    pub home_sog: i32,
     /// Game status (e.g., "Final", "1st 09:27")
     pub status: ScoreBoxStatus,
     /// Venue name (e.g., "TD Garden")
@@ -75,6 +80,8 @@ impl BigScore {
         home_name: impl Into<String>,
         away_score: i32,
         home_score: i32,
+        away_sog: i32,
+        home_sog: i32,
         status: ScoreBoxStatus,
         venue: impl Into<String>,
     ) -> Self {
@@ -83,6 +90,8 @@ impl BigScore {
             home_name: home_name.into(),
             away_score,
             home_score,
+            away_sog,
+            home_sog,
             status,
             venue: venue.into(),
         }
@@ -228,15 +237,22 @@ impl StandaloneWidget for BigScore {
         }
 
         // Row 6: blank line (implicit)
-        // Row 7: Venue centered
+        // Row 7: SOG line centered
+        let sog_text = format!("SOG: {} - {}", self.away_sog, self.home_sog);
+        let sog_width = sog_text.chars().count() as u16;
+        let sog_x = x + (area.width.saturating_sub(sog_width)) / 2;
+        let sog_row = digits_y + BIG_DIGIT_HEIGHT + 1;
+        buf.set_string(sog_x, sog_row, &sog_text, text_style);
+
+        // Row 8: Venue centered
         let venue_width = self.venue.chars().count() as u16;
         let venue_x = x + (area.width.saturating_sub(venue_width)) / 2;
-        let venue_row = digits_y + BIG_DIGIT_HEIGHT + 1;
+        let venue_row = digits_y + BIG_DIGIT_HEIGHT + 2;
         buf.set_string(venue_x, venue_row, &self.venue, text_style);
     }
 
     fn preferred_height(&self) -> Option<u16> {
-        // 1 status + 1 blank + 4 digits + 1 blank + 1 venue = 8
+        // 1 status + 1 blank + 4 digits + 1 blank + 1 SOG + 1 venue = 9
         Some(HEADER_HEIGHT + BIG_DIGIT_HEIGHT + FOOTER_HEIGHT)
     }
 
@@ -261,9 +277,9 @@ mod tests {
     #[test]
     fn test_single_digit_scores() {
         // Layout: 20 (away box) + 2 (gap) + 4 (digit) + 6 (sep) + 4 (digit) + 2 (gap) + 20 (home box) = 58
-        let widget = BigScore::new("Devils", "Sabres", 3, 2, final_status(), "TD Garden");
+        let widget = BigScore::new("Devils", "Sabres", 3, 2, 30, 25, final_status(), "TD Garden");
         let config = test_config();
-        let buf = render_widget_with_config(&widget, 58, 8, &config);
+        let buf = render_widget_with_config(&widget, 58, 9, &config);
 
         assert_buffer(
             &buf,
@@ -275,6 +291,7 @@ mod tests {
                 "                         █       ▗▛                       ",
                 "                      ▜▄▄▛      ▄█▄▄                      ",
                 "                                                          ",
+                "                       SOG: 30 - 25                       ",
                 "                        TD Garden                         ",
             ],
         );
@@ -284,9 +301,9 @@ mod tests {
     fn test_score_10_4() {
         // 10-4: away=9 (4+1+4), home=4, imbalance=5, home_box=25
         // Width: 20 + 2 + 9 + 6 + 4 + 2 + 25 = 68
-        let widget = BigScore::new("Devils", "Sabres", 10, 4, final_status(), "TD Garden");
+        let widget = BigScore::new("Devils", "Sabres", 10, 4, 40, 20, final_status(), "TD Garden");
         let config = test_config();
-        let buf = render_widget_with_config(&widget, 68, 8, &config);
+        let buf = render_widget_with_config(&widget, 68, 9, &config);
 
         assert_buffer(
             &buf,
@@ -298,6 +315,7 @@ mod tests {
                 "                       █   █  █      ▙▄█▄                           ",
                 "                      ▗█▖  ▜▄▄▛        █                            ",
                 "                                                                    ",
+                "                            SOG: 40 - 20                            ",
                 "                             TD Garden                              ",
             ],
         );
@@ -307,9 +325,9 @@ mod tests {
     fn test_score_4_10() {
         // 4-10: away=4, home=9, imbalance=5, away_box=25
         // Width: 25 + 2 + 4 + 6 + 9 + 2 + 20 = 68
-        let widget = BigScore::new("Devils", "Sabres", 4, 10, final_status(), "TD Garden");
+        let widget = BigScore::new("Devils", "Sabres", 4, 10, 20, 40, final_status(), "TD Garden");
         let config = test_config();
-        let buf = render_widget_with_config(&widget, 68, 8, &config);
+        let buf = render_widget_with_config(&widget, 68, 9, &config);
 
         assert_buffer(
             &buf,
@@ -321,6 +339,7 @@ mod tests {
                 "                           ▙▄█▄       █   █  █                      ",
                 "                             █       ▗█▖  ▜▄▄▛                      ",
                 "                                                                    ",
+                "                            SOG: 20 - 40                            ",
                 "                             TD Garden                              ",
             ],
         );
@@ -330,9 +349,9 @@ mod tests {
     fn test_score_10_10() {
         // 10-10: both=9, balanced
         // Width: 20 + 2 + 9 + 6 + 9 + 2 + 20 = 68
-        let widget = BigScore::new("Devils", "Sabres", 10, 10, final_status(), "TD Garden");
+        let widget = BigScore::new("Devils", "Sabres", 10, 10, 35, 35, final_status(), "TD Garden");
         let config = test_config();
-        let buf = render_widget_with_config(&widget, 68, 8, &config);
+        let buf = render_widget_with_config(&widget, 68, 9, &config);
 
         assert_buffer(
             &buf,
@@ -344,6 +363,7 @@ mod tests {
                 "                       █   █  █       █   █  █                      ",
                 "                      ▗█▖  ▜▄▄▛      ▗█▖  ▜▄▄▛                      ",
                 "                                                                    ",
+                "                            SOG: 35 - 35                            ",
                 "                             TD Garden                              ",
             ],
         );
@@ -360,23 +380,23 @@ mod tests {
     #[test]
     fn test_preferred_dimensions() {
         // Single digit scores: 20 + 2 + 4 + 6 + 4 + 2 + 20 = 58
-        let widget = BigScore::new("Devils", "Sabres", 3, 2, final_status(), "KeyBank Center");
-        assert_eq!(widget.preferred_height(), Some(8)); // 1 status + 1 blank + 4 digits + 1 blank + 1 venue
+        let widget = BigScore::new("Devils", "Sabres", 3, 2, 30, 25, final_status(), "KeyBank Center");
+        assert_eq!(widget.preferred_height(), Some(9)); // 1 status + 1 blank + 4 digits + 1 blank + 1 SOG + 1 venue
         assert_eq!(widget.preferred_width(), Some(58));
 
         // 10-4: away=9 (4+1+4), home=4, imbalance=5, home_box=25
         // Width: 20 + 2 + 9 + 6 + 4 + 2 + 25 = 68
-        let widget_10_4 = BigScore::new("Devils", "Sabres", 10, 4, final_status(), "TD Garden");
+        let widget_10_4 = BigScore::new("Devils", "Sabres", 10, 4, 40, 20, final_status(), "TD Garden");
         assert_eq!(widget_10_4.preferred_width(), Some(68));
 
         // 4-10: away=4, home=9, imbalance=5, away_box=25
         // Width: 25 + 2 + 4 + 6 + 9 + 2 + 20 = 68
-        let widget_4_10 = BigScore::new("Devils", "Sabres", 4, 10, final_status(), "TD Garden");
+        let widget_4_10 = BigScore::new("Devils", "Sabres", 4, 10, 20, 40, final_status(), "TD Garden");
         assert_eq!(widget_4_10.preferred_width(), Some(68));
 
         // 10-10: both=9, balanced
         // Width: 20 + 2 + 9 + 6 + 9 + 2 + 20 = 68
-        let widget_10_10 = BigScore::new("Devils", "Sabres", 10, 10, final_status(), "TD Garden");
+        let widget_10_10 = BigScore::new("Devils", "Sabres", 10, 10, 35, 35, final_status(), "TD Garden");
         assert_eq!(widget_10_10.preferred_width(), Some(68));
     }
 }
