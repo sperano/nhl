@@ -1,6 +1,52 @@
 //TODO this should go in nhl_api
 // everywhere in the api where there a team info without an abbreviation, we should add a team_abbrev field and make it automatically set with this lookup table
 
+/// Map team abbreviation to team common name
+///
+/// This function maps NHL team abbreviations (e.g., "TOR")
+/// to their common names (e.g., "Maple Leafs").
+pub fn abbrev_to_common_name(abbrev: &str) -> Option<&'static str> {
+    match abbrev {
+        "ANA" => Some("Ducks"),
+        "ARI" => Some("Coyotes"),
+        "BOS" => Some("Bruins"),
+        "BUF" => Some("Sabres"),
+        "CGY" => Some("Flames"),
+        "CAR" => Some("Hurricanes"),
+        "CHI" => Some("Blackhawks"),
+        "COL" => Some("Avalanche"),
+        "CBJ" => Some("Blue Jackets"),
+        "DAL" => Some("Stars"),
+        "DET" => Some("Red Wings"),
+        "EDM" => Some("Oilers"),
+        "FLA" => Some("Panthers"),
+        "LAK" => Some("Kings"),
+        "MIN" => Some("Wild"),
+        "MTL" => Some("Canadiens"),
+        "NSH" => Some("Predators"),
+        "NJD" => Some("Devils"),
+        "NYI" => Some("Islanders"),
+        "NYR" => Some("Rangers"),
+        "OTT" => Some("Senators"),
+        "PHI" => Some("Flyers"),
+        "PIT" => Some("Penguins"),
+        "SJS" => Some("Sharks"),
+        "SEA" => Some("Kraken"),
+        "STL" => Some("Blues"),
+        "TBL" => Some("Lightning"),
+        "TOR" => Some("Maple Leafs"),
+        "VAN" => Some("Canucks"),
+        "VGK" => Some("Golden Knights"),
+        "WSH" => Some("Capitals"),
+        "WPG" => Some("Jets"),
+        "UTA" => Some("Hockey Club"),
+        // Historical teams
+        "PHX" => Some("Phoenix Coyotes"),
+        "ATL" => Some("Atlanta Thrashers"),
+        _ => None,
+    }
+}
+
 /// Map team common name to team abbreviation
 ///
 /// This function maps NHL team common names (e.g., "Maple Leafs")

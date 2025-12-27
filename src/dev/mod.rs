@@ -1,7 +1,7 @@
-/// Development utilities module
-///
-/// This module contains utilities for development and debugging,
-/// such as screenshot capture and mock data providers.
+//! Development utilities module
+//!
+//! This module contains utilities for development and debugging,
+//! such as screenshot capture and mock data providers.
 
 #[cfg(feature = "development")]
 pub mod screenshot;

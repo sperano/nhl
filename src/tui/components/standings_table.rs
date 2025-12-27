@@ -67,7 +67,7 @@ pub fn create_standings_table_with_selection(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::DisplayConfig;
+    use crate::config::{DisplayConfig, RenderContext};
     use crate::tui::component::ElementWidget;
     use crate::tui::testing::{assert_buffer, create_test_standings};
     use ratatui::buffer::Buffer;
@@ -76,7 +76,8 @@ mod tests {
     fn render_widget(widget: &impl ElementWidget, width: u16, height: u16) -> Buffer {
         let mut buf = Buffer::empty(Rect::new(0, 0, width, height));
         let config = DisplayConfig::default();
-        widget.render(buf.area, &mut buf, &config);
+        let ctx = RenderContext::focused(&config);
+        widget.render(buf.area, &mut buf, &ctx);
         buf
     }
 

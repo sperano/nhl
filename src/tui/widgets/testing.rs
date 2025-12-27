@@ -1,5 +1,5 @@
 use super::StandaloneWidget;
-use crate::config::DisplayConfig;
+use crate::config::{DisplayConfig, RenderContext};
 use crate::formatting::BoxChars;
 /// Testing utilities for widget rendering
 ///
@@ -44,7 +44,8 @@ pub fn test_config_ascii() -> DisplayConfig {
 pub fn render_widget(widget: &impl StandaloneWidget, width: u16, height: u16) -> Buffer {
     let mut buf = Buffer::empty(Rect::new(0, 0, width, height));
     let config = test_config();
-    widget.render(buf.area, &mut buf, &config);
+    let ctx = RenderContext::focused(&config);
+    widget.render(buf.area, &mut buf, &ctx);
     buf
 }
 
@@ -56,7 +57,8 @@ pub fn render_widget_with_config(
     config: &DisplayConfig,
 ) -> Buffer {
     let mut buf = Buffer::empty(Rect::new(0, 0, width, height));
-    widget.render(buf.area, &mut buf, config);
+    let ctx = RenderContext::focused(config);
+    widget.render(buf.area, &mut buf, &ctx);
     buf
 }
 

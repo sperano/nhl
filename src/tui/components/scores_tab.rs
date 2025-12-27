@@ -7,7 +7,7 @@ use nhl_api::{DailySchedule, GameDate, GameMatchup};
 
 use crate::commands::scores_format::PeriodScores;
 use crate::component_message_impl;
-use crate::config::DisplayConfig;
+use crate::config::RenderContext;
 use crate::tui::action::Action;
 use crate::tui::component::{Component, Effect, Element, ElementWidget};
 use crate::tui::document::DocumentView;
@@ -162,11 +162,11 @@ impl Component for ScoresTab {
                 Effect::Action(Action::RefreshSchedule(state.game_date.clone()))
             }
             ScoresTabMsg::EnterBoxSelection => {
-                state.enter_browse_mode();
+                state.focus_first_item();
                 Effect::None
             }
             ScoresTabMsg::ExitBoxSelection => {
-                state.exit_browse_mode();
+                state.clear_item_focus();
                 Effect::None
             }
 
@@ -240,7 +240,8 @@ impl ScoresTab {
             &TabbedPanelProps {
                 active_key,
                 tabs,
-                focused: props.focused && !state.is_browse_mode(),
+                focused: props.focused && !state.has_item_focus(),
+                content_has_focus: props.focused && state.has_item_focus(),
             },
             &(),
         )
@@ -273,6 +274,7 @@ impl ScoresTab {
         _date: &GameDate,
     ) -> Element {
         // Wrap in ScoreBoxesDocumentWidget which calculates boxes_per_row at render time
+        // Document is only focused when in browse mode (navigating within the document)
         Element::Widget(Box::new(ScoreBoxesDocumentWidget {
             schedule: props.schedule.clone(),
             game_info: props.game_info.clone(),
@@ -280,6 +282,7 @@ impl ScoresTab {
             focus_index: state.doc_nav.focus_index,
             scroll_offset: state.doc_nav.scroll_offset,
             animation_frame: props.animation_frame,
+            focused: props.focused && state.has_item_focus(),
         }))
     }
 
@@ -288,7 +291,7 @@ impl ScoresTab {
     /// This method handles all key logic that was previously in keys.rs.
     /// Returns an Effect which may be an Action to dispatch.
     fn handle_key(&mut self, key: KeyEvent, state: &mut ScoresTabState) -> Effect {
-        if state.is_browse_mode() {
+        if state.has_item_focus() {
             // Box selection mode - arrow keys navigate games
             match key.code {
                 KeyCode::Up => crate::tui::document_nav::handle_message(
@@ -339,10 +342,12 @@ struct ScoreBoxesDocumentWidget {
     focus_index: Option<usize>,
     scroll_offset: u16,
     animation_frame: u8,
+    /// Whether this widget has focus (affects dim/bright rendering)
+    focused: bool,
 }
 
 impl ElementWidget for ScoreBoxesDocumentWidget {
-    fn render(&self, area: Rect, buf: &mut Buffer, display_config: &DisplayConfig) {
+    fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
         // Calculate boxes_per_row based on actual viewport width
         let boxes_per_row = ScoreBoxesDocument::boxes_per_row_for_width(area.width);
 
@@ -366,8 +371,11 @@ impl ElementWidget for ScoreBoxesDocumentWidget {
         // Apply scroll offset
         view.set_scroll_offset(self.scroll_offset);
 
+        // Create child RenderContext with our focus state
+        let child_ctx = RenderContext::new(ctx.config, self.focused);
+
         // Render the document
-        view.render(area, buf, display_config);
+        view.render(area, buf, &child_ctx);
     }
 
     fn clone_box(&self) -> Box<dyn ElementWidget> {
@@ -378,6 +386,7 @@ impl ElementWidget for ScoreBoxesDocumentWidget {
             focus_index: self.focus_index,
             scroll_offset: self.scroll_offset,
             animation_frame: self.animation_frame,
+            focused: self.focused,
         })
     }
 

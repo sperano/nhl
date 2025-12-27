@@ -156,7 +156,7 @@
 
 mod rendering;
 
-use crate::config::DisplayConfig;
+use crate::config::RenderContext;
 use crate::tui::component::ElementWidget;
 use crate::tui::{Alignment, CellValue, ColumnDef, Component, Element};
 use ratatui::{buffer::Buffer, layout::Rect};
@@ -332,8 +332,8 @@ impl TableWidget {
 }
 
 impl ElementWidget for TableWidget {
-    fn render(&self, area: Rect, buf: &mut Buffer, config: &DisplayConfig) {
-        self.render_internal(area, buf, config);
+    fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
+        self.render_internal(area, buf, ctx);
     }
 
     fn clone_box(&self) -> Box<dyn ElementWidget> {
@@ -369,7 +369,7 @@ impl ElementWidget for TableWidget {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::DisplayConfig;
+    use crate::config::{DisplayConfig, RenderContext};
     use crate::tui::testing::{assert_buffer, RENDER_WIDTH};
     use ratatui::buffer::Buffer;
     use ratatui::layout::Rect;
@@ -382,7 +382,8 @@ mod tests {
         config: &DisplayConfig,
     ) -> Buffer {
         let mut buf = Buffer::empty(Rect::new(0, 0, width, height));
-        widget.render(buf.area, &mut buf, config);
+        let ctx = RenderContext::focused(config);
+        widget.render(buf.area, &mut buf, &ctx);
         buf
     }
 

@@ -22,7 +22,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use std::sync::Arc;
 
-use crate::config::DisplayConfig;
+use crate::config::RenderContext;
 use crate::tui::component::Effect;
 use crate::tui::document_nav::{handle_message, DocumentNavState};
 use crate::tui::nav_handler::key_to_nav_msg;
@@ -37,7 +37,7 @@ pub use viewport::Viewport;
 pub use widget::DocumentElementWidget;
 
 /// Focus context passed when building a document
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FocusContext {
     /// The currently focused element (if any)
     pub focused_id: Option<FocusableId>,
@@ -45,6 +45,19 @@ pub struct FocusContext {
     pub available_width: Option<u16>,
     /// Whether to use unicode characters for rendering
     pub use_unicode: bool,
+    /// Box drawing characters for rendering
+    pub box_chars: crate::formatting::BoxChars,
+}
+
+impl Default for FocusContext {
+    fn default() -> Self {
+        Self {
+            focused_id: None,
+            available_width: None,
+            use_unicode: true,
+            box_chars: crate::formatting::BoxChars::unicode(),
+        }
+    }
 }
 
 impl FocusContext {
@@ -54,6 +67,7 @@ impl FocusContext {
             focused_id: Some(id.clone()),
             available_width: None,
             use_unicode: true,
+            box_chars: crate::formatting::BoxChars::unicode(),
         }
     }
 
@@ -63,6 +77,7 @@ impl FocusContext {
             focused_id: Some(FocusableId::link(id)),
             available_width: None,
             use_unicode: true,
+            box_chars: crate::formatting::BoxChars::unicode(),
         }
     }
 
@@ -72,6 +87,7 @@ impl FocusContext {
             focused_id: Some(FocusableId::table_cell(table_name, row, col)),
             available_width: None,
             use_unicode: true,
+            box_chars: crate::formatting::BoxChars::unicode(),
         }
     }
 
@@ -84,6 +100,12 @@ impl FocusContext {
     /// Set whether to use unicode characters
     pub fn with_unicode(mut self, use_unicode: bool) -> Self {
         self.use_unicode = use_unicode;
+        self
+    }
+
+    /// Set the box drawing characters
+    pub fn with_box_chars(mut self, box_chars: crate::formatting::BoxChars) -> Self {
+        self.box_chars = box_chars;
         self
     }
 
@@ -177,22 +199,21 @@ pub trait Document: Send + Sync {
 
     /// Render the document to a buffer at full height
     /// Returns the buffer and the actual height used
-    fn render_full(
-        &self,
-        width: u16,
-        config: &DisplayConfig,
-        focus: &FocusContext,
-    ) -> (Buffer, u16) {
+    fn render_full(&self, width: u16, ctx: &RenderContext, focus: &FocusContext) -> (Buffer, u16) {
         let elements = self.build(focus);
         let height = elements.iter().map(|e| e.height()).sum();
 
         let mut buffer = Buffer::empty(Rect::new(0, 0, width, height));
+
+        // Fill entire buffer with background color
+        buffer.set_style(buffer.area, ctx.base_style());
+
         let mut y_offset = 0;
 
         for element in elements {
             let element_height = element.height();
             let area = Rect::new(0, y_offset, width, element_height);
-            element.render(area, &mut buffer, config);
+            element.render(area, &mut buffer, ctx);
             y_offset += element_height;
         }
 
@@ -469,22 +490,42 @@ impl DocumentView {
     // === Rendering ===
 
     /// Render the visible portion of the document
-    pub fn render(&mut self, area: Rect, buf: &mut Buffer, config: &DisplayConfig) {
+    pub fn render(&mut self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
+        const HORIZONTAL_MARGIN: u16 = 1;
+
+        // Account for left and right margins
+        let content_width = area.width.saturating_sub(HORIZONTAL_MARGIN * 2);
+        if content_width == 0 {
+            return;
+        }
+
         // Build focus context from current focus state, including available width and unicode setting
         let focus = self
             .focus_manager
             .get_current_id()
-            .map(|id| FocusContext::from_id(id).with_width(area.width))
+            .map(|id| FocusContext::from_id(id).with_width(content_width))
             .unwrap_or_default()
-            .with_width(area.width)
-            .with_unicode(config.use_unicode);
+            .with_width(content_width)
+            .with_unicode(ctx.use_unicode())
+            .with_box_chars(ctx.config.box_chars);
 
-        let (full_buf, height) = self.document.render_full(area.width, config, &focus);
+        let (full_buf, height) = self.document.render_full(content_width, ctx, &focus);
         self.full_buffer = Some(full_buf);
         self.cached_height = height;
         self.viewport.set_content_height(height);
 
-        // Copy visible portion from full buffer to output buffer
+        // Fill margins with background style
+        let margin_style = ctx.base_style();
+        for y in area.y..area.y + area.height {
+            // Left margin
+            buf.set_string(area.x, y, " ", margin_style);
+            // Right margin
+            if area.width > 1 {
+                buf.set_string(area.x + area.width - 1, y, " ", margin_style);
+            }
+        }
+
+        // Copy visible portion from full buffer to output buffer (with horizontal offset for margin)
         if let Some(full_buffer) = &self.full_buffer {
             let visible_range = self.viewport.visible_range();
             let visible_start = visible_range.start;
@@ -501,9 +542,10 @@ impl DocumentView {
                     break;
                 }
 
-                for x in 0..area.width {
-                    let src_idx = (src_y * area.width + x) as usize;
-                    let dst_idx = (dst_y * buf.area.width + (area.x + x)) as usize;
+                for x in 0..content_width {
+                    let src_idx = (src_y * content_width + x) as usize;
+                    let dst_idx =
+                        (dst_y * buf.area.width + (area.x + HORIZONTAL_MARGIN + x)) as usize;
 
                     if src_idx < full_buffer.content.len() && dst_idx < buf.content.len() {
                         buf.content[dst_idx] = full_buffer.content[src_idx].clone();
@@ -817,14 +859,16 @@ mod tests {
         let doc = Arc::new(RenderTestDocument::new("Test", vec!["Line 1", "Line 2"]));
         let mut view = DocumentView::new(doc, 10);
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        let area = Rect::new(0, 0, 10, 4);
+        let area = Rect::new(0, 0, 12, 4);
         let mut buf = Buffer::empty(area);
 
-        view.render(area, &mut buf, &config);
+        view.render(area, &mut buf, &ctx);
 
         // Underline only extends to title width ("Test" = 4 chars)
-        assert_buffer(&buf, &["Test", "════", "Line 1", "Line 2"]);
+        // Content has 1-char left and right margins
+        assert_buffer(&buf, &[" Test", " ════", " Line 1", " Line 2"]);
     }
 
     #[test]
@@ -835,17 +879,19 @@ mod tests {
         ));
         let mut view = DocumentView::new(doc, 3);
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
         // Scroll down to skip the heading
         view.scroll_down(2);
 
-        let area = Rect::new(0, 0, 10, 3);
+        let area = Rect::new(0, 0, 12, 3);
         let mut buf = Buffer::empty(area);
 
-        view.render(area, &mut buf, &config);
+        view.render(area, &mut buf, &ctx);
 
         // Should show lines starting from offset 2 (after title + underline)
-        assert_buffer(&buf, &["Line 1", "Line 2", "Line 3"]);
+        // Content has 1-char left and right margins
+        assert_buffer(&buf, &[" Line 1", " Line 2", " Line 3"]);
     }
 
     #[test]
@@ -856,17 +902,19 @@ mod tests {
         ));
         let mut view = DocumentView::new(doc, 2);
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
         view.scroll_to_bottom();
 
-        let area = Rect::new(0, 0, 10, 2);
+        let area = Rect::new(0, 0, 12, 2);
         let mut buf = Buffer::empty(area);
 
-        view.render(area, &mut buf, &config);
+        view.render(area, &mut buf, &ctx);
 
         // Total height is 5 (title + underline + 3 lines), viewport is 2
         // Scrolled to bottom shows last 2 lines
-        assert_buffer(&buf, &["Line 2", "Line 3"]);
+        // Content has 1-char left and right margins
+        assert_buffer(&buf, &[" Line 2", " Line 3"]);
     }
 
     /// Test document with a link for focus rendering
@@ -908,14 +956,16 @@ mod tests {
         let doc = Arc::new(LinkTestDocument);
         let mut view = DocumentView::new(doc, 10);
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        let area = Rect::new(0, 0, 15, 3);
+        let area = Rect::new(0, 0, 17, 3);
         let mut buf = Buffer::empty(area);
 
-        view.render(area, &mut buf, &config);
+        view.render(area, &mut buf, &ctx);
 
         // Unfocused link has "  " prefix for alignment
-        assert_buffer(&buf, &["Before", "  Click Me", "After"]);
+        // Content has 1-char left and right margins
+        assert_buffer(&buf, &[" Before", "   Click Me", " After"]);
     }
 
     #[test]
@@ -923,16 +973,18 @@ mod tests {
         let doc = Arc::new(LinkTestDocument);
         let mut view = DocumentView::new(doc, 10);
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
         // Focus the link
         view.focus_next();
 
-        let area = Rect::new(0, 0, 15, 3);
+        let area = Rect::new(0, 0, 17, 3);
         let mut buf = Buffer::empty(area);
 
-        view.render(area, &mut buf, &config);
+        view.render(area, &mut buf, &ctx);
 
         // Focused link has "▶ " prefix
-        assert_buffer(&buf, &["Before", "▶ Click Me", "After"]);
+        // Content has 1-char left and right margins
+        assert_buffer(&buf, &[" Before", " ▶ Click Me", " After"]);
     }
 }

@@ -9,7 +9,7 @@ use std::sync::Arc;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 
-use crate::config::DisplayConfig;
+use crate::config::RenderContext;
 use crate::tui::component::ElementWidget;
 
 use super::{Document, DocumentView};
@@ -62,7 +62,7 @@ impl DocumentElementWidget {
 }
 
 impl ElementWidget for DocumentElementWidget {
-    fn render(&self, area: Rect, buf: &mut Buffer, config: &DisplayConfig) {
+    fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
         let mut view = DocumentView::new(self.document.clone(), area.height);
 
         // Apply focus state
@@ -74,7 +74,7 @@ impl ElementWidget for DocumentElementWidget {
         view.set_scroll_offset(self.scroll_offset);
 
         // Render the document to the buffer
-        view.render(area, buf, config);
+        view.render(area, buf, ctx);
     }
 
     fn clone_box(&self) -> Box<dyn ElementWidget> {
@@ -90,6 +90,7 @@ impl ElementWidget for DocumentElementWidget {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::DisplayConfig;
     use crate::tui::document::{DocumentBuilder, DocumentElement, FocusContext};
     use crate::tui::testing::assert_buffer;
 
@@ -130,13 +131,15 @@ mod tests {
         let doc = Arc::new(TestDoc::new("Hello", vec!["Line 1", "Line 2"]));
         let widget = DocumentElementWidget::new(doc, None, 0);
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        let area = Rect::new(0, 0, 10, 4);
+        let area = Rect::new(0, 0, 12, 4);
         let mut buf = Buffer::empty(area);
 
-        widget.render(area, &mut buf, &config);
+        widget.render(area, &mut buf, &ctx);
 
-        assert_buffer(&buf, &["Hello", "═════", "Line 1", "Line 2"]);
+        // Content has 1-char left and right margins
+        assert_buffer(&buf, &[" Hello", " ═════", " Line 1", " Line 2"]);
     }
 
     #[test]
@@ -144,14 +147,16 @@ mod tests {
         let doc = Arc::new(TestDoc::new("Title", vec!["A", "B", "C", "D"]));
         let widget = DocumentElementWidget::new(doc, None, 2);
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        let area = Rect::new(0, 0, 10, 3);
+        let area = Rect::new(0, 0, 12, 3);
         let mut buf = Buffer::empty(area);
 
-        widget.render(area, &mut buf, &config);
+        widget.render(area, &mut buf, &ctx);
 
         // Scrolled past title + underline, showing lines A, B, C
-        assert_buffer(&buf, &["A", "B", "C"]);
+        // Content has 1-char left and right margins
+        assert_buffer(&buf, &[" A", " B", " C"]);
     }
 
     #[test]
@@ -163,8 +168,9 @@ mod tests {
 
         // Verify it compiles and doesn't panic
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
         let area = Rect::new(0, 0, 10, 4);
         let mut buf = Buffer::empty(area);
-        cloned.render(area, &mut buf, &config);
+        cloned.render(area, &mut buf, &ctx);
     }
 }

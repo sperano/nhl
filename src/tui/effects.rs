@@ -152,7 +152,7 @@ mod tests {
             navigation: NavigationState {
                 current_tab: Tab::Scores,
                 document_stack: Vec::new(),
-                content_focused: false,
+                focus_in_content: false,
             },
             data: Default::default(),
             ui: UiState::default(),

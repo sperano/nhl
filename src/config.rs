@@ -5,13 +5,17 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
-const DARKENING_FACTOR: f32 = 0.5;
+/// Default darkening factor for unfocused elements
+const DEFAULT_DARKENING_FACTOR: f32 = 0.5;
+/// Darkening factor for themes with bright backgrounds (like Habs)
+const BRIGHT_BG_DARKENING_FACTOR: f32 = 0.85;
 
 /// Default refresh interval in seconds for background data fetching
 pub const DEFAULT_REFRESH_INTERVAL_SECONDS: u32 = 60;
 
 /// Style modifier for selected items (reversed and bold)
-pub const SELECTION_STYLE_MODIFIER: Modifier = Modifier::REVERSED.union(Modifier::BOLD);
+pub const SELECTION_STYLE_MODIFIER: Modifier = Modifier::BOLD;
+pub const THEMELESS_SELECTION_STYLE_MODIFIER: Modifier = Modifier::REVERSED.union(Modifier::BOLD);
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(default)]
@@ -29,19 +33,70 @@ pub struct Config {
 pub struct Theme {
     #[serde(skip)]
     pub name: &'static str,
+    #[serde(deserialize_with = "deserialize_color_optional")]
+    #[serde(serialize_with = "serialize_color_optional")]
+    pub bg: Option<Color>,
     #[serde(deserialize_with = "deserialize_color")]
     #[serde(serialize_with = "serialize_color")]
-    pub fg1: Color,
-    #[serde(deserialize_with = "deserialize_color")]
-    #[serde(serialize_with = "serialize_color")]
-    pub fg2: Color,
-    #[serde(deserialize_with = "deserialize_color")]
-    #[serde(serialize_with = "serialize_color")]
-    pub fg3: Color,
+    pub emphasis_fg: Color,
     #[serde(skip)]
-    pub fg2_dim: OnceLock<Color>,
+    emphasis_fg_dim: OnceLock<Color>,
+    #[serde(deserialize_with = "deserialize_color")]
+    #[serde(serialize_with = "serialize_color")]
+    pub fg: Color,
     #[serde(skip)]
-    pub fg3_dim: OnceLock<Color>,
+    fg_dim: OnceLock<Color>,
+    #[serde(deserialize_with = "deserialize_color")]
+    #[serde(serialize_with = "serialize_color")]
+    pub boxchar_fg: Color,
+    /// Factor for darkening colors when unfocused (0.0 = black, 1.0 = no change)
+    pub darkening_factor: f32,
+    #[serde(skip)]
+    boxchar_fg_dim: OnceLock<Color>,
+    #[serde(skip)]
+    bg_dim: OnceLock<Option<Color>>,
+    #[serde(deserialize_with = "deserialize_color")]
+    #[serde(serialize_with = "serialize_color")]
+    pub selection_text_fg: Color,
+    #[serde(deserialize_with = "deserialize_color")]
+    #[serde(serialize_with = "serialize_color")]
+    pub selection_text_bg: Color,
+    #[serde(skip)]
+    selection_text_fg_dim: OnceLock<Color>,
+    #[serde(skip)]
+    selection_text_bg_dim: OnceLock<Color>,
+}
+
+impl Theme {
+    /// Create a new theme with the given colors
+    #[allow(clippy::too_many_arguments)]
+    pub const fn new(
+        name: &'static str,
+        bg: Option<Color>,
+        emphasis_fg: Color,
+        fg: Color,
+        boxchar_fg: Color,
+        selection_text_fg: Color,
+        selection_text_bg: Color,
+        darkening_factor: f32,
+    ) -> Self {
+        Self {
+            name,
+            bg,
+            emphasis_fg,
+            emphasis_fg_dim: OnceLock::new(),
+            fg,
+            fg_dim: OnceLock::new(),
+            boxchar_fg,
+            darkening_factor,
+            boxchar_fg_dim: OnceLock::new(),
+            bg_dim: OnceLock::new(),
+            selection_text_fg,
+            selection_text_bg,
+            selection_text_fg_dim: OnceLock::new(),
+            selection_text_bg_dim: OnceLock::new(),
+        }
+    }
 }
 
 pub static THEME_ID_ORANGE: &str = "orange";
@@ -61,149 +116,181 @@ pub static THEME_ID_ISLANDERS: &str = "islanders";
 pub static THEME_ID_FLAMES: &str = "flames";
 pub static THEME_ID_RED_WINGS: &str = "red_wings";
 
-pub static THEME_ORANGE: Theme = Theme {
-    name: "Orange",
-    fg1: Color::Rgb(255, 214, 128),
-    fg2: Color::Rgb(255, 175, 64),
-    fg3: Color::Rgb(226, 108, 34),
-    fg2_dim: OnceLock::new(),
-    fg3_dim: OnceLock::new(),
-};
+pub static THEME_ORANGE: Theme = Theme::new(
+    "Orange",
+    None,
+    Color::Rgb(255, 214, 128),
+    Color::Rgb(255, 175, 64),
+    Color::Rgb(226, 108, 34),
+    Color::Rgb(0, 0, 0),
+    Color::Rgb(255, 175, 64),
+    DEFAULT_DARKENING_FACTOR,
+);
 
-pub static THEME_GREEN: Theme = Theme {
-    name: "Green",
-    fg1: Color::Rgb(175, 255, 135),
-    fg2: Color::Rgb(95, 255, 175),
-    fg3: Color::Rgb(0, 255, 0),
-    fg2_dim: OnceLock::new(),
-    fg3_dim: OnceLock::new(),
-};
+pub static THEME_GREEN: Theme = Theme::new(
+    "Green",
+    None,
+    Color::Rgb(175, 255, 135),
+    Color::Rgb(95, 255, 175),
+    Color::Rgb(0, 255, 0),
+    Color::Rgb(0, 0, 0),
+    Color::Rgb(95, 255, 175),
+    DEFAULT_DARKENING_FACTOR,
+);
 
-pub static THEME_BLUE: Theme = Theme {
-    name: "Blue",
-    fg1: Color::Rgb(175, 255, 255),
-    fg2: Color::Rgb(95, 135, 255),
-    fg3: Color::Rgb(0, 95, 255),
-    fg2_dim: OnceLock::new(),
-    fg3_dim: OnceLock::new(),
-};
+pub static THEME_BLUE: Theme = Theme::new(
+    "Blue",
+    None,
+    Color::Rgb(175, 255, 255),
+    Color::Rgb(95, 135, 255),
+    Color::Rgb(0, 95, 255),
+    Color::White,
+    Color::Rgb(0, 95, 255),
+    DEFAULT_DARKENING_FACTOR,
+);
 
-pub static THEME_PURPLE: Theme = Theme {
-    name: "Purple",
-    fg1: Color::Rgb(255, 175, 255),
-    fg2: Color::Rgb(175, 135, 255),
-    fg3: Color::Rgb(135, 95, 175),
-    fg2_dim: OnceLock::new(),
-    fg3_dim: OnceLock::new(),
-};
+pub static THEME_PURPLE: Theme = Theme::new(
+    "Purple",
+    None,
+    Color::Rgb(255, 175, 255),
+    Color::Rgb(175, 135, 255),
+    Color::Rgb(135, 95, 175),
+    Color::Rgb(0, 0, 0),
+    Color::Rgb(175, 135, 255),
+    DEFAULT_DARKENING_FACTOR,
+);
 
-pub static THEME_WHITE: Theme = Theme {
-    name: "White",
-    fg1: Color::Rgb(255, 255, 255),
-    fg2: Color::Rgb(192, 192, 192),
-    fg3: Color::Rgb(128, 128, 128),
-    fg2_dim: OnceLock::new(),
-    fg3_dim: OnceLock::new(),
-};
+pub static THEME_WHITE: Theme = Theme::new(
+    "White",
+    None,
+    Color::Rgb(255, 255, 255),
+    Color::Rgb(192, 192, 192),
+    Color::Rgb(128, 128, 128),
+    Color::Rgb(0, 0, 0),
+    Color::Rgb(192, 192, 192),
+    DEFAULT_DARKENING_FACTOR,
+);
 
-pub static THEME_RED: Theme = Theme {
-    name: "Red",
-    fg1: Color::Rgb(255, 175, 175),
-    fg2: Color::Rgb(255, 95, 95),
-    fg3: Color::Rgb(255, 0, 0),
-    fg2_dim: OnceLock::new(),
-    fg3_dim: OnceLock::new(),
-};
+pub static THEME_RED: Theme = Theme::new(
+    "Red",
+    None,
+    Color::Rgb(255, 175, 175),
+    Color::Rgb(255, 95, 95),
+    Color::Rgb(255, 0, 0),
+    Color::Rgb(0, 0, 0),
+    Color::Rgb(255, 95, 95),
+    DEFAULT_DARKENING_FACTOR,
+);
 
-pub static THEME_YELLOW: Theme = Theme {
-    name: "Yellow",
-    fg1: Color::Rgb(255, 255, 175),
-    fg2: Color::Rgb(255, 255, 95),
-    fg3: Color::Rgb(255, 215, 0),
-    fg2_dim: OnceLock::new(),
-    fg3_dim: OnceLock::new(),
-};
+pub static THEME_YELLOW: Theme = Theme::new(
+    "Yellow",
+    None,
+    Color::Rgb(255, 255, 175),
+    Color::Rgb(255, 255, 95),
+    Color::Rgb(255, 215, 0),
+    Color::Rgb(0, 0, 0),
+    Color::Rgb(255, 255, 95),
+    DEFAULT_DARKENING_FACTOR,
+);
 
-pub static THEME_CYAN: Theme = Theme {
-    name: "Cyan",
-    fg1: Color::Rgb(175, 255, 255),
-    fg2: Color::Rgb(95, 255, 255),
-    fg3: Color::Rgb(0, 255, 255),
-    fg2_dim: OnceLock::new(),
-    fg3_dim: OnceLock::new(),
-};
+pub static THEME_CYAN: Theme = Theme::new(
+    "Cyan",
+    None,
+    Color::Rgb(175, 255, 255),
+    Color::Rgb(95, 255, 255),
+    Color::Rgb(0, 255, 255),
+    Color::Rgb(0, 0, 0),
+    Color::Rgb(95, 255, 255),
+    DEFAULT_DARKENING_FACTOR,
+);
 
-pub static THEME_NORTH_STARS: Theme = Theme {
-    name: "North Stars",
-    fg1: Color::Rgb(240, 240, 240),
-    fg2: Color::Rgb(198, 146, 20),
-    fg3: Color::Rgb(0, 122, 51),
-    fg2_dim: OnceLock::new(),
-    fg3_dim: OnceLock::new(),
-};
+pub static THEME_NORTH_STARS: Theme = Theme::new(
+    "North Stars",
+    None,
+    Color::Rgb(240, 240, 240),
+    Color::Rgb(198, 146, 20),
+    Color::Rgb(0, 122, 51),
+    Color::Rgb(0, 0, 0),
+    Color::Rgb(198, 146, 20),
+    DEFAULT_DARKENING_FACTOR,
+);
 
-pub static THEME_HABS: Theme = Theme {
-    name: "Habs",
-    fg1: Color::Rgb(255, 255, 255),
-    fg2: Color::Rgb(175, 30, 45),
-    fg3: Color::Rgb(45, 53, 124),
-    fg2_dim: OnceLock::new(),
-    fg3_dim: OnceLock::new(),
-};
+pub static THEME_HABS: Theme = Theme::new(
+    "Habs",
+    Some(Color::Rgb(175, 30, 45)),
+    Color::Rgb(255, 255, 255),
+    Color::Rgb(255, 255, 255),
+    Color::Rgb(45, 53, 124),
+    Color::Rgb(255, 255, 255),
+    Color::Rgb(45, 53, 124),
+    BRIGHT_BG_DARKENING_FACTOR,
+);
 
-pub static THEME_SABRES: Theme = Theme {
-    name: "Sabres",
-    fg1: Color::Rgb(255, 255, 255),
-    fg2: Color::Rgb(255, 184, 28),
-    fg3: Color::Rgb(0, 48, 135),
-    fg2_dim: OnceLock::new(),
-    fg3_dim: OnceLock::new(),
-};
+pub static THEME_SABRES: Theme = Theme::new(
+    "Sabres",
+    None,
+    Color::Rgb(255, 255, 255),
+    Color::Rgb(255, 184, 28),
+    Color::Rgb(0, 48, 135),
+    Color::Rgb(0, 0, 0),
+    Color::Rgb(255, 184, 28),
+    DEFAULT_DARKENING_FACTOR,
+);
 
-pub static THEME_SHARKS: Theme = Theme {
-    name: "Sharks",
-    fg1: Color::Rgb(255, 255, 255),
-    fg2: Color::Rgb(0, 109, 117),
-    fg3: Color::Rgb(234, 114, 0),
-    fg2_dim: OnceLock::new(),
-    fg3_dim: OnceLock::new(),
-};
+pub static THEME_SHARKS: Theme = Theme::new(
+    "Sharks",
+    None,
+    Color::Rgb(255, 255, 255),
+    Color::Rgb(0, 109, 117),
+    Color::Rgb(234, 114, 0),
+    Color::Rgb(255, 255, 255),
+    Color::Rgb(0, 109, 117),
+    DEFAULT_DARKENING_FACTOR,
+);
 
-pub static THEME_BRUINS: Theme = Theme {
-    name: "Bruins",
-    fg1: Color::Rgb(255, 255, 255),
-    fg2: Color::Rgb(252, 181, 20),
-    fg3: Color::Rgb(196, 196, 196),
-    fg2_dim: OnceLock::new(),
-    fg3_dim: OnceLock::new(),
-};
+pub static THEME_BRUINS: Theme = Theme::new(
+    "Bruins",
+    None,
+    Color::Rgb(255, 255, 255),
+    Color::Rgb(252, 181, 20),
+    Color::Rgb(196, 196, 196),
+    Color::Rgb(0, 0, 0),
+    Color::Rgb(252, 181, 20),
+    DEFAULT_DARKENING_FACTOR,
+);
 
-pub static THEME_ISLANDERS: Theme = Theme {
-    name: "Islanders",
-    fg1: Color::Rgb(255, 255, 255),
-    fg2: Color::Rgb(252, 76, 2),
-    fg3: Color::Rgb(0, 58, 162),
-    fg2_dim: OnceLock::new(),
-    fg3_dim: OnceLock::new(),
-};
+pub static THEME_ISLANDERS: Theme = Theme::new(
+    "Islanders",
+    None,
+    Color::Rgb(255, 255, 255),
+    Color::Rgb(252, 76, 2),
+    Color::Rgb(0, 58, 162),
+    Color::Rgb(0, 0, 0),
+    Color::Rgb(252, 76, 2),
+    DEFAULT_DARKENING_FACTOR,
+);
 
-pub static THEME_FLAMES: Theme = Theme {
-    name: "Flames",
-    fg1: Color::Rgb(255, 255, 255),
-    fg2: Color::Rgb(200, 16, 46),
-    fg3: Color::Rgb(241, 190, 72),
-    fg2_dim: OnceLock::new(),
-    fg3_dim: OnceLock::new(),
-};
+pub static THEME_FLAMES: Theme = Theme::new(
+    "Flames",
+    None,
+    Color::Rgb(255, 255, 255),
+    Color::Rgb(200, 16, 46),
+    Color::Rgb(241, 190, 72),
+    Color::Rgb(255, 255, 255),
+    Color::Rgb(200, 16, 46),
+    DEFAULT_DARKENING_FACTOR,
+);
 
-pub static THEME_RED_WINGS: Theme = Theme {
-    name: "Red Wings",
-    fg1: Color::Rgb(255, 82, 102),
-    fg2: Color::Rgb(206, 17, 38),
-    fg3: Color::Rgb(255, 255, 255),
-    fg2_dim: OnceLock::new(),
-    fg3_dim: OnceLock::new(),
-};
+pub static THEME_RED_WINGS: Theme = Theme::new(
+    "Red Wings",
+    None,
+    Color::Rgb(255, 82, 102),
+    Color::Rgb(206, 17, 38),
+    Color::Rgb(255, 255, 255),
+    Color::Rgb(255, 255, 255),
+    Color::Rgb(206, 17, 38),
+    DEFAULT_DARKENING_FACTOR,
+);
 
 pub static THEMES: phf::Map<&'static str, &Theme> = phf_map! {
     "orange" => &THEME_ORANGE,
@@ -231,18 +318,46 @@ impl Default for Theme {
 }
 
 impl Theme {
-    /// Get a 50% darker version of fg2, computed lazily and cached
-    pub fn fg2_dark(&self) -> Color {
+    /// Get a darkened version of fg, computed lazily and cached
+    pub fn fg_dark(&self) -> Color {
         *self
-            .fg2_dim
-            .get_or_init(|| darken_color(self.fg2, DARKENING_FACTOR))
+            .fg_dim
+            .get_or_init(|| darken_color(self.fg, self.darkening_factor))
     }
 
-    /// Get a 50% darker version of fg3, computed lazily and cached
-    pub fn fg3_dark(&self) -> Color {
+    /// Get a darkened version of boxchar_fg, computed lazily and cached
+    pub fn boxchar_fg_dark(&self) -> Color {
         *self
-            .fg3_dim
-            .get_or_init(|| darken_color(self.fg3, DARKENING_FACTOR))
+            .boxchar_fg_dim
+            .get_or_init(|| darken_color(self.boxchar_fg, self.darkening_factor))
+    }
+
+    /// Get a darkened version of bg, computed lazily and cached
+    pub fn bg_dark(&self) -> Option<Color> {
+        *self
+            .bg_dim
+            .get_or_init(|| self.bg.map(|c| darken_color(c, self.darkening_factor)))
+    }
+
+    /// Get a darkened version of selection_text_fg, computed lazily and cached
+    pub fn selection_text_fg_dark(&self) -> Color {
+        *self
+            .selection_text_fg_dim
+            .get_or_init(|| darken_color(self.selection_text_fg, self.darkening_factor))
+    }
+
+    /// Get a darkened version of selection_text_bg, computed lazily and cached
+    pub fn selection_text_bg_dark(&self) -> Color {
+        *self
+            .selection_text_bg_dim
+            .get_or_init(|| darken_color(self.selection_text_bg, self.darkening_factor))
+    }
+
+    /// Get a darkened version of emphasis_fg, computed lazily and cached
+    pub fn emphasis_fg_dark(&self) -> Color {
+        *self
+            .emphasis_fg_dim
+            .get_or_init(|| darken_color(self.emphasis_fg, self.darkening_factor))
     }
 }
 
@@ -297,23 +412,56 @@ impl DisplayConfig {
             .map(|theme| (*theme).clone());
     }
 
+    /// Get the base style with just background color if theme specifies one
+    pub fn base_style(&self) -> ratatui::style::Style {
+        self.theme
+            .as_ref()
+            .and_then(|t| t.bg)
+            .map(|bg| ratatui::style::Style::default().bg(bg))
+            .unwrap_or_default()
+    }
+
     /// Get the default text style using fg2 from theme
     ///
     /// This is the primary text color for normal content.
     pub fn text_style(&self) -> ratatui::style::Style {
         self.theme
             .as_ref()
-            .map(|t| ratatui::style::Style::default().fg(t.fg2))
+            .map(|t| {
+                let style = ratatui::style::Style::default().fg(t.fg);
+                match t.bg {
+                    Some(bg) => style.bg(bg),
+                    None => style,
+                }
+            })
             .unwrap_or_default()
     }
 
-    /// Get the secondary/muted text style using fg3 from theme
-    ///
-    /// This is for separators, borders, and less prominent text.
-    pub fn muted_style(&self) -> ratatui::style::Style {
+    /// This is for separators, borders, etc
+    pub fn boxchar_style(&self) -> ratatui::style::Style {
         self.theme
             .as_ref()
-            .map(|t| ratatui::style::Style::default().fg(t.fg3))
+            .map(|t| {
+                let style = ratatui::style::Style::default().fg(t.boxchar_fg);
+                match t.bg {
+                    Some(bg) => style.bg(bg),
+                    None => style,
+                }
+            })
+            .unwrap_or_default()
+    }
+
+    /// Dimmed version of boxchar_style for unfocused elements
+    pub fn boxchar_style_dim(&self) -> ratatui::style::Style {
+        self.theme
+            .as_ref()
+            .map(|t| {
+                let style = ratatui::style::Style::default().fg(t.boxchar_fg_dark());
+                match t.bg_dark() {
+                    Some(bg) => style.bg(bg),
+                    None => style,
+                }
+            })
             .unwrap_or_default()
     }
 
@@ -324,6 +472,162 @@ impl DisplayConfig {
             1 | 2 => base.add_modifier(Modifier::BOLD),
             _ => base.add_modifier(Modifier::UNDERLINED),
         }
+    }
+
+    /// Dimmed version of base_style for unfocused elements
+    pub fn base_style_dim(&self) -> ratatui::style::Style {
+        self.theme
+            .as_ref()
+            .and_then(|t| t.bg_dark())
+            .map(|bg| ratatui::style::Style::default().bg(bg))
+            .unwrap_or_default()
+    }
+
+    /// Dimmed version of text_style for unfocused elements
+    pub fn text_style_dim(&self) -> ratatui::style::Style {
+        self.theme
+            .as_ref()
+            .map(|t| {
+                let style = ratatui::style::Style::default().fg(t.fg_dark());
+                match t.bg_dark() {
+                    Some(bg) => style.bg(bg),
+                    None => style,
+                }
+            })
+            .unwrap_or_default()
+    }
+
+    /// Dimmed version of heading_style for unfocused elements
+    pub fn heading_style_dim(&self, level: u8) -> ratatui::style::Style {
+        let base = self.text_style_dim();
+        match level {
+            1 | 2 => base.add_modifier(Modifier::BOLD),
+            _ => base.add_modifier(Modifier::UNDERLINED),
+        }
+    }
+
+    /// Get the emphasis style (bold with emphasis_fg color)
+    ///
+    /// Used for section titles and other emphasized text.
+    pub fn emphasis_style(&self) -> ratatui::style::Style {
+        self.theme
+            .as_ref()
+            .map(|t| {
+                let style = ratatui::style::Style::default()
+                    .fg(t.emphasis_fg)
+                    .add_modifier(Modifier::BOLD);
+                match t.bg {
+                    Some(bg) => style.bg(bg),
+                    None => style,
+                }
+            })
+            .unwrap_or_else(|| ratatui::style::Style::default().add_modifier(Modifier::BOLD))
+    }
+
+    /// Dimmed version of emphasis_style for unfocused elements
+    pub fn emphasis_style_dim(&self) -> ratatui::style::Style {
+        self.theme
+            .as_ref()
+            .map(|t| {
+                let style = ratatui::style::Style::default()
+                    .fg(t.emphasis_fg_dark())
+                    .add_modifier(Modifier::BOLD);
+                match t.bg_dark() {
+                    Some(bg) => style.bg(bg),
+                    None => style,
+                }
+            })
+            .unwrap_or_else(|| ratatui::style::Style::default().add_modifier(Modifier::BOLD))
+    }
+}
+
+/// Render context that wraps DisplayConfig with focus state
+///
+/// This zero-cost wrapper provides style methods that automatically
+/// select normal or dimmed variants based on whether the component is focused.
+/// Use this instead of passing DisplayConfig directly to render functions.
+pub struct RenderContext<'a> {
+    pub config: &'a DisplayConfig,
+    pub focused: bool,
+}
+
+impl<'a> RenderContext<'a> {
+    /// Create a new render context
+    pub fn new(config: &'a DisplayConfig, focused: bool) -> Self {
+        Self { config, focused }
+    }
+
+    /// Create a focused render context (convenience for the common case)
+    pub fn focused(config: &'a DisplayConfig) -> Self {
+        Self {
+            config,
+            focused: true,
+        }
+    }
+
+    /// Get the base style (with background color if theme specifies one)
+    pub fn base_style(&self) -> ratatui::style::Style {
+        if self.focused {
+            self.config.base_style()
+        } else {
+            self.config.base_style_dim()
+        }
+    }
+
+    /// Get the text style
+    pub fn text_style(&self) -> ratatui::style::Style {
+        if self.focused {
+            self.config.text_style()
+        } else {
+            self.config.text_style_dim()
+        }
+    }
+
+    /// Get the box character style (for borders, separators)
+    pub fn boxchar_style(&self) -> ratatui::style::Style {
+        if self.focused {
+            self.config.boxchar_style()
+        } else {
+            self.config.boxchar_style_dim()
+        }
+    }
+
+    /// Get the heading style
+    pub fn heading_style(&self, level: u8) -> ratatui::style::Style {
+        if self.focused {
+            self.config.heading_style(level)
+        } else {
+            self.config.heading_style_dim(level)
+        }
+    }
+
+    /// Get the emphasis style (for section titles)
+    pub fn emphasis_style(&self) -> ratatui::style::Style {
+        if self.focused {
+            self.config.emphasis_style()
+        } else {
+            self.config.emphasis_style_dim()
+        }
+    }
+
+    /// Get the box drawing characters
+    pub fn box_chars(&self) -> &crate::formatting::BoxChars {
+        &self.config.box_chars
+    }
+
+    /// Check if unicode is enabled
+    pub fn use_unicode(&self) -> bool {
+        self.config.use_unicode
+    }
+
+    /// Get the theme if one is set
+    pub fn theme(&self) -> Option<&Theme> {
+        self.config.theme.as_ref()
+    }
+
+    /// Get the error foreground color
+    pub fn error_fg(&self) -> Color {
+        self.config.error_fg
     }
 }
 
@@ -350,21 +654,21 @@ where
     parse_color(&s).ok_or_else(|| serde::de::Error::custom(format!("Invalid color: {}", s)))
 }
 
-// Deserialize an optional color from a string
-// fn deserialize_color_optional<'de, D>(deserializer: D) -> Result<Option<Color>, D::Error>
-// where
-//     D: serde::Deserializer<'de>,
-// {
-//     let s: Option<String> = Option::deserialize(deserializer)?;
-//     match s {
-//         Some(color_str) => {
-//             let color = parse_color(&color_str)
-//                 .ok_or_else(|| serde::de::Error::custom(format!("Invalid color: {}", color_str)))?;
-//             Ok(Some(color))
-//         }
-//         None => Ok(None),
-//     }
-// }
+/// Deserialize an optional color from a string
+fn deserialize_color_optional<'de, D>(deserializer: D) -> Result<Option<Color>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s: Option<String> = Option::deserialize(deserializer)?;
+    match s {
+        Some(color_str) => {
+            let color = parse_color(&color_str)
+                .ok_or_else(|| serde::de::Error::custom(format!("Invalid color: {}", color_str)))?;
+            Ok(Some(color))
+        }
+        None => Ok(None),
+    }
+}
 
 /// Serialize a color to a string
 fn serialize_color<S>(color: &Color, serializer: S) -> Result<S::Ok, S::Error>
@@ -374,16 +678,16 @@ where
     serializer.serialize_str(&format_color(color))
 }
 
-// Serialize an optional color to a string
-// fn serialize_color_optional<S>(color: &Option<Color>, serializer: S) -> Result<S::Ok, S::Error>
-// where
-//     S: serde::Serializer,
-// {
-//     match color {
-//         Some(c) => serializer.serialize_str(&format_color(c)),
-//         None => serializer.serialize_none(),
-//     }
-// }
+/// Serialize an optional color to a string
+fn serialize_color_optional<S>(color: &Option<Color>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    match color {
+        Some(c) => serializer.serialize_str(&format_color(c)),
+        None => serializer.serialize_none(),
+    }
+}
 
 /// Format a color as a string (RGB format for serialization)
 fn format_color(color: &Color) -> String {
@@ -681,9 +985,9 @@ theme = "orange"
         assert!(config.display.theme.is_some());
 
         let theme = config.display.theme.unwrap();
-        assert_eq!(theme.fg1, THEME_ORANGE.fg1);
-        assert_eq!(theme.fg2, THEME_ORANGE.fg2);
-        assert_eq!(theme.fg3, THEME_ORANGE.fg3);
+        assert_eq!(theme.emphasis_fg, THEME_ORANGE.emphasis_fg);
+        assert_eq!(theme.fg, THEME_ORANGE.fg);
+        assert_eq!(theme.boxchar_fg, THEME_ORANGE.boxchar_fg);
     }
 
     #[test]
@@ -775,28 +1079,29 @@ theme = "{}"
 
     #[test]
     fn test_theme_dark_colors() {
-        // Test fg2_dark returns 50% darker (50% of original)
-        let orange_fg2 = THEME_ORANGE.fg2;
-        let orange_fg2_dark = THEME_ORANGE.fg2_dark();
+        // Test fg_dark returns darkened color based on theme's darkening_factor
+        let orange_fg = THEME_ORANGE.fg;
+        let orange_fg_dark = THEME_ORANGE.fg_dark();
+        let factor = THEME_ORANGE.darkening_factor;
 
-        match (orange_fg2, orange_fg2_dark) {
+        match (orange_fg, orange_fg_dark) {
             (Color::Rgb(r, g, b), Color::Rgb(rd, gd, bd)) => {
-                assert_eq!(rd, (r as f32 * DARKENING_FACTOR) as u8);
-                assert_eq!(gd, (g as f32 * DARKENING_FACTOR) as u8);
-                assert_eq!(bd, (b as f32 * DARKENING_FACTOR) as u8);
+                assert_eq!(rd, (r as f32 * factor) as u8);
+                assert_eq!(gd, (g as f32 * factor) as u8);
+                assert_eq!(bd, (b as f32 * factor) as u8);
             }
             _ => panic!("Expected RGB colors"),
         }
 
-        // Test fg3_dark returns 50% darker (50% of original)
-        let orange_fg3 = THEME_ORANGE.fg3;
-        let orange_fg3_dark = THEME_ORANGE.fg3_dark();
+        // Test boxchar_fg_dark returns darkened color based on theme's darkening_factor
+        let orange_boxchar_fg = THEME_ORANGE.boxchar_fg;
+        let orange_boxchar_fg_dark = THEME_ORANGE.boxchar_fg_dark();
 
-        match (orange_fg3, orange_fg3_dark) {
+        match (orange_boxchar_fg, orange_boxchar_fg_dark) {
             (Color::Rgb(r, g, b), Color::Rgb(rd, gd, bd)) => {
-                assert_eq!(rd, (r as f32 * DARKENING_FACTOR) as u8);
-                assert_eq!(gd, (g as f32 * DARKENING_FACTOR) as u8);
-                assert_eq!(bd, (b as f32 * DARKENING_FACTOR) as u8);
+                assert_eq!(rd, (r as f32 * factor) as u8);
+                assert_eq!(gd, (g as f32 * factor) as u8);
+                assert_eq!(bd, (b as f32 * factor) as u8);
             }
             _ => panic!("Expected RGB colors"),
         }
@@ -805,12 +1110,12 @@ theme = "{}"
     #[test]
     fn test_theme_dark_colors_cached() {
         // Call twice to verify it returns the same value (cached)
-        let first_call = THEME_GREEN.fg2_dark();
-        let second_call = THEME_GREEN.fg2_dark();
+        let first_call = THEME_GREEN.fg_dark();
+        let second_call = THEME_GREEN.fg_dark();
         assert_eq!(first_call, second_call);
 
-        let first_call = THEME_GREEN.fg3_dark();
-        let second_call = THEME_GREEN.fg3_dark();
+        let first_call = THEME_GREEN.boxchar_fg_dark();
+        let second_call = THEME_GREEN.boxchar_fg_dark();
         assert_eq!(first_call, second_call);
     }
 }

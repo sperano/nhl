@@ -10,7 +10,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 
 use crate::component_message_impl;
-use crate::config::{Config, DisplayConfig};
+use crate::config::{Config, RenderContext};
 use crate::tui::component::{Component, Effect, Element, ElementWidget};
 use crate::tui::components::{SettingsDocument, TabItem, TabbedPanel, TabbedPanelProps};
 use crate::tui::document::{DocumentView, FocusableId};
@@ -72,7 +72,7 @@ pub enum SettingsTabMsg {
     /// Key event when this tab is focused
     Key(KeyEvent),
 
-    /// Navigate up request (ESC closes modal or exits browse mode)
+    /// Navigate up request (ESC closes modal or clears item focus)
     NavigateUp,
 
     /// Document navigation
@@ -146,9 +146,9 @@ impl Component for SettingsTab {
                     state.modal = None;
                     return Effect::Handled;
                 }
-                // Priority 2: Exit browse mode if active
-                if state.is_browse_mode() {
-                    state.exit_browse_mode();
+                // Priority 2: Clear item focus if active
+                if state.has_item_focus() {
+                    state.clear_item_focus();
                     return Effect::Handled;
                 }
                 // Otherwise let it bubble up
@@ -286,7 +286,8 @@ impl Component for SettingsTab {
             &TabbedPanelProps {
                 active_key,
                 tabs,
-                focused: props.focused,
+                focused: props.focused && !state.has_item_focus(),
+                content_has_focus: props.focused && state.has_item_focus(),
             },
             &(),
         );
@@ -330,11 +331,16 @@ impl SettingsTab {
             };
         }
 
-        // Check if in browse mode (has focus)
-        let in_browse_mode = state.doc_nav.focus_index.is_some();
+        // Check if an item has focus
+        let has_item_focus = state.doc_nav.focus_index.is_some();
 
-        if in_browse_mode {
-            // Browse mode - navigate settings
+        if has_item_focus {
+            // Item focus mode - navigate settings
+
+            // Handle Escape to clear item focus
+            if key.code == KeyCode::Esc {
+                return self.update(SettingsTabMsg::NavigateUp, state);
+            }
 
             // Try standard navigation first (handles Tab, arrows, PageUp/Down, etc.)
             if let Some(nav_msg) = key_to_nav_msg(key) {
@@ -389,12 +395,14 @@ impl SettingsTab {
         props: &SettingsTabProps,
         state: &SettingsTabState,
     ) -> Element {
+        // Document is only focused when in browse mode (navigating within the document)
         Element::Widget(Box::new(SettingsTabWidget {
             category,
             config: props.config.clone(),
             focus_index: state.doc_nav.focus_index,
             scroll_offset: state.doc_nav.scroll_offset,
             viewport_height: state.doc_nav.viewport_height,
+            focused: props.focused && state.has_item_focus(),
         }))
     }
 }
@@ -409,13 +417,13 @@ struct SettingsTabWithModal {
 }
 
 impl ElementWidget for SettingsTabWithModal {
-    fn render(&self, area: Rect, buf: &mut Buffer, config: &DisplayConfig) {
+    fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
         use crate::tui::renderer::Renderer;
         use crate::tui::widgets::ListModalWidget;
 
         // Render the base element first
         let mut renderer = Renderer::new();
-        renderer.render(self.base_element.clone(), area, buf, config);
+        renderer.render(self.base_element.clone(), area, buf, ctx);
 
         // Render the modal on top
         let modal = ListModalWidget::new(
@@ -424,7 +432,7 @@ impl ElementWidget for SettingsTabWithModal {
             self.modal_position_x,
             self.modal_position_y,
         );
-        modal.render(area, buf, config);
+        modal.render(area, buf, ctx);
     }
 
     fn clone_box(&self) -> Box<dyn ElementWidget> {
@@ -449,10 +457,12 @@ struct SettingsTabWidget {
     focus_index: Option<usize>,
     scroll_offset: u16,
     viewport_height: u16,
+    /// Whether this widget has focus (affects dim/bright rendering)
+    focused: bool,
 }
 
 impl ElementWidget for SettingsTabWidget {
-    fn render(&self, area: Rect, buf: &mut Buffer, config: &DisplayConfig) {
+    fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
         // Create document for the current category
         let doc = Arc::new(SettingsDocument::new(self.category, self.config.clone()));
         let mut view = DocumentView::new(doc, area.height);
@@ -465,7 +475,10 @@ impl ElementWidget for SettingsTabWidget {
         // Apply scroll offset
         view.set_scroll_offset(self.scroll_offset);
 
-        view.render(area, buf, config);
+        // Create child RenderContext with our focus state
+        let child_ctx = RenderContext::new(ctx.config, self.focused);
+
+        view.render(area, buf, &child_ctx);
     }
 
     fn clone_box(&self) -> Box<dyn ElementWidget> {
@@ -475,6 +488,7 @@ impl ElementWidget for SettingsTabWidget {
             focus_index: self.focus_index,
             scroll_offset: self.scroll_offset,
             viewport_height: self.viewport_height,
+            focused: self.focused,
         })
     }
 

@@ -10,6 +10,7 @@ use nhl_api::{DailySchedule, GameDate, GameMatchup};
 
 use crate::commands::scores_format::format_period_text;
 use crate::layout_constants::SCORE_BOX_WIDTH;
+use crate::team_abbrev::abbrev_to_common_name;
 use crate::tui::document::{Document, DocumentBuilder, DocumentElement, FocusContext, FocusableId};
 use crate::tui::widgets::{loading_animation::loading_animation_text, ScoreBox, ScoreBoxStatus};
 
@@ -56,7 +57,7 @@ impl ScoreBoxesDocument {
         }
     }
 
-    /// Get team display name from game_info or fallback to abbreviation
+    /// Get team display name from game_info or fallback to common name lookup
     fn get_team_name(&self, game_id: i64, is_away: bool, abbrev: &str) -> String {
         if let Some(info) = self.game_info.get(&game_id) {
             let team = if is_away {
@@ -66,13 +67,16 @@ impl ScoreBoxesDocument {
             };
             team.common_name.default.clone()
         } else {
-            abbrev.to_string()
+            // Use common name from lookup, fallback to abbreviation if not found
+            abbrev_to_common_name(abbrev)
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| abbrev.to_string())
         }
     }
 
     /// Create a ScoreBox widget for a given game
     fn create_score_box(&self, game: &nhl_api::ScheduleGame) -> ScoreBox {
-        // Get team names (prefer common_name from game_info, fall back to abbrev)
+        // Get team names (prefer common_name from game_info, fall back to common name lookup)
         let away_team = self.get_team_name(game.id, true, &game.away_team.abbrev);
         let home_team = self.get_team_name(game.id, false, &game.home_team.abbrev);
 

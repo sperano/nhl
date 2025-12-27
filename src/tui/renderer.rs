@@ -4,7 +4,7 @@ use ratatui::{
 };
 
 use super::component::{Constraint, ContainerLayout, Element};
-use crate::config::DisplayConfig;
+use crate::config::RenderContext;
 
 /// Renders virtual element tree to ratatui buffer
 ///
@@ -30,13 +30,7 @@ impl Renderer {
     ///
     /// This is the main entry point for rendering.
     /// Uses tree diffing to only re-render changed subtrees.
-    pub fn render(
-        &mut self,
-        element: Element,
-        area: Rect,
-        buf: &mut Buffer,
-        config: &DisplayConfig,
-    ) {
+    pub fn render(&mut self, element: Element, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
         // Check if we should skip rendering based on tree diffing
         if let Some(ref previous) = self.previous_tree {
             if Self::trees_equal(previous, &element) {
@@ -46,7 +40,7 @@ impl Renderer {
         }
 
         // Render the element (with diffing for subtrees)
-        self.render_element_with_diff(&element, self.previous_tree.as_ref(), area, buf, config);
+        self.render_element_with_diff(&element, self.previous_tree.as_ref(), area, buf, ctx);
 
         // Cache the tree for next frame
         self.previous_tree = Some(element);
@@ -103,7 +97,7 @@ impl Renderer {
         previous: Option<&Element>,
         area: Rect,
         buf: &mut Buffer,
-        config: &DisplayConfig,
+        ctx: &RenderContext,
     ) {
         // If trees are equal, skip rendering
         if let Some(prev) = previous {
@@ -115,7 +109,7 @@ impl Renderer {
         match element {
             Element::Widget(widget) => {
                 // Widgets always render (they're leaf nodes)
-                widget.render(area, buf, config);
+                widget.render(area, buf, ctx);
             }
 
             Element::Container { children, layout } => {
@@ -136,7 +130,7 @@ impl Renderer {
                 // Render each child with diffing
                 for (i, (child, chunk)) in children.iter().zip(chunks.iter()).enumerate() {
                     let prev_child = previous_children.and_then(|pc| pc.get(i));
-                    self.render_element_with_diff(child, prev_child, *chunk, buf, config);
+                    self.render_element_with_diff(child, prev_child, *chunk, buf, ctx);
                 }
             }
 
@@ -151,7 +145,7 @@ impl Renderer {
                 // Render each child with diffing
                 for (i, child) in children.iter().enumerate() {
                     let prev_child = previous_children.and_then(|pc| pc.get(i));
-                    self.render_element_with_diff(child, prev_child, area, buf, config);
+                    self.render_element_with_diff(child, prev_child, area, buf, ctx);
                 }
             }
 
@@ -168,8 +162,31 @@ impl Renderer {
                 };
 
                 // Render base and overlay with diffing
-                self.render_element_with_diff(base, prev_base, area, buf, config);
-                self.render_element_with_diff(overlay, prev_overlay, area, buf, config);
+                self.render_element_with_diff(base, prev_base, area, buf, ctx);
+                self.render_element_with_diff(overlay, prev_overlay, area, buf, ctx);
+            }
+
+            Element::FocusContext { focused, child } => {
+                // Create child context with specified focus state
+                let child_ctx = RenderContext::new(ctx.config, *focused);
+
+                // Fill the entire area with the appropriate background color
+                // This ensures empty space is also dimmed when unfocused
+                let bg_style = child_ctx.base_style();
+                for y in area.y..area.y + area.height {
+                    for x in area.x..area.x + area.width {
+                        buf[(x, y)].set_style(bg_style);
+                    }
+                }
+
+                // Get previous child if available
+                let prev_child = if let Some(Element::FocusContext { child: pc, .. }) = previous {
+                    Some(pc.as_ref())
+                } else {
+                    None
+                };
+
+                self.render_element_with_diff(child, prev_child, area, buf, &child_ctx);
             }
 
             Element::Component(_) => {
@@ -248,6 +265,17 @@ impl Renderer {
                 },
             ) => Self::trees_equal(base_a, base_b) && Self::trees_equal(overlay_a, overlay_b),
 
+            (
+                Element::FocusContext {
+                    focused: focused_a,
+                    child: child_a,
+                },
+                Element::FocusContext {
+                    focused: focused_b,
+                    child: child_b,
+                },
+            ) => focused_a == focused_b && Self::trees_equal(child_a, child_b),
+
             (Element::Component(_), Element::Component(_)) => {
                 // Components should never reach the renderer
                 false
@@ -304,6 +332,7 @@ impl Default for Renderer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::DisplayConfig;
     use crate::tui::testing::assert_buffer;
     use ratatui::{
         buffer::Buffer,
@@ -318,7 +347,7 @@ mod tests {
     }
 
     impl super::super::component::ElementWidget for TestWidget {
-        fn render(&self, area: Rect, buf: &mut Buffer, _config: &DisplayConfig) {
+        fn render(&self, area: Rect, buf: &mut Buffer, _ctx: &RenderContext) {
             let text = Text::from(self.text.clone());
             Paragraph::new(text).render(area, buf);
         }
@@ -333,8 +362,9 @@ mod tests {
         let mut renderer = Renderer::new();
         let mut buffer = Buffer::empty(Rect::new(0, 0, 10, 3));
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        renderer.render(Element::None, buffer.area, &mut buffer, &config);
+        renderer.render(Element::None, buffer.area, &mut buffer, &ctx);
 
         // Buffer should remain empty (all spaces)
         assert_buffer(&buffer, &["", "", ""]);
@@ -345,13 +375,14 @@ mod tests {
         let mut renderer = Renderer::new();
         let mut buffer = Buffer::empty(Rect::new(0, 0, 10, 3));
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
         let widget = Box::new(TestWidget {
             text: "Hello".to_string(),
         }) as Box<dyn super::super::component::ElementWidget>;
         let element = Element::Widget(widget);
 
-        renderer.render(element, buffer.area, &mut buffer, &config);
+        renderer.render(element, buffer.area, &mut buffer, &ctx);
 
         assert_buffer(&buffer, &["Hello", "", ""]);
     }
@@ -361,6 +392,7 @@ mod tests {
         let mut renderer = Renderer::new();
         let mut buffer = Buffer::empty(Rect::new(0, 0, 10, 6));
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
         let top_widget = Box::new(TestWidget {
             text: "TOP".to_string(),
@@ -375,7 +407,7 @@ mod tests {
             children: vec![Element::Widget(top_widget), Element::Widget(bottom_widget)],
         };
 
-        renderer.render(element, buffer.area, &mut buffer, &config);
+        renderer.render(element, buffer.area, &mut buffer, &ctx);
 
         assert_buffer(&buffer, &["TOP", "", "", "BOTTOM", "", ""]);
     }
@@ -385,6 +417,7 @@ mod tests {
         let mut renderer = Renderer::new();
         let mut buffer = Buffer::empty(Rect::new(0, 0, 20, 3));
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
         let left_widget = Box::new(TestWidget {
             text: "LEFT".to_string(),
@@ -402,7 +435,7 @@ mod tests {
             children: vec![Element::Widget(left_widget), Element::Widget(right_widget)],
         };
 
-        renderer.render(element, buffer.area, &mut buffer, &config);
+        renderer.render(element, buffer.area, &mut buffer, &ctx);
 
         assert_buffer(&buffer, &["LEFT      RIGHT", "", ""]);
     }
@@ -412,6 +445,7 @@ mod tests {
         let mut renderer = Renderer::new();
         let mut buffer = Buffer::empty(Rect::new(0, 0, 10, 3));
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
         // Fragment renders multiple children in same area
         // The second child should overwrite the first
@@ -425,7 +459,7 @@ mod tests {
 
         let element = Element::Fragment(vec![Element::Widget(widget1), Element::Widget(widget2)]);
 
-        renderer.render(element, buffer.area, &mut buffer, &config);
+        renderer.render(element, buffer.area, &mut buffer, &ctx);
 
         assert_buffer(&buffer, &["Second", "", ""]);
     }
@@ -478,11 +512,12 @@ mod tests {
         let mut renderer = Renderer::new();
         let mut buffer = Buffer::empty(Rect::new(0, 0, 10, 3));
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
         let element = Element::Component(Box::new(DummyWrapper));
 
         // This should panic
-        renderer.render(element, buffer.area, &mut buffer, &config);
+        renderer.render(element, buffer.area, &mut buffer, &ctx);
     }
 
     #[test]
@@ -491,11 +526,12 @@ mod tests {
         let mut renderer = Renderer::new();
         let mut buffer = Buffer::empty(Rect::new(0, 0, 10, 3));
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
         let element = Element::None;
 
         // First render - should actually render
-        renderer.render(element.clone(), buffer.area, &mut buffer, &config);
+        renderer.render(element.clone(), buffer.area, &mut buffer, &ctx);
 
         // Verify the tree is cached
         assert!(renderer.previous_tree.is_some());
@@ -503,7 +539,7 @@ mod tests {
         // Second render with identical tree - should skip rendering
         // We can't directly test if rendering was skipped, but we can verify
         // that the logic runs without errors
-        renderer.render(element.clone(), buffer.area, &mut buffer, &config);
+        renderer.render(element.clone(), buffer.area, &mut buffer, &ctx);
     }
 
     #[test]
@@ -512,6 +548,7 @@ mod tests {
         let mut renderer = Renderer::new();
         let mut buffer = Buffer::empty(Rect::new(0, 0, 10, 3));
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
         let element1 = Element::None;
         let widget = Box::new(TestWidget {
@@ -520,13 +557,13 @@ mod tests {
         let element2 = Element::Widget(widget);
 
         // First render
-        renderer.render(element1, buffer.area, &mut buffer, &config);
+        renderer.render(element1, buffer.area, &mut buffer, &ctx);
 
         // Verify the tree is cached
         assert!(renderer.previous_tree.is_some());
 
         // Second render with different tree - should render
-        renderer.render(element2, buffer.area, &mut buffer, &config);
+        renderer.render(element2, buffer.area, &mut buffer, &ctx);
 
         // Verify the buffer changed
         assert_buffer(&buffer, &["Changed", "", ""]);
@@ -624,5 +661,83 @@ mod tests {
             Constraint::Ratio(1, 3),
             Constraint::Ratio(2, 3)
         ));
+    }
+
+    #[test]
+    fn test_render_focus_context_fills_background() {
+        let mut renderer = Renderer::new();
+        let mut buffer = Buffer::empty(Rect::new(0, 0, 10, 3));
+
+        // Use a built-in theme that has a background color (habs has a red bg)
+        let mut config = DisplayConfig::default();
+        config.theme_name = Some("habs".to_string());
+        config.theme = crate::config::THEMES.get("habs").cloned().cloned();
+
+        // Verify our test setup has a background color
+        assert!(config.theme.as_ref().unwrap().bg.is_some());
+
+        let ctx = RenderContext::focused(&config);
+
+        // Create a FocusContext with focused=false wrapping Element::None
+        let element = Element::FocusContext {
+            focused: false,
+            child: Box::new(Element::None),
+        };
+
+        renderer.render(element, buffer.area, &mut buffer, &ctx);
+
+        // The buffer should have the dimmed background color set
+        // Even though Element::None doesn't render anything, the FocusContext
+        // should have filled the area with the dimmed background
+        let cell = &buffer[(0, 0)];
+        // bg_dark() computes the dimmed version
+        let expected_bg = config.theme.as_ref().unwrap().bg_dark();
+        assert_eq!(cell.bg, expected_bg.unwrap());
+    }
+
+    #[test]
+    fn test_focus_context_tree_equality_same() {
+        let elem1 = Element::FocusContext {
+            focused: true,
+            child: Box::new(Element::None),
+        };
+        let elem2 = Element::FocusContext {
+            focused: true,
+            child: Box::new(Element::None),
+        };
+
+        assert!(Renderer::trees_equal(&elem1, &elem2));
+    }
+
+    #[test]
+    fn test_focus_context_tree_equality_different_focus() {
+        let elem1 = Element::FocusContext {
+            focused: true,
+            child: Box::new(Element::None),
+        };
+        let elem2 = Element::FocusContext {
+            focused: false,
+            child: Box::new(Element::None),
+        };
+
+        assert!(!Renderer::trees_equal(&elem1, &elem2));
+    }
+
+    #[test]
+    fn test_focus_context_tree_equality_different_child() {
+        let widget = Box::new(TestWidget {
+            text: "Test".to_string(),
+        }) as Box<dyn super::super::component::ElementWidget>;
+
+        let elem1 = Element::FocusContext {
+            focused: true,
+            child: Box::new(Element::None),
+        };
+        let elem2 = Element::FocusContext {
+            focused: true,
+            child: Box::new(Element::Widget(widget)),
+        };
+
+        assert!(!Renderer::trees_equal(&elem1, &elem2));
     }
 }

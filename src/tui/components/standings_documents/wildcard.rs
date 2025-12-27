@@ -168,9 +168,13 @@ impl Document for WildcardStandingsDocument {
             (eastern, western)
         };
 
-        // Use Row element to place columns side-by-side
+        // Use Row element to place columns side-by-side with center alignment
+        const GAP: u16 = 4;
         DocumentBuilder::new()
-            .row(vec![left_group, right_group])
+            .element(DocumentElement::row_center_with_gap(
+                vec![left_group, right_group],
+                GAP,
+            ))
             .build()
     }
 

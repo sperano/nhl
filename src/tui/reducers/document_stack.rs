@@ -183,6 +183,7 @@ mod tests {
             home_abbrev: "BOS".to_string(),
             away_score: 0,
             home_score: 0,
+            game_date: "12/24".to_string(),
         }
     }
 

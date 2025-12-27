@@ -3,7 +3,7 @@ use std::future::Future;
 use std::pin::Pin;
 
 use super::action::Action;
-use crate::config::DisplayConfig;
+use crate::config::RenderContext;
 
 /// Core component trait - like React.Component
 ///
@@ -72,6 +72,14 @@ pub enum Element {
         base: Box<Element>,
         overlay: Box<Element>,
     },
+
+    /// Sets focus state for child rendering and fills background
+    ///
+    /// This element wraps a child and ensures:
+    /// 1. The child is rendered with the specified focus state
+    /// 2. The entire area is filled with the appropriate background color
+    ///    (including empty space that the child doesn't render to)
+    FocusContext { focused: bool, child: Box<Element> },
 
     /// Nothing to render
     None,
@@ -150,8 +158,8 @@ pub trait ElementWidget: Send + Sync {
     ///
     /// * `area` - The rectangular area to render into
     /// * `buf` - The buffer to write to
-    /// * `config` - Display configuration (colors, box chars, etc.)
-    fn render(&self, area: Rect, buf: &mut Buffer, config: &DisplayConfig);
+    /// * `ctx` - Render context with display configuration and focus state
+    fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext);
 
     /// Clone this widget into a boxed trait object
     fn clone_box(&self) -> Box<dyn ElementWidget>;
@@ -245,7 +253,7 @@ mod tests {
     struct TestWidget;
 
     impl ElementWidget for TestWidget {
-        fn render(&self, _area: Rect, _buf: &mut Buffer, _config: &DisplayConfig) {
+        fn render(&self, _area: Rect, _buf: &mut Buffer, _ctx: &RenderContext) {
             // Minimal implementation
         }
 

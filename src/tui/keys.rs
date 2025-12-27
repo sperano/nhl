@@ -9,6 +9,8 @@ use crossterm::event::KeyModifiers;
 
 use super::action::{Action, SettingsAction};
 use super::component_store::ComponentStateStore;
+#[cfg(feature = "development")]
+use super::components::demo_tab::DemoTabMsg;
 use super::components::scores_tab::ScoresTabMsg;
 use super::components::scores_tab::ScoresTabState;
 use super::components::standings_tab::StandingsTabMsg;
@@ -20,19 +22,19 @@ use super::state::AppState;
 use super::tab_component::TabState;
 use super::types::Tab;
 
-/// Helper to check if scores tab is in browse mode (box selection)
-fn is_scores_browse_mode_active(component_states: &ComponentStateStore) -> bool {
+/// Helper to check if scores tab has an item focused (box selection)
+fn has_scores_item_focus(component_states: &ComponentStateStore) -> bool {
     component_states
         .get::<ScoresTabState>(SCORES_TAB_PATH)
-        .map(|s| s.is_browse_mode())
+        .map(|s| s.has_item_focus())
         .unwrap_or(false)
 }
 
-/// Helper to check if standings tab is in browse mode
-fn is_standings_browse_mode_active(component_states: &ComponentStateStore) -> bool {
+/// Helper to check if standings tab has an item focused
+fn has_standings_item_focus(component_states: &ComponentStateStore) -> bool {
     component_states
         .get::<StandingsTabState>(STANDINGS_TAB_PATH)
-        .map(|s| s.is_browse_mode())
+        .map(|s| s.has_item_focus())
         .unwrap_or(false)
 }
 
@@ -42,6 +44,15 @@ fn is_settings_modal_open(component_states: &ComponentStateStore) -> bool {
     component_states
         .get::<SettingsTabState>(SETTINGS_TAB_PATH)
         .map(|s| s.modal.is_some())
+        .unwrap_or(false)
+}
+
+/// Helper to check if settings tab has an item focused
+fn has_settings_item_focus(component_states: &ComponentStateStore) -> bool {
+    use super::components::settings_tab::SettingsTabState;
+    component_states
+        .get::<SettingsTabState>(SETTINGS_TAB_PATH)
+        .map(|s| s.has_item_focus())
         .unwrap_or(false)
 }
 
@@ -74,7 +85,7 @@ fn handle_esc_key(state: &AppState, component_states: &ComponentStateStore) -> O
     }
 
     // Priority 3: If in box selection mode on Scores tab, exit to date subtabs
-    if is_scores_browse_mode_active(component_states) {
+    if has_scores_item_focus(component_states) {
         debug!("KEY: ESC pressed in box selection - exiting to date subtabs");
         return Some(Action::ComponentMessage {
             path: SCORES_TAB_PATH.to_string(),
@@ -82,17 +93,36 @@ fn handle_esc_key(state: &AppState, component_states: &ComponentStateStore) -> O
         });
     }
 
-    // Priority 4: If in browse mode on Standings tab, exit to view subtabs
-    if is_standings_browse_mode_active(component_states) {
-        debug!("KEY: ESC pressed in browse mode - exiting to view subtabs");
+    // Priority 4: If standings tab has item focus, clear it
+    if has_standings_item_focus(component_states) {
+        debug!("KEY: ESC pressed with standings item focus - clearing focus");
         return Some(Action::ComponentMessage {
             path: STANDINGS_TAB_PATH.to_string(),
             message: Box::new(StandingsTabMsg::ExitBrowseMode),
         });
     }
 
+    // Priority 4.5: If settings tab has item focus, clear it
+    if has_settings_item_focus(component_states) {
+        debug!("KEY: ESC pressed with settings item focus - clearing focus");
+        return Some(Action::ComponentMessage {
+            path: SETTINGS_TAB_PATH.to_string(),
+            message: Box::new(SettingsTabMsg::NavigateUp),
+        });
+    }
+
+    // Priority 4.6: If demo tab has content focus, clear selection and exit
+    #[cfg(feature = "development")]
+    if state.navigation.current_tab == Tab::Demo && state.navigation.focus_in_content {
+        debug!("KEY: ESC pressed with demo content focus - clearing selection");
+        return Some(Action::ComponentMessage {
+            path: DEMO_TAB_PATH.to_string(),
+            message: Box::new(DemoTabMsg::ExitFocus),
+        });
+    }
+
     // Priority 5: If content is focused, return to tab bar
-    if state.navigation.content_focused {
+    if state.navigation.focus_in_content {
         debug!("KEY: ESC pressed in content - returning to tab bar");
         return Some(Action::ExitContentFocus);
     }
@@ -114,13 +144,13 @@ fn handle_number_keys(key_code: KeyCode) -> Option<Action> {
     }
 }
 
-/// Handle navigation when tab bar is focused (Left/Right/Down)
+/// Handle navigation when tab bar is focused (Left/Right/Down/Enter)
 fn handle_tab_bar_navigation(key_code: KeyCode) -> Option<Action> {
     match key_code {
         KeyCode::Left => Some(Action::NavigateTabLeft),
         KeyCode::Right => Some(Action::NavigateTabRight),
-        KeyCode::Down => {
-            debug!("KEY: Down pressed on tab bar - entering content focus");
+        KeyCode::Down | KeyCode::Enter => {
+            debug!("KEY: Down/Enter pressed on tab bar - entering content focus");
             Some(Action::EnterContentFocus)
         }
         _ => None,
@@ -135,7 +165,7 @@ fn handle_scores_tab_keys(
 ) -> Option<Action> {
     use crate::tui::document_nav::DocumentNavMsg;
 
-    if is_scores_browse_mode_active(component_states) {
+    if has_scores_item_focus(component_states) {
         // Box selection mode - use document navigation
         match key_code {
             KeyCode::Down => Some(Action::ComponentMessage {
@@ -448,7 +478,7 @@ pub fn key_to_action(
 ) -> Option<Action> {
     // Get current tab and focus state
     let current_tab = state.navigation.current_tab;
-    let content_focused = state.navigation.content_focused;
+    let content_focused = state.navigation.focus_in_content;
 
     trace!(
         "KEY: {:?} (tab={:?}, content_focused={}, document_stack_len={})",
@@ -482,6 +512,7 @@ pub fn key_to_action(
     // 5. Handle navigation based on focus level
     if !content_focused {
         // TAB BAR FOCUSED: delegate to tab bar handler
+        // Note: Demo tab focus initialization is handled by enter_content_focus reducer
         let action = handle_tab_bar_navigation(key.code);
         if action.is_some() {
             debug!("KEY: Tab bar navigation: {:?}", action);
@@ -494,7 +525,7 @@ pub fn key_to_action(
     // 6. Handle Up key with special logic (returns to tab bar unless in nested mode)
     if key.code == KeyCode::Up {
         // Check if we're in a nested mode first
-        if is_scores_browse_mode_active(component_states) {
+        if has_scores_item_focus(component_states) {
             // In box selection - Up uses document navigation
             use crate::tui::document_nav::DocumentNavMsg;
             return Some(Action::ComponentMessage {
@@ -507,8 +538,7 @@ pub fn key_to_action(
             // Demo tab - Up handled by handle_demo_tab_keys (both plain and Shift)
         } else if current_tab == Tab::Settings {
             // Settings tab - Up handled by handle_settings_tab_keys (both plain and Shift)
-        } else if current_tab == Tab::Standings && is_standings_browse_mode_active(component_states)
-        {
+        } else if current_tab == Tab::Standings && has_standings_item_focus(component_states) {
             // Standings browse mode - Up handled by handle_standings_league_keys (both plain and Shift)
         } else {
             // Not in nested mode - Up returns to tab bar
@@ -518,8 +548,7 @@ pub fn key_to_action(
         #[cfg(not(feature = "development"))]
         if current_tab == Tab::Settings {
             // Settings tab - Up handled by handle_settings_tab_keys (both plain and Shift)
-        } else if current_tab == Tab::Standings && is_standings_browse_mode_active(component_states)
-        {
+        } else if current_tab == Tab::Standings && has_standings_item_focus(component_states) {
             // Standings browse mode - Up handled by handle_standings_league_keys (both plain and Shift)
         } else {
             // Not in nested mode - Up returns to tab bar
@@ -539,7 +568,7 @@ pub fn key_to_action(
         Tab::Scores => handle_scores_tab_keys(state, key.code, component_states),
         Tab::Standings => {
             // All standings views use document navigation in browse mode
-            if is_standings_browse_mode_active(component_states) {
+            if has_standings_item_focus(component_states) {
                 handle_standings_league_keys(key, state)
             } else {
                 handle_standings_tab_keys(key.code, state)

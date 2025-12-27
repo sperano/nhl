@@ -5,7 +5,7 @@ use ratatui::{buffer::Buffer, layout::Rect};
 use nhl_api::{PlayerLanding, Position, SeasonTotal};
 
 use super::table::TableWidget;
-use crate::config::DisplayConfig;
+use crate::config::RenderContext;
 use crate::team_abbrev::common_name_to_abbrev;
 use crate::tui::component::{Component, Element, ElementWidget};
 use crate::tui::document::{
@@ -24,6 +24,9 @@ pub struct PlayerDetailDocumentProps {
     pub selected_index: Option<usize>,
     pub scroll_offset: u16,
     pub animation_frame: u8,
+    /// Whether this document has focus (affects dim/bright rendering)
+    /// Stacked documents are always focused
+    pub focused: bool,
 }
 
 /// PlayerDetailDocument component - renders player info and career stats
@@ -42,6 +45,7 @@ impl Component for PlayerDetailDocument {
             focus_index: props.selected_index,
             scroll_offset: props.scroll_offset,
             animation_frame: props.animation_frame,
+            focused: props.focused,
         }))
     }
 }
@@ -295,13 +299,18 @@ pub struct PlayerDetailDocumentWidget {
     focus_index: Option<usize>,
     scroll_offset: u16,
     animation_frame: u8,
+    /// Whether this widget has focus (affects dim/bright rendering)
+    focused: bool,
 }
 
 impl ElementWidget for PlayerDetailDocumentWidget {
-    fn render(&self, area: Rect, buf: &mut Buffer, config: &DisplayConfig) {
+    fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
+        // Create child RenderContext with our focus state
+        let child_ctx = RenderContext::new(ctx.config, self.focused);
+
         // Handle loading state - show animation if loading or data hasn't arrived yet
         if self.loading || self.player_data.is_none() {
-            LoadingAnimation::new(self.animation_frame).render(area, buf, config);
+            LoadingAnimation::new(self.animation_frame).render(area, buf, &child_ctx);
             return;
         }
 
@@ -317,7 +326,7 @@ impl ElementWidget for PlayerDetailDocumentWidget {
             view.focus_by_index(idx);
         }
         view.set_scroll_offset(self.scroll_offset);
-        view.render(area, buf, config);
+        view.render(area, buf, &child_ctx);
     }
 
     fn clone_box(&self) -> Box<dyn ElementWidget> {
@@ -328,6 +337,7 @@ impl ElementWidget for PlayerDetailDocumentWidget {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{DisplayConfig, RenderContext};
     use crate::tui::document::FocusableId;
     use nhl_api::{Handedness, LocalizedString, SeasonTotal};
     use ratatui::buffer::Buffer;
@@ -533,13 +543,15 @@ mod tests {
             focus_index: None,
             scroll_offset: 0,
             animation_frame: 0,
+            focused: true,
         };
 
         let area = Rect::new(0, 0, 80, 30);
         let mut buf = Buffer::empty(area);
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        widget.render(area, &mut buf, &config);
+        widget.render(area, &mut buf, &ctx);
 
         // Verify rendering completed without panic
         assert_eq!(*buf.area(), area);
@@ -554,13 +566,15 @@ mod tests {
             focus_index: None,
             scroll_offset: 0,
             animation_frame: 0,
+            focused: true,
         };
 
         let area = Rect::new(0, 0, 80, 10);
         let mut buf = Buffer::empty(area);
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        widget.render(area, &mut buf, &config);
+        widget.render(area, &mut buf, &ctx);
 
         assert_eq!(*buf.area(), area);
     }
@@ -574,13 +588,15 @@ mod tests {
             focus_index: None,
             scroll_offset: 0,
             animation_frame: 0,
+            focused: true,
         };
 
         let area = Rect::new(0, 0, 80, 10);
         let mut buf = Buffer::empty(area);
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        widget.render(area, &mut buf, &config);
+        widget.render(area, &mut buf, &ctx);
 
         assert_eq!(*buf.area(), area);
     }
@@ -596,13 +612,15 @@ mod tests {
             focus_index: Some(0), // Focus on first focusable element
             scroll_offset: 0,
             animation_frame: 0,
+            focused: true,
         };
 
         let area = Rect::new(0, 0, 80, 30);
         let mut buf = Buffer::empty(area);
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        widget.render(area, &mut buf, &config);
+        widget.render(area, &mut buf, &ctx);
 
         // Should render without panic
         assert_eq!(*buf.area(), area);
@@ -619,13 +637,15 @@ mod tests {
             focus_index: None,
             scroll_offset: 5, // Scroll down 5 lines
             animation_frame: 0,
+            focused: true,
         };
 
         let area = Rect::new(0, 0, 80, 30);
         let mut buf = Buffer::empty(area);
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        widget.render(area, &mut buf, &config);
+        widget.render(area, &mut buf, &ctx);
 
         // Should render without panic
         assert_eq!(*buf.area(), area);

@@ -12,6 +12,12 @@ use crate::fixtures;
 /// Mock client that returns fixture data instead of making real API calls
 pub struct MockClient;
 
+impl Default for MockClient {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MockClient {
     /// Create a new mock client
     pub fn new() -> Self {

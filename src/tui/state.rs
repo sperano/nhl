@@ -34,8 +34,8 @@ pub struct AppState {
 pub struct NavigationState {
     pub current_tab: Tab,
     pub document_stack: Vec<DocumentStackEntry>,
-    /// Whether focus is on content (true) or tab bar (false)
-    pub content_focused: bool,
+    /// Whether focus is in content area (true) or on tab bar (false)
+    pub focus_in_content: bool,
 }
 
 impl Default for NavigationState {
@@ -43,7 +43,7 @@ impl Default for NavigationState {
         Self {
             current_tab: Tab::Scores,
             document_stack: Vec::new(),
-            content_focused: false, // Start with tab bar focused
+            focus_in_content: false, // Start with tab bar focused
         }
     }
 }

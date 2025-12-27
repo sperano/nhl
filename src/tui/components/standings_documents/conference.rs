@@ -75,23 +75,27 @@ impl Document for ConferenceStandingsDocument {
         // Use Row element to place tables side-by-side with section titles
         // Section titles are indented by 2 to align with table content (after selector space)
         const MARGIN: u16 = 2;
+        const GAP: u16 = 4;
         DocumentBuilder::new()
-            .row(vec![
-                DocumentElement::group(vec![
-                    DocumentElement::indented(
-                        DocumentElement::section_title(left_header, false),
-                        MARGIN,
-                    ),
-                    DocumentElement::table(LEFT_TABLE, left_table),
-                ]),
-                DocumentElement::group(vec![
-                    DocumentElement::indented(
-                        DocumentElement::section_title(right_header, false),
-                        MARGIN,
-                    ),
-                    DocumentElement::table(RIGHT_TABLE, right_table),
-                ]),
-            ])
+            .element(DocumentElement::row_center_with_gap(
+                vec![
+                    DocumentElement::group(vec![
+                        DocumentElement::indented(
+                            DocumentElement::section_title(left_header, false),
+                            MARGIN,
+                        ),
+                        DocumentElement::table(LEFT_TABLE, left_table),
+                    ]),
+                    DocumentElement::group(vec![
+                        DocumentElement::indented(
+                            DocumentElement::section_title(right_header, false),
+                            MARGIN,
+                        ),
+                        DocumentElement::table(RIGHT_TABLE, right_table),
+                    ]),
+                ],
+                GAP,
+            ))
             .build()
     }
 

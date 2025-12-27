@@ -100,7 +100,7 @@ impl App {
             {
                 demo_content = DemoTab.view(
                     &DemoTabProps {
-                        content_focused: state.navigation.content_focused,
+                        focused: state.navigation.focus_in_content,
                         standings: state.data.standings.clone(),
                     },
                     &Default::default(),
@@ -126,8 +126,9 @@ impl App {
             &TabbedPanelProps {
                 active_key: active_key.into(),
                 tabs,
-                focused: !state.navigation.content_focused
+                focused: !state.navigation.focus_in_content
                     && state.navigation.document_stack.is_empty(),
+                content_has_focus: state.navigation.focus_in_content,
             },
             &(),
         )
@@ -187,7 +188,7 @@ impl App {
             {
                 // Build Demo tab content
                 let demo_props = DemoTabProps {
-                    content_focused: state.navigation.content_focused,
+                    focused: state.navigation.focus_in_content,
                     standings: state.data.standings.clone(),
                 };
                 let demo_state =
@@ -214,8 +215,9 @@ impl App {
             &TabbedPanelProps {
                 active_key: active_key.into(),
                 tabs,
-                focused: !state.navigation.content_focused
+                focused: !state.navigation.focus_in_content
                     && state.navigation.document_stack.is_empty(),
+                content_has_focus: state.navigation.focus_in_content,
             },
             &(),
         )
@@ -261,6 +263,7 @@ impl App {
                     selected_index: doc_entry.nav.focus_index,
                     scroll_offset: doc_entry.nav.scroll_offset,
                     animation_frame: state.system.animation_frame,
+                    focused: true, // Stacked documents are always focused
                 };
                 TeamDetailDocument.view(&props, &())
             }
@@ -275,6 +278,7 @@ impl App {
                     selected_index: doc_entry.nav.focus_index,
                     scroll_offset: doc_entry.nav.scroll_offset,
                     animation_frame: state.system.animation_frame,
+                    focused: true, // Stacked documents are always focused
                 };
                 PlayerDetailDocument.view(&props, &())
             }
@@ -292,7 +296,7 @@ impl App {
             schedule: state.data.schedule.clone(),
             game_info: state.data.game_info.clone(),
             period_scores: state.data.period_scores.clone(),
-            focused: state.navigation.content_focused,
+            focused: state.navigation.focus_in_content,
             animation_frame: state.system.animation_frame,
         };
 
@@ -310,7 +314,7 @@ impl App {
             schedule: state.data.schedule.clone(),
             game_info: state.data.game_info.clone(),
             period_scores: state.data.period_scores.clone(),
-            focused: state.navigation.content_focused,
+            focused: state.navigation.focus_in_content,
             animation_frame: state.system.animation_frame,
         };
         let component_state = ScoresTabState::default();
@@ -327,7 +331,7 @@ impl App {
         let props = StandingsTabProps {
             standings: state.data.standings.clone(),
             document_stack: state.navigation.document_stack.clone(),
-            focused: state.navigation.content_focused,
+            focused: state.navigation.focus_in_content,
             config: state.system.config.clone(),
             animation_frame: state.system.animation_frame,
         };
@@ -345,7 +349,7 @@ impl App {
         let props = StandingsTabProps {
             standings: state.data.standings.clone(),
             document_stack: state.navigation.document_stack.clone(),
-            focused: state.navigation.content_focused,
+            focused: state.navigation.focus_in_content,
             config: state.system.config.clone(),
             animation_frame: state.system.animation_frame,
         };
@@ -362,7 +366,7 @@ impl App {
         let props = SettingsTabProps {
             config: state.system.config.clone(),
             selected_category: state.ui.settings.selected_category,
-            focused: state.navigation.content_focused,
+            focused: state.navigation.focus_in_content,
         };
 
         let settings_state = component_states.get_or_init::<SettingsTab>(SETTINGS_TAB_PATH, &props);
@@ -375,7 +379,7 @@ impl App {
         let props = SettingsTabProps {
             config: state.system.config.clone(),
             selected_category: state.ui.settings.selected_category,
-            focused: state.navigation.content_focused,
+            focused: state.navigation.focus_in_content,
         };
         let component_state = SettingsTabState::default();
         SettingsTab.view(&props, &component_state)

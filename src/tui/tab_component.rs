@@ -5,7 +5,7 @@
 //!
 //! - Embedded `DocumentNavState` for focus/scroll management
 //! - Common message variants: `DocNav`, `UpdateViewportHeight`, `NavigateUp`
-//! - Browse mode logic (derived from `focus_index.is_some()`)
+//! - Item focus logic (derived from `focus_index.is_some()`)
 //! - Common update handling for document navigation
 //!
 //! # Usage
@@ -63,26 +63,26 @@ pub trait TabState {
     /// Get mutable reference to document navigation state
     fn doc_nav_mut(&mut self) -> &mut DocumentNavState;
 
-    /// Check if browse mode is active (has focused element)
+    /// Check if an item in the document has focus
     ///
     /// Default implementation checks if focus_index is Some.
-    fn is_browse_mode(&self) -> bool {
+    fn has_item_focus(&self) -> bool {
         self.doc_nav().focus_index.is_some()
     }
 
-    /// Exit browse mode by clearing focus and scroll
+    /// Clear item focus and scroll position
     ///
     /// Default implementation clears focus_index and scroll_offset.
-    fn exit_browse_mode(&mut self) {
+    fn clear_item_focus(&mut self) {
         let nav = self.doc_nav_mut();
         nav.focus_index = None;
         nav.scroll_offset = 0;
     }
 
-    /// Enter browse mode by focusing the first element
+    /// Focus the first focusable item in the document
     ///
     /// Default implementation sets focus to first element if available.
-    fn enter_browse_mode(&mut self) {
+    fn focus_first_item(&mut self) {
         let nav = self.doc_nav_mut();
         if !nav.focusable_positions.is_empty() && nav.focus_index.is_none() {
             nav.focus_index = Some(0);
@@ -156,8 +156,8 @@ pub fn handle_common_message<S: TabState>(
         }
 
         CommonTabMessage::NavigateUp => {
-            if state.is_browse_mode() {
-                state.exit_browse_mode();
+            if state.has_item_focus() {
+                state.clear_item_focus();
                 Some(Effect::Handled)
             } else {
                 Some(Effect::None) // Let it bubble up
@@ -270,42 +270,42 @@ mod tests {
     }
 
     #[test]
-    fn test_tab_state_is_browse_mode() {
+    fn test_tab_state_has_item_focus() {
         let mut state = TestTabState::default();
-        assert!(!state.is_browse_mode());
+        assert!(!state.has_item_focus());
 
         state.doc_nav.focus_index = Some(0);
-        assert!(state.is_browse_mode());
+        assert!(state.has_item_focus());
     }
 
     #[test]
-    fn test_tab_state_exit_browse_mode() {
+    fn test_tab_state_clear_item_focus() {
         let mut state = TestTabState::default();
         state.doc_nav.focus_index = Some(2);
         state.doc_nav.scroll_offset = 10;
 
-        state.exit_browse_mode();
+        state.clear_item_focus();
 
         assert_eq!(state.doc_nav.focus_index, None);
         assert_eq!(state.doc_nav.scroll_offset, 0);
     }
 
     #[test]
-    fn test_tab_state_enter_browse_mode() {
+    fn test_tab_state_focus_first_item() {
         let mut state = TestTabState::default();
         state.doc_nav.focusable_positions = vec![0, 5, 10];
 
-        state.enter_browse_mode();
+        state.focus_first_item();
 
         assert_eq!(state.doc_nav.focus_index, Some(0));
     }
 
     #[test]
-    fn test_tab_state_enter_browse_mode_no_focusables() {
+    fn test_tab_state_focus_first_item_no_focusables() {
         let mut state = TestTabState::default();
         // No focusable_positions
 
-        state.enter_browse_mode();
+        state.focus_first_item();
 
         assert_eq!(state.doc_nav.focus_index, None);
     }
@@ -335,7 +335,7 @@ mod tests {
     }
 
     #[test]
-    fn test_handle_common_message_navigate_up_in_browse_mode() {
+    fn test_handle_common_message_navigate_up_with_item_focus() {
         let mut state = TestTabState::default();
         state.doc_nav.focus_index = Some(2);
         state.doc_nav.scroll_offset = 10;
@@ -349,9 +349,9 @@ mod tests {
     }
 
     #[test]
-    fn test_handle_common_message_navigate_up_not_in_browse_mode() {
+    fn test_handle_common_message_navigate_up_without_item_focus() {
         let mut state = TestTabState::default();
-        // Not in browse mode (focus_index is None)
+        // No item focus (focus_index is None)
 
         let msg = TestTabMsg::NavigateUp;
         let effect = handle_common_message(msg.as_common(), &mut state);

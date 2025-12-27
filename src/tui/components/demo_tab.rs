@@ -15,7 +15,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 
 use crate::component_message_impl;
-use crate::config::DisplayConfig;
+use crate::config::RenderContext;
 use crate::tui::action::Action;
 use crate::tui::component::{Component, Effect, Element, ElementWidget};
 use crate::tui::components::create_standings_table_with_selection;
@@ -25,7 +25,7 @@ use crate::tui::document::{
 };
 use crate::tui::document_nav::{DocumentNavMsg, DocumentNavState};
 use crate::tui::helpers::StandingsSorting;
-use crate::tui::tab_component::{handle_common_message, CommonTabMessage, TabMessage};
+use crate::tui::tab_component::{handle_common_message, CommonTabMessage, TabMessage, TabState};
 use crate::tui::types::StackedDocument;
 use crate::tui::{Alignment, CellValue, ColumnDef};
 
@@ -112,8 +112,8 @@ fn create_player_table(players: Vec<DemoPlayer>, focused_row: Option<usize>) -> 
 /// Props for the Demo tab
 #[derive(Clone)]
 pub struct DemoTabProps {
-    /// Whether the tab content is focused
-    pub content_focused: bool,
+    /// Whether this tab has focus
+    pub focused: bool,
     /// Standings data for demonstrating embedded tables
     pub standings: Arc<Option<Vec<Standing>>>,
 }
@@ -134,6 +134,10 @@ pub enum DemoTabMsg {
     UpdateViewportHeight(u16),
     /// Activate the currently focused link (team or player)
     ActivateLink,
+    /// Enter focus mode (from tab bar) - focuses first item and sets content focus
+    EnterFocus,
+    /// Exit focus mode (via Escape) - clears selection and returns to tab bar
+    ExitFocus,
 }
 
 impl TabMessage for DemoTabMsg {
@@ -210,6 +214,18 @@ impl Component for DemoTab {
                 Effect::None
             }
 
+            DemoTabMsg::EnterFocus => {
+                // Focus first item (global focus_in_content already set by reducer)
+                state.focus_first_item();
+                Effect::None
+            }
+
+            DemoTabMsg::ExitFocus => {
+                // Clear selection and return to tab bar
+                state.clear_item_focus();
+                Effect::Action(Action::ExitContentFocus)
+            }
+
             // Common messages already handled above
             DemoTabMsg::DocNav(_)
             | DemoTabMsg::UpdateViewportHeight(_)
@@ -221,7 +237,7 @@ impl Component for DemoTab {
 
     fn view(&self, props: &Self::Props, state: &Self::State) -> Element {
         Element::Widget(Box::new(DemoTabWidget {
-            content_focused: props.content_focused,
+            focused: props.focused,
             focus_index: state.focus_index,
             scroll_offset: state.scroll_offset,
             standings: props.standings.clone(),
@@ -262,14 +278,14 @@ impl DemoTab {
 
 /// Widget for rendering the Demo tab
 struct DemoTabWidget {
-    content_focused: bool,
+    focused: bool,
     focus_index: Option<usize>,
     scroll_offset: u16,
     standings: Arc<Option<Vec<Standing>>>,
 }
 
 impl ElementWidget for DemoTabWidget {
-    fn render(&self, area: Rect, buf: &mut Buffer, config: &DisplayConfig) {
+    fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
         // Create document view with state from AppState
         let standings = (*self.standings).clone();
         let doc = Arc::new(DemoDocument::new(standings));
@@ -283,12 +299,17 @@ impl ElementWidget for DemoTabWidget {
         // Apply scroll offset from AppState
         view.set_scroll_offset(self.scroll_offset);
 
-        view.render(area, buf, config);
+        // Create child RenderContext with our focus state
+        // Document is only focused when navigating items within the document
+        let has_item_focus = self.focus_index.is_some();
+        let child_ctx = RenderContext::new(ctx.config, self.focused && has_item_focus);
+
+        view.render(area, buf, &child_ctx);
     }
 
     fn clone_box(&self) -> Box<dyn ElementWidget> {
         Box::new(DemoTabWidget {
-            content_focused: self.content_focused,
+            focused: self.focused,
             focus_index: self.focus_index,
             scroll_offset: self.scroll_offset,
             standings: self.standings.clone(),
@@ -461,6 +482,7 @@ impl Document for DemoDocument {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{DisplayConfig, RenderContext};
     use crate::tui::testing::assert_buffer;
 
     #[test]
@@ -484,7 +506,7 @@ mod tests {
     #[test]
     fn test_demo_tab_renders() {
         let props = DemoTabProps {
-            content_focused: false,
+            focused: false,
             standings: Arc::new(None),
         };
         let state = crate::tui::document_nav::DocumentNavState::default();
@@ -511,7 +533,7 @@ mod tests {
     #[test]
     fn test_demo_tab_widget_render() {
         let widget = DemoTabWidget {
-            content_focused: true,
+            focused: true,
             focus_index: None,
             scroll_offset: 0,
             standings: Arc::new(None),
@@ -519,18 +541,19 @@ mod tests {
 
         let mut buf = Buffer::empty(Rect::new(0, 0, 60, 5));
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        widget.render(buf.area, &mut buf, &config);
+        widget.render(buf.area, &mut buf, &ctx);
 
         // Should render the heading and first lines of content
         assert_buffer(
             &buf,
             &[
-                "Document System Demo",
-                "════════════════════",
+                " Document System Demo",
+                " ════════════════════",
                 "",
-                "This tab demonstrates the new document system for the NHL TU",
-                "Press Tab/Shift-Tab to navigate between focusable elements.",
+                " This tab demonstrates the new document system for the NHL",
+                " Press Tab/Shift-Tab to navigate between focusable elements",
             ],
         );
     }

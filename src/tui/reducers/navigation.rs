@@ -2,6 +2,10 @@ use tracing::{debug, trace};
 
 use crate::tui::action::Action;
 use crate::tui::component::Effect;
+#[cfg(feature = "development")]
+use crate::tui::components::demo_tab::DemoTabMsg;
+#[cfg(feature = "development")]
+use crate::tui::constants::DEMO_TAB_PATH;
 use crate::tui::state::AppState;
 use crate::tui::types::Tab;
 
@@ -28,7 +32,7 @@ fn navigate_to_tab(state: AppState, tab: Tab) -> (AppState, Effect) {
     let mut new_state = state;
     new_state.navigation.current_tab = tab;
     new_state.navigation.document_stack.clear();
-    new_state.navigation.content_focused = false; // Return focus to tab bar
+    new_state.navigation.focus_in_content = false; // Return focus to tab bar
     trace!("  Cleared document stack and returned focus to tab bar");
     (new_state, Effect::None)
 }
@@ -46,7 +50,7 @@ fn navigate_tab_left(state: AppState) -> (AppState, Effect) {
         Tab::Demo => Tab::Settings,
     };
     new_state.navigation.document_stack.clear();
-    new_state.navigation.content_focused = false; // Return focus to tab bar
+    new_state.navigation.focus_in_content = false; // Return focus to tab bar
     (new_state, Effect::None)
 }
 
@@ -63,14 +67,14 @@ fn navigate_tab_right(state: AppState) -> (AppState, Effect) {
         Tab::Demo => Tab::Scores,
     };
     new_state.navigation.document_stack.clear();
-    new_state.navigation.content_focused = false; // Return focus to tab bar
+    new_state.navigation.focus_in_content = false; // Return focus to tab bar
     (new_state, Effect::None)
 }
 
 fn enter_content_focus(state: AppState) -> (AppState, Effect) {
     debug!("FOCUS: Entering content focus (Down key from tab bar)");
     let mut new_state = state;
-    new_state.navigation.content_focused = true;
+    new_state.navigation.focus_in_content = true;
 
     // Set tab-specific status message and initialize focus for Demo tab
     #[cfg(feature = "development")]
@@ -79,8 +83,15 @@ fn enter_content_focus(state: AppState) -> (AppState, Effect) {
             .system
             .set_status_message("↑↓: move selection  Shift+↑↓: scroll  Esc: go back".to_string());
 
-        // Demo tab focus is managed by component state
-        // Component initializes focus to first element when needed
+        // Send EnterFocus to Demo tab component to focus first item
+        // This happens AFTER focus_in_content is set, avoiding visual flash
+        return (
+            new_state,
+            Effect::Action(Action::ComponentMessage {
+                path: DEMO_TAB_PATH.to_string(),
+                message: Box::new(DemoTabMsg::EnterFocus),
+            }),
+        );
     }
 
     (new_state, Effect::None)
@@ -96,7 +107,7 @@ fn exit_content_focus(state: AppState) -> (AppState, Effect) {
         new_state.system.reset_status_message();
     }
 
-    new_state.navigation.content_focused = false;
+    new_state.navigation.focus_in_content = false;
 
     (new_state, Effect::None)
 }
@@ -105,10 +116,10 @@ fn exit_content_focus(state: AppState) -> (AppState, Effect) {
 ///
 /// Hierarchical fallthrough:
 /// 1. If document stack not empty → pop document
-/// 2. If content_focused → set content_focused = false
+/// 2. If focus_in_content → set focus_in_content = false
 /// 3. Otherwise do nothing (already at top level)
 ///
-/// Components may intercept NavigateUp to handle their own modes (e.g., exit browse mode,
+/// Components may intercept NavigateUp to handle their own modes (e.g., clear item focus,
 /// close modal) before falling through to exit_content_focus.
 fn navigate_up(state: AppState) -> (AppState, Effect) {
     let mut new_state = state;
@@ -120,8 +131,8 @@ fn navigate_up(state: AppState) -> (AppState, Effect) {
         return (new_state, Effect::None);
     }
 
-    // 2. If content_focused → exit content focus
-    if new_state.navigation.content_focused {
+    // 2. If focus_in_content → exit content focus
+    if new_state.navigation.focus_in_content {
         debug!("NAVIGATE_UP: Exiting content focus");
 
         // Reset status message if exiting from Demo tab
@@ -130,7 +141,7 @@ fn navigate_up(state: AppState) -> (AppState, Effect) {
             new_state.system.reset_status_message();
         }
 
-        new_state.navigation.content_focused = false;
+        new_state.navigation.focus_in_content = false;
         return (new_state, Effect::None);
     }
 
@@ -150,7 +161,7 @@ mod tests {
 
         assert_eq!(new_state.navigation.current_tab, Tab::Settings);
         assert!(new_state.navigation.document_stack.is_empty());
-        assert!(!new_state.navigation.content_focused);
+        assert!(!new_state.navigation.focus_in_content);
     }
 
     #[test]
@@ -211,7 +222,7 @@ mod tests {
         use crate::tui::types::StackedDocument;
 
         let mut state = AppState::default();
-        state.navigation.content_focused = true;
+        state.navigation.focus_in_content = true;
         state
             .navigation
             .document_stack
@@ -223,29 +234,29 @@ mod tests {
 
         // Should pop the document, not exit content focus
         assert!(new_state.navigation.document_stack.is_empty());
-        assert!(new_state.navigation.content_focused);
+        assert!(new_state.navigation.focus_in_content);
     }
 
     #[test]
     fn test_navigate_up_exits_content_focus_when_stack_empty() {
         let mut state = AppState::default();
-        state.navigation.content_focused = true;
+        state.navigation.focus_in_content = true;
 
         let (new_state, _) = navigate_up(state);
 
-        assert!(!new_state.navigation.content_focused);
+        assert!(!new_state.navigation.focus_in_content);
     }
 
     #[test]
     fn test_navigate_up_does_nothing_at_top_level() {
         let state = AppState::default();
-        assert!(!state.navigation.content_focused);
+        assert!(!state.navigation.focus_in_content);
         assert!(state.navigation.document_stack.is_empty());
 
         let (new_state, _) = navigate_up(state.clone());
 
         // Should be unchanged
-        assert!(!new_state.navigation.content_focused);
+        assert!(!new_state.navigation.focus_in_content);
         assert!(new_state.navigation.document_stack.is_empty());
     }
 }
