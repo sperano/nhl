@@ -3,7 +3,7 @@ use crate::data_provider::NHLDataProvider;
 use async_trait::async_trait;
 use nhl_api::{
     Boxscore, ClubStats, DailySchedule, Franchise, GameDate, GameMatchup, GameType, NHLApiError,
-    PlayerLanding, SeasonGameTypes, Standing,
+    PlayByPlay, PlayerLanding, SeasonGameTypes, Standing,
 };
 use tracing::info;
 
@@ -49,6 +49,14 @@ impl NHLDataProvider for MockClient {
     async fn boxscore(&self, game_id: i64) -> Result<Boxscore, NHLApiError> {
         info!("MockClient: Returning mock boxscore for game {}", game_id);
         Ok(fixtures::create_mock_boxscore(game_id))
+    }
+
+    async fn play_by_play(&self, game_id: i64) -> Result<PlayByPlay, NHLApiError> {
+        info!(
+            "MockClient: Returning mock play-by-play for game {}",
+            game_id
+        );
+        Ok(fixtures::create_mock_play_by_play(game_id))
     }
 
     async fn club_stats(

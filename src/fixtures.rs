@@ -7,9 +7,11 @@
 ///
 /// The fixtures represent realistic NHL data with all 32 teams and various game states.
 use nhl_api::{
-    Boxscore, BoxscoreTeam, DailySchedule, Franchise, GameClock, GameDate, GameMatchup, GameState,
-    Handedness, LocalizedString, PeriodDescriptor, PeriodType, PlayerByGameStats, PlayerLanding,
-    Position, ScheduleGame, ScheduleTeam, Standing, TeamPlayerStats,
+    Boxscore, BoxscoreTeam, DailySchedule, DefendingSide, Franchise, GameClock, GameDate,
+    GameMatchup, GameOutcome, GameScheduleState, GameState, Handedness, LocalizedString,
+    PeriodDescriptor, PeriodType, PlayByPlay, PlayEvent, PlayEventDetails, PlayEventType,
+    PlayerByGameStats, PlayerLanding, Position, RosterSpot, ScheduleGame, ScheduleTeam, Standing,
+    TeamPlayerStats, ZoneCode,
 };
 
 /// Create mock standings data - reusing the test data structure
@@ -522,4 +524,530 @@ pub fn create_mock_player_landing(player_id: i64) -> PlayerLanding {
         awards: None,
         last_five_games: None,
     }
+}
+
+/// Create mock play-by-play data
+pub fn create_mock_play_by_play(game_id: i64) -> PlayByPlay {
+    let is_live = game_id == 2024020002 || game_id == 2024020003 || game_id == 2024020004;
+    let period = if game_id == 2024020002 {
+        1
+    } else if game_id == 2024020003 {
+        2
+    } else {
+        3
+    };
+
+    let (away_score, home_score) = if is_live { (2, 3) } else { (3, 4) };
+
+    PlayByPlay {
+        id: game_id,
+        season: 20242025,
+        game_type: nhl_api::GameType::RegularSeason,
+        limited_scoring: false,
+        game_date: "2024-11-20".to_string(),
+        venue: LocalizedString {
+            default: "Scotiabank Arena".to_string(),
+        },
+        venue_location: LocalizedString {
+            default: "Toronto, ON".to_string(),
+        },
+        start_time_utc: "2024-11-21T00:00:00Z".to_string(),
+        eastern_utc_offset: "-05:00".to_string(),
+        venue_utc_offset: "-05:00".to_string(),
+        tv_broadcasts: vec![],
+        game_state: if is_live {
+            GameState::Live
+        } else {
+            GameState::Final
+        },
+        game_schedule_state: GameScheduleState::Ok,
+        period_descriptor: PeriodDescriptor {
+            number: period,
+            period_type: PeriodType::Regulation,
+            max_regulation_periods: 3,
+        },
+        special_event: None,
+        away_team: BoxscoreTeam {
+            id: 10,
+            common_name: LocalizedString {
+                default: "Maple Leafs".to_string(),
+            },
+            abbrev: "TOR".to_string(),
+            score: away_score,
+            sog: 28,
+            logo: "https://assets.nhle.com/logos/nhl/svg/TOR_light.svg".to_string(),
+            dark_logo: "https://assets.nhle.com/logos/nhl/svg/TOR_dark.svg".to_string(),
+            place_name: LocalizedString {
+                default: "Toronto".to_string(),
+            },
+            place_name_with_preposition: LocalizedString {
+                default: "in Toronto".to_string(),
+            },
+        },
+        home_team: BoxscoreTeam {
+            id: 9,
+            common_name: LocalizedString {
+                default: "Senators".to_string(),
+            },
+            abbrev: "OTT".to_string(),
+            score: home_score,
+            sog: 25,
+            logo: "https://assets.nhle.com/logos/nhl/svg/OTT_light.svg".to_string(),
+            dark_logo: "https://assets.nhle.com/logos/nhl/svg/OTT_dark.svg".to_string(),
+            place_name: LocalizedString {
+                default: "Ottawa".to_string(),
+            },
+            place_name_with_preposition: LocalizedString {
+                default: "in Ottawa".to_string(),
+            },
+        },
+        shootout_in_use: true,
+        ot_in_use: true,
+        clock: if is_live {
+            GameClock {
+                time_remaining: "12:34".to_string(),
+                seconds_remaining: 754,
+                running: true,
+                in_intermission: false,
+            }
+        } else {
+            GameClock {
+                time_remaining: "00:00".to_string(),
+                seconds_remaining: 0,
+                running: false,
+                in_intermission: false,
+            }
+        },
+        display_period: period,
+        max_periods: 5,
+        game_outcome: Some(GameOutcome {
+            last_period_type: PeriodType::Regulation,
+        }),
+        plays: create_mock_plays(period, away_score, home_score),
+        roster_spots: create_mock_roster_spots(),
+        reg_periods: Some(3),
+        summary: None,
+    }
+}
+
+/// Create empty PlayEventDetails with all fields set to None
+fn empty_details() -> PlayEventDetails {
+    PlayEventDetails {
+        x_coord: None,
+        y_coord: None,
+        zone_code: None,
+        event_owner_team_id: None,
+        shot_type: None,
+        shooting_player_id: None,
+        goalie_in_net_id: None,
+        blocking_player_id: None,
+        scoring_player_id: None,
+        scoring_player_total: None,
+        assist1_player_id: None,
+        assist1_player_total: None,
+        assist2_player_id: None,
+        assist2_player_total: None,
+        away_score: None,
+        home_score: None,
+        highlight_clip: None,
+        highlight_clip_sharing_url: None,
+        discrete_clip: None,
+        type_code: None,
+        desc_key: None,
+        duration: None,
+        committed_by_player_id: None,
+        drawn_by_player_id: None,
+        hitting_player_id: None,
+        hittee_player_id: None,
+        winning_player_id: None,
+        losing_player_id: None,
+        player_id: None,
+        reason: None,
+        away_sog: None,
+        home_sog: None,
+    }
+}
+
+fn create_mock_plays(period: i32, away_score: i32, home_score: i32) -> Vec<PlayEvent> {
+    let mut plays = Vec::new();
+    let mut event_id = 100;
+
+    // Period start
+    plays.push(create_play_event(
+        event_id,
+        period,
+        "00:00",
+        "20:00",
+        PlayEventType::PeriodStart,
+        None,
+    ));
+    event_id += 1;
+
+    // Opening faceoff
+    plays.push(create_play_event(
+        event_id,
+        period,
+        "00:00",
+        "20:00",
+        PlayEventType::Faceoff,
+        Some(PlayEventDetails {
+            winning_player_id: Some(8478483), // Matthews
+            losing_player_id: Some(8478469),  // Stutzle
+            zone_code: Some(ZoneCode::Neutral),
+            x_coord: Some(0),
+            y_coord: Some(0),
+            ..empty_details()
+        }),
+    ));
+    event_id += 1;
+
+    // Shot on goal
+    plays.push(create_play_event(
+        event_id,
+        period,
+        "01:23",
+        "18:37",
+        PlayEventType::ShotOnGoal,
+        Some(PlayEventDetails {
+            shooting_player_id: Some(8478483), // Matthews
+            goalie_in_net_id: Some(8476341),   // Forsberg
+            shot_type: Some("wrist".to_string()),
+            zone_code: Some(ZoneCode::Offensive),
+            x_coord: Some(75),
+            y_coord: Some(-10),
+            away_sog: Some(1),
+            home_sog: Some(0),
+            ..empty_details()
+        }),
+    ));
+    event_id += 1;
+
+    // Hit
+    plays.push(create_play_event(
+        event_id,
+        period,
+        "02:45",
+        "17:15",
+        PlayEventType::Hit,
+        Some(PlayEventDetails {
+            hitting_player_id: Some(8479325), // Chabot
+            hittee_player_id: Some(8478483),  // Matthews
+            zone_code: Some(ZoneCode::Neutral),
+            x_coord: Some(-25),
+            y_coord: Some(35),
+            ..empty_details()
+        }),
+    ));
+    event_id += 1;
+
+    // Penalty
+    plays.push(create_play_event(
+        event_id,
+        period,
+        "05:30",
+        "14:30",
+        PlayEventType::Penalty,
+        Some(PlayEventDetails {
+            committed_by_player_id: Some(8479325), // Chabot
+            drawn_by_player_id: Some(8478483),     // Matthews
+            desc_key: Some("tripping".to_string()),
+            type_code: Some("MIN".to_string()),
+            duration: Some(2),
+            zone_code: Some(ZoneCode::Neutral),
+            x_coord: Some(-30),
+            y_coord: Some(0),
+            event_owner_team_id: Some(9),
+            ..empty_details()
+        }),
+    ));
+    event_id += 1;
+
+    // Power play goal
+    plays.push(create_play_event(
+        event_id,
+        period,
+        "06:15",
+        "13:45",
+        PlayEventType::Goal,
+        Some(PlayEventDetails {
+            scoring_player_id: Some(8478483), // Matthews
+            scoring_player_total: Some(15),
+            assist1_player_id: Some(8478444), // Marner
+            assist1_player_total: Some(25),
+            assist2_player_id: Some(8478858), // Nylander
+            assist2_player_total: Some(18),
+            shot_type: Some("slap".to_string()),
+            zone_code: Some(ZoneCode::Offensive),
+            x_coord: Some(80),
+            y_coord: Some(5),
+            away_score: Some(1),
+            home_score: Some(0),
+            goalie_in_net_id: Some(8476341),
+            event_owner_team_id: Some(10),
+            ..empty_details()
+        }),
+    ));
+    event_id += 1;
+
+    // Another shot
+    plays.push(create_play_event(
+        event_id,
+        period,
+        "08:00",
+        "12:00",
+        PlayEventType::ShotOnGoal,
+        Some(PlayEventDetails {
+            shooting_player_id: Some(8479325), // Chabot
+            goalie_in_net_id: Some(8477970),   // Woll
+            shot_type: Some("slap".to_string()),
+            zone_code: Some(ZoneCode::Offensive),
+            x_coord: Some(-72),
+            y_coord: Some(15),
+            away_sog: Some(1),
+            home_sog: Some(1),
+            ..empty_details()
+        }),
+    ));
+    event_id += 1;
+
+    // Blocked shot
+    plays.push(create_play_event(
+        event_id,
+        period,
+        "09:30",
+        "10:30",
+        PlayEventType::BlockedShot,
+        Some(PlayEventDetails {
+            shooting_player_id: Some(8479469), // Stutzle
+            blocking_player_id: Some(8479318), // Rielly
+            zone_code: Some(ZoneCode::Defensive),
+            x_coord: Some(65),
+            y_coord: Some(-20),
+            ..empty_details()
+        }),
+    ));
+    event_id += 1;
+
+    // Home team goal
+    plays.push(create_play_event(
+        event_id,
+        period,
+        "12:34",
+        "07:26",
+        PlayEventType::Goal,
+        Some(PlayEventDetails {
+            scoring_player_id: Some(8479469), // Stutzle
+            scoring_player_total: Some(12),
+            assist1_player_id: Some(8480801), // Batherson
+            assist1_player_total: Some(20),
+            shot_type: Some("wrist".to_string()),
+            zone_code: Some(ZoneCode::Offensive),
+            x_coord: Some(-78),
+            y_coord: Some(0),
+            away_score: Some(away_score - 1),
+            home_score: Some(home_score - 2),
+            goalie_in_net_id: Some(8477970),
+            event_owner_team_id: Some(9),
+            ..empty_details()
+        }),
+    ));
+    event_id += 1;
+
+    // Takeaway
+    plays.push(create_play_event(
+        event_id,
+        period,
+        "14:00",
+        "06:00",
+        PlayEventType::Takeaway,
+        Some(PlayEventDetails {
+            player_id: Some(8478483), // Matthews
+            zone_code: Some(ZoneCode::Neutral),
+            x_coord: Some(10),
+            y_coord: Some(-15),
+            event_owner_team_id: Some(10),
+            ..empty_details()
+        }),
+    ));
+    event_id += 1;
+
+    // Giveaway
+    plays.push(create_play_event(
+        event_id,
+        period,
+        "15:30",
+        "04:30",
+        PlayEventType::Giveaway,
+        Some(PlayEventDetails {
+            player_id: Some(8479469), // Stutzle
+            zone_code: Some(ZoneCode::Defensive),
+            x_coord: Some(-60),
+            y_coord: Some(25),
+            event_owner_team_id: Some(9),
+            ..empty_details()
+        }),
+    ));
+
+    plays
+}
+
+fn create_play_event(
+    event_id: i64,
+    period: i32,
+    time_in_period: &str,
+    time_remaining: &str,
+    event_type: PlayEventType,
+    details: Option<PlayEventDetails>,
+) -> PlayEvent {
+    PlayEvent {
+        event_id,
+        period_descriptor: PeriodDescriptor {
+            number: period,
+            period_type: PeriodType::Regulation,
+            max_regulation_periods: 3,
+        },
+        time_in_period: time_in_period.to_string(),
+        time_remaining: time_remaining.to_string(),
+        situation_code: "1551".to_string(),
+        home_team_defending_side: DefendingSide::Right,
+        type_code: match event_type {
+            PlayEventType::Goal => 505,
+            PlayEventType::ShotOnGoal => 506,
+            PlayEventType::BlockedShot => 508,
+            PlayEventType::Penalty => 509,
+            PlayEventType::Faceoff => 502,
+            PlayEventType::Hit => 503,
+            PlayEventType::Giveaway => 504,
+            PlayEventType::Takeaway => 504,
+            _ => 500,
+        },
+        type_desc_key: event_type,
+        sort_order: event_id as i32,
+        details,
+        ppt_replay_url: None,
+    }
+}
+
+fn create_mock_roster_spots() -> Vec<RosterSpot> {
+    vec![
+        // Toronto Maple Leafs
+        RosterSpot {
+            team_id: 10,
+            player_id: 8478483,
+            first_name: LocalizedString {
+                default: "Auston".to_string(),
+            },
+            last_name: LocalizedString {
+                default: "Matthews".to_string(),
+            },
+            sweater_number: 34,
+            position: Position::Center,
+            headshot: "https://assets.nhle.com/mugs/nhl/20242025/TOR/8478483.png".to_string(),
+        },
+        RosterSpot {
+            team_id: 10,
+            player_id: 8478444,
+            first_name: LocalizedString {
+                default: "Mitch".to_string(),
+            },
+            last_name: LocalizedString {
+                default: "Marner".to_string(),
+            },
+            sweater_number: 16,
+            position: Position::RightWing,
+            headshot: "https://assets.nhle.com/mugs/nhl/20242025/TOR/8478444.png".to_string(),
+        },
+        RosterSpot {
+            team_id: 10,
+            player_id: 8478858,
+            first_name: LocalizedString {
+                default: "William".to_string(),
+            },
+            last_name: LocalizedString {
+                default: "Nylander".to_string(),
+            },
+            sweater_number: 88,
+            position: Position::RightWing,
+            headshot: "https://assets.nhle.com/mugs/nhl/20242025/TOR/8478858.png".to_string(),
+        },
+        RosterSpot {
+            team_id: 10,
+            player_id: 8479318,
+            first_name: LocalizedString {
+                default: "Morgan".to_string(),
+            },
+            last_name: LocalizedString {
+                default: "Rielly".to_string(),
+            },
+            sweater_number: 44,
+            position: Position::Defense,
+            headshot: "https://assets.nhle.com/mugs/nhl/20242025/TOR/8479318.png".to_string(),
+        },
+        RosterSpot {
+            team_id: 10,
+            player_id: 8477970,
+            first_name: LocalizedString {
+                default: "Joseph".to_string(),
+            },
+            last_name: LocalizedString {
+                default: "Woll".to_string(),
+            },
+            sweater_number: 60,
+            position: Position::Goalie,
+            headshot: "https://assets.nhle.com/mugs/nhl/20242025/TOR/8477970.png".to_string(),
+        },
+        // Ottawa Senators
+        RosterSpot {
+            team_id: 9,
+            player_id: 8479469,
+            first_name: LocalizedString {
+                default: "Tim".to_string(),
+            },
+            last_name: LocalizedString {
+                default: "Stutzle".to_string(),
+            },
+            sweater_number: 18,
+            position: Position::Center,
+            headshot: "https://assets.nhle.com/mugs/nhl/20242025/OTT/8479469.png".to_string(),
+        },
+        RosterSpot {
+            team_id: 9,
+            player_id: 8480801,
+            first_name: LocalizedString {
+                default: "Drake".to_string(),
+            },
+            last_name: LocalizedString {
+                default: "Batherson".to_string(),
+            },
+            sweater_number: 19,
+            position: Position::RightWing,
+            headshot: "https://assets.nhle.com/mugs/nhl/20242025/OTT/8480801.png".to_string(),
+        },
+        RosterSpot {
+            team_id: 9,
+            player_id: 8479325,
+            first_name: LocalizedString {
+                default: "Thomas".to_string(),
+            },
+            last_name: LocalizedString {
+                default: "Chabot".to_string(),
+            },
+            sweater_number: 72,
+            position: Position::Defense,
+            headshot: "https://assets.nhle.com/mugs/nhl/20242025/OTT/8479325.png".to_string(),
+        },
+        RosterSpot {
+            team_id: 9,
+            player_id: 8476341,
+            first_name: LocalizedString {
+                default: "Anton".to_string(),
+            },
+            last_name: LocalizedString {
+                default: "Forsberg".to_string(),
+            },
+            sweater_number: 31,
+            position: Position::Goalie,
+            headshot: "https://assets.nhle.com/mugs/nhl/20242025/OTT/8476341.png".to_string(),
+        },
+    ]
 }

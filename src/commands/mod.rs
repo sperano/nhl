@@ -4,6 +4,7 @@ pub mod schedule;
 pub mod scores;
 pub mod scores_format;
 pub mod standings;
+pub mod tail;
 
 use anyhow::{Context, Result};
 use chrono::NaiveDate;

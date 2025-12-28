@@ -104,6 +104,39 @@ enum Commands {
     Franchises,
     /// Display current configuration
     Config,
+    /// Display play-by-play events (like Unix tail)
+    Tail {
+        /// Game ID (e.g., 2024020001)
+        game_id: i64,
+
+        /// Number of plays to show
+        #[arg(short = 'n', long, default_value = "10")]
+        count: usize,
+
+        /// Follow mode - continuously stream new plays
+        #[arg(short = 'f', long)]
+        follow: bool,
+
+        /// Polling interval in seconds (for follow mode)
+        #[arg(long, default_value = "5")]
+        interval: u64,
+
+        /// Show verbose output with additional details
+        #[arg(short, long)]
+        verbose: bool,
+
+        /// Only show goals
+        #[arg(long)]
+        goals: bool,
+
+        /// Only show penalties
+        #[arg(long)]
+        penalties: bool,
+
+        /// Only show shots (includes goals)
+        #[arg(long)]
+        shots: bool,
+    },
 }
 
 fn create_client(#[allow(unused_variables)] mock_mode: bool) -> Arc<dyn NHLDataProvider> {
@@ -229,6 +262,27 @@ async fn execute_command(
         Commands::Schedule { date } => commands::schedule::run(client, date).await,
         Commands::Scores { date } => commands::scores::run(client, date).await,
         Commands::Franchises => commands::franchises::run(client).await,
+        Commands::Tail {
+            game_id,
+            count,
+            follow,
+            interval,
+            verbose,
+            goals,
+            penalties,
+            shots,
+        } => {
+            let filter = commands::tail::EventFilter {
+                goals,
+                penalties,
+                shots,
+            };
+            if follow {
+                commands::tail::follow(client, game_id, count, interval, &filter, verbose).await
+            } else {
+                commands::tail::run(client, game_id, count, &filter, verbose).await
+            }
+        }
     }
 }
 

@@ -2,7 +2,7 @@
 use async_trait::async_trait;
 use nhl_api::{
     Boxscore, ClubStats, DailySchedule, Franchise, GameDate, GameMatchup, GameType, NHLApiError,
-    PlayerLanding, SeasonGameTypes, Standing,
+    PlayByPlay, PlayerLanding, SeasonGameTypes, Standing,
 };
 
 /// Trait for NHL data providers, implemented by both real Client and MockClient
@@ -19,6 +19,9 @@ pub trait NHLDataProvider: Send + Sync {
 
     /// Get boxscore for a specific game
     async fn boxscore(&self, game_id: i64) -> Result<Boxscore, NHLApiError>;
+
+    /// Get play-by-play for a specific game
+    async fn play_by_play(&self, game_id: i64) -> Result<PlayByPlay, NHLApiError>;
 
     /// Get club stats for a team
     async fn club_stats(
@@ -68,6 +71,10 @@ impl NHLDataProvider for nhl_api::Client {
 
     async fn boxscore(&self, game_id: i64) -> Result<Boxscore, NHLApiError> {
         self.boxscore(game_id).await
+    }
+
+    async fn play_by_play(&self, game_id: i64) -> Result<PlayByPlay, NHLApiError> {
+        self.play_by_play(game_id).await
     }
 
     async fn club_stats(

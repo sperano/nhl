@@ -31,6 +31,12 @@ pub fn format_schedule(schedule: &DailySchedule) -> String {
                 team_line,
                 width = SCHEDULE_BOX_CONTENT_WIDTH
             ));
+            let id_line = format!("Game ID: {}", game.id);
+            output.push_str(&format!(
+                "│ {:<width$} │\n",
+                id_line,
+                width = SCHEDULE_BOX_CONTENT_WIDTH
+            ));
             output.push_str(&format!(
                 "├{:─<width$}┤\n",
                 "",
@@ -160,8 +166,8 @@ mod tests {
         };
 
         let output = format_schedule(&schedule);
-        let lines: Vec<&str> = output.lines().skip(4).take(8).collect();
-        assert_eq!(lines.len(), 8, "Should be 8 lines of output");
+        let lines: Vec<&str> = output.lines().skip(4).take(9).collect();
+        assert_eq!(lines.len(), 9, "Should be 9 lines of output");
         assert_eq!(
             lines[0], "┌──────────────────────────────────────────────────────────────┐",
             "Top border line"
@@ -171,35 +177,39 @@ mod tests {
             "Team line"
         );
         assert_eq!(
-            lines[2], "├──────────────────────────────────────────────────────────────┤",
+            lines[2], "│ Game ID: 2024020001                                          │",
+            "Game ID line"
+        );
+        assert_eq!(
+            lines[3], "├──────────────────────────────────────────────────────────────┤",
             "Middle border line"
         );
         assert_eq!(
-            lines[3], "│ Status: LIVE                                                 │",
+            lines[4], "│ Status: LIVE                                                 │",
             "Status line"
         );
         // Time varies by timezone, so just check the format
         assert!(
-            lines[4].starts_with("│ Time: ") && lines[4].ends_with(" │"),
+            lines[5].starts_with("│ Time: ") && lines[5].ends_with(" │"),
             "Time line should have correct format, got: {}",
-            lines[4]
+            lines[5]
         );
         // Verify it contains a time pattern like "HH:MM AM/PM"
         assert!(
-            lines[4].contains(":00 AM") || lines[4].contains(":00 PM"),
+            lines[5].contains(":00 AM") || lines[5].contains(":00 PM"),
             "Time line should contain a time, got: {}",
-            lines[4]
+            lines[5]
         );
         assert_eq!(
-            lines[5], "├──────────────────────────────────────────────────────────────┤",
+            lines[6], "├──────────────────────────────────────────────────────────────┤",
             "Score border line"
         );
         assert_eq!(
-            lines[6], "│ CHI                      0  -  0                         SEA │",
+            lines[7], "│ CHI                      0  -  0                         SEA │",
             "Score line"
         );
         assert_eq!(
-            lines[7], "└──────────────────────────────────────────────────────────────┘",
+            lines[8], "└──────────────────────────────────────────────────────────────┘",
             "Bottom border line"
         );
     }
