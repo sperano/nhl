@@ -11,8 +11,11 @@ env:
 
 jobs:
   test:
-    name: Test
+    name: Test (${{ matrix.features }})
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        features: [default, development, game_stats]
     steps:
       - uses: actions/checkout@v4
 
@@ -23,11 +26,14 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Run tests
-        run: cargo test --lib
+        run: cargo test --lib ${{ matrix.features != 'default' && format('--features {0}', matrix.features) || '' }}
 
   clippy:
-    name: Clippy
+    name: Clippy (${{ matrix.features }})
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        features: [default, development, game_stats]
     steps:
       - uses: actions/checkout@v4
 
@@ -40,7 +46,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Run clippy
-        run: cargo clippy -- -D warnings
+        run: cargo clippy ${{ matrix.features != 'default' && format('--features {0}', matrix.features) || '' }} -- -D warnings
 
   fmt:
     name: Format

@@ -206,7 +206,12 @@ fn print_play_compact(pbp: &PlayByPlay, play: &PlayEvent) {
 
     println!(
         "{}{} {:>5}  {:<10}{} {}",
-        color, period, time, event_label, colors::RESET, description
+        color,
+        period,
+        time,
+        event_label,
+        colors::RESET,
+        description
     );
 }
 
@@ -220,11 +225,21 @@ fn print_play_verbose(pbp: &PlayByPlay, play: &PlayEvent) {
 
     println!(
         "{}{} {:>5}  {:<10}{} {}",
-        color, period, time, event_label, colors::RESET, main_line
+        color,
+        period,
+        time,
+        event_label,
+        colors::RESET,
+        main_line
     );
 
     for detail in detail_lines {
-        println!("                    {}{}{}", colors::GRAY, detail, colors::RESET);
+        println!(
+            "                    {}{}{}",
+            colors::GRAY,
+            detail,
+            colors::RESET
+        );
     }
 }
 
@@ -498,8 +513,5 @@ fn capitalize(s: &str) -> String {
 
 /// Capitalize penalty type (handle kebab-case)
 fn capitalize_penalty(s: &str) -> String {
-    s.split('-')
-        .map(capitalize)
-        .collect::<Vec<_>>()
-        .join(" ")
+    s.split('-').map(capitalize).collect::<Vec<_>>().join(" ")
 }

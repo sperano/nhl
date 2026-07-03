@@ -1,6 +1,8 @@
 use crate::config::{Config, DisplayConfig};
 use crate::data_provider::NHLDataProvider;
 use crate::formatting::format_header;
+#[cfg(feature = "game_stats")]
+use crate::layout_constants::BOXSCORE_STAT_BAR_WIDTH;
 use crate::layout_constants::{BOXSCORE_LABEL_WIDTH, BOXSCORE_SCORE_WIDTH};
 use anyhow::{Context, Result};
 use nhl_api::Boxscore;

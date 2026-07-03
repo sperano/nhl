@@ -297,7 +297,9 @@ impl DemoDocument {
 
                 builder.spacer(1).table(TABLE_NAME, table).build()
             }
-            _ => builder.text("(No standings data loaded - try refreshing)").build(),
+            _ => builder
+                .text("(No standings data loaded - try refreshing)")
+                .build(),
         }
     }
 

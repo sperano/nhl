@@ -7,12 +7,11 @@
 ///
 /// The fixtures represent realistic NHL data with all 32 teams and various game states.
 use nhl_api::{
-    Boxscore, BoxscoreTeam, DailySchedule, DefendingSide, Franchise, GameClock, GameDate,
-    GameLog, GameMatchup, GameOutcome, GameScheduleState, GameState, GameType, Handedness,
-    HomeRoad, LocalizedString, PeriodDescriptor, PeriodType, PlayByPlay, PlayEvent,
-    PlayEventDetails, PlayEventType, PlayerByGameStats, PlayerGameLog, PlayerLanding,
-    PlayerSearchResult, Position, RosterSpot, ScheduleGame, ScheduleTeam, Standing,
-    TeamPlayerStats, ZoneCode,
+    Boxscore, BoxscoreTeam, DailySchedule, DefendingSide, Franchise, GameClock, GameDate, GameLog,
+    GameMatchup, GameOutcome, GameScheduleState, GameState, GameType, Handedness, HomeRoad,
+    LocalizedString, PeriodDescriptor, PeriodType, PlayByPlay, PlayEvent, PlayEventDetails,
+    PlayEventType, PlayerByGameStats, PlayerGameLog, PlayerLanding, PlayerSearchResult, Position,
+    RosterSpot, ScheduleGame, ScheduleTeam, Standing, TeamPlayerStats, ZoneCode,
 };
 
 /// Create mock standings data - reusing the test data structure

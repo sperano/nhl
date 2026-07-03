@@ -11,7 +11,7 @@ use crate::tui::document::{
     Document, DocumentBuilder, DocumentElement, DocumentView, FocusContext,
     TEAM_BOXSCORE_SIDE_BY_SIDE_WIDTH,
 };
-use crate::tui::widgets::{LoadingAnimation, ScoreBoxStatus, StandaloneWidget};
+use crate::tui::widgets::{BigScoreParams, LoadingAnimation, ScoreBoxStatus, StandaloneWidget};
 use crate::tui::{Alignment, CellValue, ColumnDef};
 
 /// View mode for boxscore panel
@@ -78,16 +78,16 @@ impl BoxscoreDocumentContent {
 
         if focus.use_unicode {
             let status = boxscore_to_status(boxscore);
-            vec![DocumentElement::big_score(
-                &boxscore.away_team.common_name.default,
-                &boxscore.home_team.common_name.default,
-                boxscore.away_team.score,
-                boxscore.home_team.score,
-                boxscore.away_team.sog,
-                boxscore.home_team.sog,
+            vec![DocumentElement::big_score(BigScoreParams {
+                away_name: boxscore.away_team.common_name.default.clone(),
+                home_name: boxscore.home_team.common_name.default.clone(),
+                away_score: boxscore.away_team.score,
+                home_score: boxscore.home_team.score,
+                away_sog: boxscore.away_team.sog,
+                home_sog: boxscore.home_team.sog,
                 status,
-                &boxscore.venue.default,
-            )]
+                venue: boxscore.venue.default.clone(),
+            })]
         } else {
             let score_text = format!(
                 "{}: {}  |  {}: {}  (SOG: {} - {})",

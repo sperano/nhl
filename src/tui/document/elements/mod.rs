@@ -13,7 +13,7 @@ use crate::big_digits::BIG_DIGIT_HEIGHT;
 use crate::config::RenderContext;
 use crate::tui::component::ElementWidget;
 use crate::tui::components::TableWidget;
-use crate::tui::widgets::{BigScore, ScoreBox, ScoreBoxStatus, StandaloneWidget};
+use crate::tui::widgets::{BigScore, BigScoreParams, ScoreBox, StandaloneWidget};
 
 use super::focus::{FocusableElement, FocusableId, RowPosition};
 use super::link::LinkTarget;
@@ -1021,30 +1021,9 @@ impl DocumentElement {
     }
 
     /// Create a big score element
-    ///
-    /// # Arguments
-    /// - `away_name`: Away team common name (e.g., "Devils")
-    /// - `home_name`: Home team common name (e.g., "Sabres")
-    /// - `away_score`: Away team score
-    /// - `home_score`: Home team score
-    /// - `away_sog`: Away team shots on goal
-    /// - `home_sog`: Home team shots on goal
-    /// - `status`: Game status (Final, Live, Scheduled)
-    /// - `venue`: Venue name (e.g., "TD Garden")
-    pub fn big_score(
-        away_name: impl Into<String>,
-        home_name: impl Into<String>,
-        away_score: i32,
-        home_score: i32,
-        away_sog: i32,
-        home_sog: i32,
-        status: ScoreBoxStatus,
-        venue: impl Into<String>,
-    ) -> Self {
+    pub fn big_score(params: BigScoreParams) -> Self {
         Self::BigScoreElement {
-            big_score: BigScore::new(
-                away_name, home_name, away_score, home_score, away_sog, home_sog, status, venue,
-            ),
+            big_score: BigScore::new(params),
         }
     }
 

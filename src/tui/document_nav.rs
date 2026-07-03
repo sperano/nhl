@@ -66,7 +66,11 @@ impl DocumentNavState {
             return false;
         }
         let current = self.get_tab_selection(tabs_id);
-        let next = if current + 1 >= tab_count { 0 } else { current + 1 };
+        let next = if current + 1 >= tab_count {
+            0
+        } else {
+            current + 1
+        };
         if next != current {
             self.doc_tab_selections.insert(tabs_id.to_string(), next);
             true

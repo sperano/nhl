@@ -58,7 +58,10 @@ pub async fn run(
                 .sweater_number
                 .map(|n| format!("#{}", n))
                 .unwrap_or_default();
-            println!("  {} {} - {} {}", player.name, number, team, player.position);
+            println!(
+                "  {} {} - {} {}",
+                player.name, number, team, player.position
+            );
         }
         println!();
         println!("Please be more specific.");
@@ -93,9 +96,10 @@ pub async fn run(
         .await
         .context("Failed to fetch schedule")?;
 
-    let team_game = schedule.games.iter().find(|g| {
-        g.away_team.abbrev == player_team || g.home_team.abbrev == player_team
-    });
+    let team_game = schedule
+        .games
+        .iter()
+        .find(|g| g.away_team.abbrev == player_team || g.home_team.abbrev == player_team);
 
     let boxscore_stats = if let Some(game) = team_game {
         // Only fetch boxscore if game has started

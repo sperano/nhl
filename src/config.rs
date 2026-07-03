@@ -573,7 +573,10 @@ impl<'a> RenderContext<'a> {
     }
 
     /// Set tab selections for embedded tabs
-    pub fn with_tab_selections(mut self, selections: std::collections::HashMap<String, usize>) -> Self {
+    pub fn with_tab_selections(
+        mut self,
+        selections: std::collections::HashMap<String, usize>,
+    ) -> Self {
         self.tab_selections = selections;
         self
     }
