@@ -1,5 +1,6 @@
 pub mod boxscore;
 pub mod franchises;
+pub mod player_stats;
 pub mod schedule;
 pub mod scores;
 pub mod scores_format;

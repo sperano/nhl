@@ -2,7 +2,7 @@
 use async_trait::async_trait;
 use nhl_api::{
     Boxscore, ClubStats, DailySchedule, Franchise, GameDate, GameMatchup, GameType, NHLApiError,
-    PlayByPlay, PlayerLanding, SeasonGameTypes, Standing,
+    PlayByPlay, PlayerGameLog, PlayerLanding, PlayerSearchResult, SeasonGameTypes, Standing,
 };
 
 /// Trait for NHL data providers, implemented by both real Client and MockClient
@@ -40,6 +40,21 @@ pub trait NHLDataProvider: Send + Sync {
 
     /// Get all franchises
     async fn franchises(&self) -> Result<Vec<Franchise>, NHLApiError>;
+
+    /// Search for players by name
+    async fn search_player(
+        &self,
+        query: &str,
+        limit: Option<i32>,
+    ) -> Result<Vec<PlayerSearchResult>, NHLApiError>;
+
+    /// Get player game log for a season
+    async fn player_game_log(
+        &self,
+        player_id: i64,
+        season: i32,
+        game_type: GameType,
+    ) -> Result<PlayerGameLog, NHLApiError>;
 
     /// Get league standings for a specific season
     async fn league_standings_for_season(
@@ -99,6 +114,23 @@ impl NHLDataProvider for nhl_api::Client {
 
     async fn franchises(&self) -> Result<Vec<Franchise>, NHLApiError> {
         self.franchises().await
+    }
+
+    async fn search_player(
+        &self,
+        query: &str,
+        limit: Option<i32>,
+    ) -> Result<Vec<PlayerSearchResult>, NHLApiError> {
+        self.search_player(query, limit).await
+    }
+
+    async fn player_game_log(
+        &self,
+        player_id: i64,
+        season: i32,
+        game_type: GameType,
+    ) -> Result<PlayerGameLog, NHLApiError> {
+        self.player_game_log(player_id, season, game_type).await
     }
 
     async fn league_standings_for_season(

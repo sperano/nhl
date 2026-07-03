@@ -30,7 +30,9 @@ use crate::tui::state::DataState;
 use crate::tui::types::StackedDocument;
 
 pub use builder::DocumentBuilder;
-pub use elements::{DocumentElement, RowAlignment, TEAM_BOXSCORE_SIDE_BY_SIDE_WIDTH};
+pub use elements::{
+    DocTabDef, DocumentElement, RowAlignment, TAB_BAR_HEIGHT, TEAM_BOXSCORE_SIDE_BY_SIDE_WIDTH,
+};
 pub use focus::{FocusManager, FocusableElement, FocusableId, RowPosition};
 pub use link::{DocumentLink, DocumentType, LinkParams, LinkTarget};
 pub use viewport::Viewport;
@@ -47,6 +49,8 @@ pub struct FocusContext {
     pub use_unicode: bool,
     /// Box drawing characters for rendering
     pub box_chars: crate::formatting::BoxChars,
+    /// Active tab selections for Tabs elements (tabs_id -> active_index)
+    pub tab_selections: std::collections::HashMap<String, usize>,
 }
 
 impl Default for FocusContext {
@@ -56,6 +60,7 @@ impl Default for FocusContext {
             available_width: None,
             use_unicode: true,
             box_chars: crate::formatting::BoxChars::unicode(),
+            tab_selections: std::collections::HashMap::new(),
         }
     }
 }
@@ -68,6 +73,7 @@ impl FocusContext {
             available_width: None,
             use_unicode: true,
             box_chars: crate::formatting::BoxChars::unicode(),
+            tab_selections: std::collections::HashMap::new(),
         }
     }
 
@@ -78,6 +84,7 @@ impl FocusContext {
             available_width: None,
             use_unicode: true,
             box_chars: crate::formatting::BoxChars::unicode(),
+            tab_selections: std::collections::HashMap::new(),
         }
     }
 
@@ -88,6 +95,7 @@ impl FocusContext {
             available_width: None,
             use_unicode: true,
             box_chars: crate::formatting::BoxChars::unicode(),
+            tab_selections: std::collections::HashMap::new(),
         }
     }
 
@@ -129,6 +137,20 @@ impl FocusContext {
     /// Check if a link with the given ID is focused
     pub fn is_link_focused(&self, id: &str) -> bool {
         matches!(&self.focused_id, Some(FocusableId::Link(link_id)) if link_id == id)
+    }
+
+    /// Set tab selections from a map
+    pub fn with_tab_selections(
+        mut self,
+        selections: std::collections::HashMap<String, usize>,
+    ) -> Self {
+        self.tab_selections = selections;
+        self
+    }
+
+    /// Get the active tab index for a tabs element
+    pub fn get_tab_selection(&self, tabs_id: &str) -> Option<usize> {
+        self.tab_selections.get(tabs_id).copied()
     }
 }
 
@@ -507,7 +529,8 @@ impl DocumentView {
             .unwrap_or_default()
             .with_width(content_width)
             .with_unicode(ctx.use_unicode())
-            .with_box_chars(ctx.config.box_chars);
+            .with_box_chars(ctx.config.box_chars)
+            .with_tab_selections(ctx.tab_selections.clone());
 
         let (full_buf, height) = self.document.render_full(content_width, ctx, &focus);
         self.full_buffer = Some(full_buf);

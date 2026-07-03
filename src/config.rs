@@ -549,12 +549,18 @@ impl DisplayConfig {
 pub struct RenderContext<'a> {
     pub config: &'a DisplayConfig,
     pub focused: bool,
+    /// Tab selections for embedded tabs in documents (tabs_id -> active_index)
+    pub tab_selections: std::collections::HashMap<String, usize>,
 }
 
 impl<'a> RenderContext<'a> {
     /// Create a new render context
     pub fn new(config: &'a DisplayConfig, focused: bool) -> Self {
-        Self { config, focused }
+        Self {
+            config,
+            focused,
+            tab_selections: std::collections::HashMap::new(),
+        }
     }
 
     /// Create a focused render context (convenience for the common case)
@@ -562,7 +568,14 @@ impl<'a> RenderContext<'a> {
         Self {
             config,
             focused: true,
+            tab_selections: std::collections::HashMap::new(),
         }
+    }
+
+    /// Set tab selections for embedded tabs
+    pub fn with_tab_selections(mut self, selections: std::collections::HashMap<String, usize>) -> Self {
+        self.tab_selections = selections;
+        self
     }
 
     /// Get the base style (with background color if theme specifies one)

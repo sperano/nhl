@@ -17,6 +17,46 @@ use crate::tui::widgets::{BigScore, ScoreBox, ScoreBoxStatus, StandaloneWidget};
 
 use super::focus::{FocusableElement, FocusableId, RowPosition};
 use super::link::LinkTarget;
+use super::FocusContext;
+
+/// Tab bar height (labels line + separator line)
+pub const TAB_BAR_HEIGHT: u16 = 2;
+
+/// Definition of a single tab within a Tabs element
+#[derive(Clone)]
+pub struct DocTabDef {
+    /// Unique key identifying this tab
+    pub key: String,
+    /// Display title for the tab header
+    pub title: String,
+    /// Content elements for this tab
+    pub content: Vec<DocumentElement>,
+}
+
+impl DocTabDef {
+    /// Create a new tab definition
+    pub fn new(
+        key: impl Into<String>,
+        title: impl Into<String>,
+        content: Vec<DocumentElement>,
+    ) -> Self {
+        Self {
+            key: key.into(),
+            title: title.into(),
+            content,
+        }
+    }
+}
+
+impl std::fmt::Debug for DocTabDef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DocTabDef")
+            .field("key", &self.key)
+            .field("title", &self.title)
+            .field("content_count", &self.content.len())
+            .finish()
+    }
+}
 
 /// Alignment options for Row elements with fixed-width children
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -182,6 +222,21 @@ pub enum DocumentElement {
         /// The BigScore widget
         big_score: BigScore,
     },
+
+    /// Tabbed panel within a document
+    ///
+    /// Renders a tab bar with multiple tabs, showing only the active tab's content.
+    /// Tab selection is managed via FocusContext and stored in DocumentNavState.
+    ///
+    /// Height = TAB_BAR_HEIGHT (2) + active tab content height
+    Tabs {
+        /// Unique identifier for this tabs element
+        id: String,
+        /// Tab definitions with their content
+        tabs: Vec<DocTabDef>,
+        /// Index of the currently active tab (0-based)
+        active_index: usize,
+    },
 }
 
 impl std::fmt::Debug for DocumentElement {
@@ -274,6 +329,16 @@ impl std::fmt::Debug for DocumentElement {
                 .field("away", &big_score.away_name)
                 .field("home", &big_score.home_name)
                 .finish(),
+            Self::Tabs {
+                id,
+                tabs,
+                active_index,
+            } => f
+                .debug_struct("Tabs")
+                .field("id", id)
+                .field("tab_count", &tabs.len())
+                .field("active_index", active_index)
+                .finish(),
         }
     }
 }
@@ -350,6 +415,16 @@ impl DocumentElement {
             }
             Self::BigScoreElement { big_score } => {
                 big_score.preferred_height().unwrap_or(BIG_DIGIT_HEIGHT + 1)
+            }
+            Self::Tabs {
+                tabs, active_index, ..
+            } => {
+                // Tab bar (2 lines) + active tab content height
+                let content_height = tabs
+                    .get(*active_index)
+                    .map(|tab| tab.content.iter().map(|e| e.height()).sum())
+                    .unwrap_or(0);
+                TAB_BAR_HEIGHT + content_height
             }
         }
     }
@@ -444,6 +519,20 @@ impl DocumentElement {
                     out.push(adjusted);
                 }
             }
+            Self::Tabs {
+                tabs, active_index, ..
+            } => {
+                // Only collect focusable elements from the active tab
+                if let Some(tab) = tabs.get(*active_index) {
+                    // Content starts after tab bar
+                    let content_y = y_offset + TAB_BAR_HEIGHT;
+                    let mut content_offset = content_y;
+                    for child in &tab.content {
+                        child.collect_focusable(out, content_offset);
+                        content_offset += child.height();
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -484,6 +573,19 @@ impl DocumentElement {
             Self::TeamBoxscore { focusable, .. } => {
                 for elem in focusable {
                     out.push(elem.id.clone());
+                }
+            }
+            Self::Tabs {
+                tabs, active_index, ..
+            } => {
+                // Only collect IDs from active tab
+                if let Some(tab) = tabs.get(*active_index) {
+                    let content_y = y_offset + TAB_BAR_HEIGHT;
+                    let mut content_offset = content_y;
+                    for child in &tab.content {
+                        child.collect_focusable_ids(out, content_offset);
+                        content_offset += child.height();
+                    }
                 }
             }
             _ => {}
@@ -564,6 +666,11 @@ impl DocumentElement {
             }
             Self::BigScoreElement { big_score } => {
                 big_score.render(area, buf, ctx);
+            }
+            Self::Tabs {
+                tabs, active_index, ..
+            } => {
+                render::render_tabs(tabs, *active_index, area, buf, ctx);
             }
         }
     }
@@ -938,6 +1045,43 @@ impl DocumentElement {
             big_score: BigScore::new(
                 away_name, home_name, away_score, home_score, away_sog, home_sog, status, venue,
             ),
+        }
+    }
+
+    /// Create a tabbed panel element
+    ///
+    /// # Arguments
+    /// - `id`: Unique identifier for this tabs element (used for state tracking)
+    /// - `tabs`: Vec of tab definitions
+    /// - `active_index`: Index of the initially active tab
+    pub fn tabs(id: impl Into<String>, tabs: Vec<DocTabDef>, active_index: usize) -> Self {
+        Self::Tabs {
+            id: id.into(),
+            tabs,
+            active_index,
+        }
+    }
+
+    /// Create a tabbed panel from the focus context
+    ///
+    /// The active index is read from the focus context's tab_selections map.
+    /// Falls back to 0 if not found.
+    pub fn tabs_from_context(
+        id: impl Into<String>,
+        tabs: Vec<DocTabDef>,
+        focus: &FocusContext,
+    ) -> Self {
+        let id = id.into();
+        let active_index = focus
+            .tab_selections
+            .get(&id)
+            .copied()
+            .unwrap_or(0)
+            .min(tabs.len().saturating_sub(1));
+        Self::Tabs {
+            id,
+            tabs,
+            active_index,
         }
     }
 }

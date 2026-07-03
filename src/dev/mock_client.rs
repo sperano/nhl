@@ -3,7 +3,7 @@ use crate::data_provider::NHLDataProvider;
 use async_trait::async_trait;
 use nhl_api::{
     Boxscore, ClubStats, DailySchedule, Franchise, GameDate, GameMatchup, GameType, NHLApiError,
-    PlayByPlay, PlayerLanding, SeasonGameTypes, Standing,
+    PlayByPlay, PlayerGameLog, PlayerLanding, PlayerSearchResult, SeasonGameTypes, Standing,
 };
 use tracing::info;
 
@@ -104,6 +104,33 @@ impl NHLDataProvider for MockClient {
     async fn franchises(&self) -> Result<Vec<Franchise>, NHLApiError> {
         info!("MockClient: Returning mock franchises");
         Ok(fixtures::create_mock_franchises())
+    }
+
+    async fn search_player(
+        &self,
+        query: &str,
+        limit: Option<i32>,
+    ) -> Result<Vec<PlayerSearchResult>, NHLApiError> {
+        info!(
+            "MockClient: Returning mock player search for '{}' (limit: {:?})",
+            query, limit
+        );
+        Ok(fixtures::create_mock_player_search(query, limit))
+    }
+
+    async fn player_game_log(
+        &self,
+        player_id: i64,
+        season: i32,
+        game_type: GameType,
+    ) -> Result<PlayerGameLog, NHLApiError> {
+        info!(
+            "MockClient: Returning mock player game log for {} {} {}",
+            player_id, season, game_type
+        );
+        Ok(fixtures::create_mock_player_game_log(
+            player_id, season, game_type,
+        ))
     }
 
     async fn league_standings_for_season(

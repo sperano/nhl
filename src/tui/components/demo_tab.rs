@@ -19,95 +19,13 @@ use crate::config::RenderContext;
 use crate::tui::action::Action;
 use crate::tui::component::{Component, Effect, Element, ElementWidget};
 use crate::tui::components::create_standings_table_with_selection;
-use crate::tui::components::TableWidget;
 use crate::tui::document::{
     Document, DocumentBuilder, DocumentElement, DocumentView, FocusContext, LinkTarget,
 };
 use crate::tui::document_nav::{DocumentNavMsg, DocumentNavState};
 use crate::tui::helpers::StandingsSorting;
-use crate::tui::tab_component::{handle_common_message, CommonTabMessage, TabMessage, TabState};
+use crate::tui::tab_component::{handle_common_message, CommonTabMessage, TabMessage};
 use crate::tui::types::StackedDocument;
-use crate::tui::{Alignment, CellValue, ColumnDef};
-
-/// Demo player data for the sample player table
-#[derive(Clone)]
-struct DemoPlayer {
-    name: String,
-    player_id: i64,
-    team: String,
-    games: u32,
-    goals: u32,
-    assists: u32,
-}
-
-impl DemoPlayer {
-    fn new(name: &str, player_id: i64, team: &str, games: u32, goals: u32, assists: u32) -> Self {
-        Self {
-            name: name.to_string(),
-            player_id,
-            team: team.to_string(),
-            games,
-            goals,
-            assists,
-        }
-    }
-
-    fn points(&self) -> u32 {
-        self.goals + self.assists
-    }
-}
-
-/// Create sample forward player data for demo (top scorers)
-fn create_demo_forwards() -> Vec<DemoPlayer> {
-    vec![
-        DemoPlayer::new("Nathan MacKinnon", 8477492, "COL", 82, 51, 89),
-        DemoPlayer::new("Nikita Kucherov", 8476453, "TBL", 81, 44, 100),
-        DemoPlayer::new("Connor McDavid", 8478402, "EDM", 76, 32, 100),
-        DemoPlayer::new("Leon Draisaitl", 8477934, "EDM", 81, 41, 65),
-        DemoPlayer::new("Auston Matthews", 8479318, "TOR", 69, 69, 38),
-    ]
-}
-
-/// Create sample defenseman player data for demo (top scoring D)
-fn create_demo_defensemen() -> Vec<DemoPlayer> {
-    vec![
-        DemoPlayer::new("Quinn Hughes", 8480800, "VAN", 82, 17, 75),
-        DemoPlayer::new("Cale Makar", 8480069, "COL", 77, 21, 69),
-        DemoPlayer::new("Roman Josi", 8474600, "NSH", 82, 23, 62),
-        DemoPlayer::new("Evan Bouchard", 8480803, "EDM", 81, 18, 64),
-        DemoPlayer::new("Adam Fox", 8479323, "NYR", 74, 17, 56),
-    ]
-}
-
-/// Create a player stats table widget from given players
-fn create_player_table(players: Vec<DemoPlayer>, focused_row: Option<usize>) -> TableWidget {
-    let columns: Vec<ColumnDef<DemoPlayer>> = vec![
-        ColumnDef::new("Player", 18, Alignment::Left, |p: &DemoPlayer| {
-            CellValue::PlayerLink {
-                display: p.name.clone(),
-                player_id: p.player_id,
-            }
-        }),
-        // Team as Text (not TeamLink) so only Player column is focusable per row
-        ColumnDef::new("Team", 5, Alignment::Center, |p: &DemoPlayer| {
-            CellValue::Text(p.team.clone())
-        }),
-        ColumnDef::new("GP", 3, Alignment::Right, |p: &DemoPlayer| {
-            CellValue::Text(p.games.to_string())
-        }),
-        ColumnDef::new("G", 3, Alignment::Right, |p: &DemoPlayer| {
-            CellValue::Text(p.goals.to_string())
-        }),
-        ColumnDef::new("A", 3, Alignment::Right, |p: &DemoPlayer| {
-            CellValue::Text(p.assists.to_string())
-        }),
-        ColumnDef::new("PTS", 4, Alignment::Right, |p: &DemoPlayer| {
-            CellValue::Text(p.points().to_string())
-        }),
-    ];
-
-    TableWidget::from_data(&columns, players).with_focused_row(focused_row)
-}
 
 /// Props for the Demo tab
 #[derive(Clone)]
@@ -241,9 +159,15 @@ impl Component for DemoTab {
             focus_index: state.focus_index,
             scroll_offset: state.scroll_offset,
             standings: props.standings.clone(),
+            tab_selections: state.doc_tab_selections.clone(),
         }))
     }
 }
+
+/// Number of tabs in the demo document
+const DEMO_TAB_COUNT: usize = 2;
+/// ID for the tabs element in the demo document
+const DEMO_TABS_ID: &str = "demo_tabs";
 
 impl DemoTab {
     /// Handle key events when this tab is focused
@@ -260,6 +184,22 @@ impl DemoTab {
             }
             KeyCode::Down => {
                 crate::tui::document_nav::handle_message(state, &DocumentNavMsg::FocusNext)
+            }
+            KeyCode::Left => {
+                // Switch to previous tab
+                if state.prev_tab(DEMO_TABS_ID, DEMO_TAB_COUNT) {
+                    // Clear focus when switching tabs - new tab has different content
+                    state.clear_item_focus();
+                }
+                Effect::None
+            }
+            KeyCode::Right => {
+                // Switch to next tab
+                if state.next_tab(DEMO_TABS_ID, DEMO_TAB_COUNT) {
+                    // Clear focus when switching tabs - new tab has different content
+                    state.clear_item_focus();
+                }
+                Effect::None
             }
             KeyCode::Tab => {
                 crate::tui::document_nav::handle_message(state, &DocumentNavMsg::FocusNext)
@@ -282,6 +222,7 @@ struct DemoTabWidget {
     focus_index: Option<usize>,
     scroll_offset: u16,
     standings: Arc<Option<Vec<Standing>>>,
+    tab_selections: std::collections::HashMap<String, usize>,
 }
 
 impl ElementWidget for DemoTabWidget {
@@ -302,7 +243,8 @@ impl ElementWidget for DemoTabWidget {
         // Create child RenderContext with our focus state
         // Document is only focused when navigating items within the document
         let has_item_focus = self.focus_index.is_some();
-        let child_ctx = RenderContext::new(ctx.config, self.focused && has_item_focus);
+        let child_ctx = RenderContext::new(ctx.config, self.focused && has_item_focus)
+            .with_tab_selections(self.tab_selections.clone());
 
         view.render(area, buf, &child_ctx);
     }
@@ -313,6 +255,7 @@ impl ElementWidget for DemoTabWidget {
             focus_index: self.focus_index,
             scroll_offset: self.scroll_offset,
             standings: self.standings.clone(),
+            tab_selections: self.tab_selections.clone(),
         })
     }
 
@@ -331,18 +274,14 @@ impl DemoDocument {
         Self { standings }
     }
 
-    /// Build standings table using the shared StandingsTable component
-    fn build_standings_section(
-        &self,
-        builder: DocumentBuilder,
-        focus: &FocusContext,
-    ) -> DocumentBuilder {
-        let builder = builder
+    /// Build the content for the Standings tab
+    fn build_standings_tab_content(&self, focus: &FocusContext) -> Vec<DocumentElement> {
+        const TABLE_NAME: &str = "standings";
+
+        let builder = DocumentBuilder::new()
             .heading(2, "League Standings")
             .spacer(1)
             .text("This demonstrates the shared standings table embedded in a document:");
-
-        const TABLE_NAME: &str = "standings";
 
         match &self.standings {
             Some(standings) if !standings.is_empty() => {
@@ -356,67 +295,56 @@ impl DemoDocument {
                     focus.focused_table_row(TABLE_NAME),
                 );
 
-                builder.spacer(1).table(TABLE_NAME, table)
+                builder.spacer(1).table(TABLE_NAME, table).build()
             }
-            _ => builder.text("(No standings data loaded - try refreshing)"),
+            _ => builder.text("(No standings data loaded - try refreshing)").build(),
         }
     }
 
-    /// Build the player stats table section with two tables side by side
-    fn build_player_section(
-        &self,
-        builder: DocumentBuilder,
-        focus: &FocusContext,
-    ) -> DocumentBuilder {
-        const FORWARDS_TABLE: &str = "forwards";
-        const DEFENSEMEN_TABLE: &str = "defensemen";
-
-        let forwards_table = create_player_table(
-            create_demo_forwards(),
-            focus.focused_table_row(FORWARDS_TABLE),
-        );
-        let defensemen_table = create_player_table(
-            create_demo_defensemen(),
-            focus.focused_table_row(DEFENSEMEN_TABLE),
-        );
-
-        builder
-            .heading(2, "Top Scorers (2023-24)")
+    /// Build the content for the Players tab
+    fn build_players_tab_content(&self) -> Vec<DocumentElement> {
+        DocumentBuilder::new()
+            .heading(2, "Player Stats")
             .spacer(1)
-            .text("These tables demonstrate side-by-side layout with focusable player links:")
-            .spacer(1)
-            .row(vec![
-                DocumentElement::table(FORWARDS_TABLE, forwards_table),
-                DocumentElement::table(DEFENSEMEN_TABLE, defensemen_table),
-            ])
+            .text("TODO: Player statistics will be displayed here.")
+            .build()
     }
 }
 
 impl Document for DemoDocument {
     fn build(&self, focus: &FocusContext) -> Vec<DocumentElement> {
-        let builder = DocumentBuilder::new()
+        // Build the Standings tab content
+        let standings_content = self.build_standings_tab_content(focus);
+
+        // Build the Players tab content
+        let players_content = self.build_players_tab_content();
+
+        DocumentBuilder::new()
             .heading(1, "Document System Demo")
             .spacer(1)
             .text("This tab demonstrates the new document system for the NHL TUI.")
-            .text("Press Tab/Shift-Tab to navigate between focusable elements.")
+            .text("Press Tab/Shift-Tab to navigate, Left/Right to switch tabs.")
             .spacer(1)
             .separator()
-            .spacer(1);
-
-        // Add standings section first (showcases natural height rendering)
-        let builder = self.build_standings_section(builder, focus);
-
-        // Then add the rest of the demo content
-        let builder = builder
+            .spacer(1)
+            // Embedded tabs demonstrating tabs-within-documents
+            .tabs_with_focus(
+                "demo_tabs",
+                vec![
+                    ("standings", "Standings", standings_content),
+                    ("players", "Players", players_content),
+                ],
+                focus,
+            )
             .spacer(1)
             .separator()
             .spacer(1)
             .heading(2, "Features")
             .text("- Viewport-based scrolling for unlimited content height")
             .text("- Tab/Shift-Tab navigation cycles through focusable elements")
+            .text("- Left/Right arrows switch between embedded tabs")
             .text("- Autoscrolling keeps the focused element visible")
             .text("- Smart padding positions elements comfortably in view")
-            .text("- Focus wrapping scrolls to top/bottom automatically")
             .spacer(1)
             .heading(2, "Example Links")
             .text("These links demonstrate focusable elements:")
@@ -462,12 +390,10 @@ impl Document for DemoDocument {
             .spacer(1)
             .text("Each document implements the Document trait to define its")
             .text("content structure. DocumentView manages the viewport and")
-            .text("focus state for rendering and interaction.");
-
-        // Add player stats table at the bottom
-        let builder = self.build_player_section(builder, focus);
-
-        builder.spacer(1).text("End of demo document.").build()
+            .text("focus state for rendering and interaction.")
+            .spacer(1)
+            .text("End of demo document.")
+            .build()
     }
 
     fn title(&self) -> String {
@@ -524,10 +450,10 @@ mod tests {
         let doc_arc = Arc::new(doc);
         let view = DocumentView::new(doc_arc, 20);
 
-        // Should have 14 focusable elements:
+        // Should have 4 focusable elements:
         // - 4 example links (BOS, TOR, NYR, MTL)
-        // - 10 player table cells (5 forwards + 5 defensemen, 1 link column each)
-        assert_eq!(view.focus_manager().len(), 14);
+        // - The tabs content (Standings tab with no data has no focusable elements)
+        assert_eq!(view.focus_manager().len(), 4);
     }
 
     #[test]
@@ -537,6 +463,7 @@ mod tests {
             focus_index: None,
             scroll_offset: 0,
             standings: Arc::new(None),
+            tab_selections: std::collections::HashMap::new(),
         };
 
         let mut buf = Buffer::empty(Rect::new(0, 0, 60, 5));
@@ -553,7 +480,7 @@ mod tests {
                 " ════════════════════",
                 "",
                 " This tab demonstrates the new document system for the NHL",
-                " Press Tab/Shift-Tab to navigate between focusable elements",
+                " Press Tab/Shift-Tab to navigate, Left/Right to switch tabs",
             ],
         );
     }

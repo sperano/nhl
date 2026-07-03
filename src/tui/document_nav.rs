@@ -3,6 +3,8 @@
 //! This module provides reusable navigation logic for components that display
 //! scrollable, focusable document-like content (e.g., StandingsTab, DemoTab).
 
+use std::collections::HashMap;
+
 use crate::tui::component::Effect;
 use crate::tui::document::{FocusableId, LinkTarget, RowPosition};
 
@@ -36,6 +38,8 @@ pub struct DocumentNavState {
     pub focusable_ids: Vec<FocusableId>,
     pub focusable_row_positions: Vec<Option<RowPosition>>,
     pub link_targets: Vec<Option<LinkTarget>>,
+    /// Active tab selections for Tabs elements (tabs_id -> active_index)
+    pub doc_tab_selections: HashMap<String, usize>,
 }
 
 impl DocumentNavState {
@@ -43,6 +47,64 @@ impl DocumentNavState {
     pub fn focused_link_target(&self) -> Option<&LinkTarget> {
         let focus_idx = self.focus_index?;
         self.link_targets.get(focus_idx)?.as_ref()
+    }
+
+    /// Get the active tab index for a tabs element
+    pub fn get_tab_selection(&self, tabs_id: &str) -> usize {
+        self.doc_tab_selections.get(tabs_id).copied().unwrap_or(0)
+    }
+
+    /// Set the active tab index for a tabs element
+    pub fn set_tab_selection(&mut self, tabs_id: impl Into<String>, index: usize) {
+        self.doc_tab_selections.insert(tabs_id.into(), index);
+    }
+
+    /// Switch to the next tab for a tabs element
+    /// Returns true if switched (for potential state invalidation)
+    pub fn next_tab(&mut self, tabs_id: &str, tab_count: usize) -> bool {
+        if tab_count == 0 {
+            return false;
+        }
+        let current = self.get_tab_selection(tabs_id);
+        let next = if current + 1 >= tab_count { 0 } else { current + 1 };
+        if next != current {
+            self.doc_tab_selections.insert(tabs_id.to_string(), next);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Switch to the previous tab for a tabs element
+    /// Returns true if switched (for potential state invalidation)
+    pub fn prev_tab(&mut self, tabs_id: &str, tab_count: usize) -> bool {
+        if tab_count == 0 {
+            return false;
+        }
+        let current = self.get_tab_selection(tabs_id);
+        let prev = if current == 0 {
+            tab_count.saturating_sub(1)
+        } else {
+            current - 1
+        };
+        if prev != current {
+            self.doc_tab_selections.insert(tabs_id.to_string(), prev);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Focus the first focusable item
+    pub fn focus_first_item(&mut self) {
+        if !self.focusable_positions.is_empty() {
+            self.focus_index = Some(0);
+        }
+    }
+
+    /// Clear the current item focus
+    pub fn clear_item_focus(&mut self) {
+        self.focus_index = None;
     }
 }
 

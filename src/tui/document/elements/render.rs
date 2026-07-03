@@ -435,3 +435,131 @@ fn render_bottom_border(x: u16, y: u16, width: u16, buf: &mut Buffer, ctx: &Rend
         buf.set_string(x + width - 1, y, bc.mixed_dh_bottom_right, border_style);
     }
 }
+
+/// Render a tabs element (tab bar + active tab content)
+///
+/// Layout:
+/// ```text
+///  Tab1  │ Tab2 │ Tab3
+/// ───────┴──────┴───────────────
+///  (active tab content)
+/// ```
+pub(super) fn render_tabs(
+    tabs: &[super::DocTabDef],
+    active_index: usize,
+    area: Rect,
+    buf: &mut Buffer,
+    ctx: &RenderContext,
+) {
+    use super::TAB_BAR_HEIGHT;
+
+    if tabs.is_empty() || area.height < TAB_BAR_HEIGHT {
+        return;
+    }
+
+    // Render tab bar (2 lines: labels + separator)
+    render_tab_bar(tabs, active_index, area.x, area.y, area.width, buf, ctx);
+
+    // Render active tab content
+    if let Some(tab) = tabs.get(active_index) {
+        let content_area = Rect::new(
+            area.x,
+            area.y + TAB_BAR_HEIGHT,
+            area.width,
+            area.height.saturating_sub(TAB_BAR_HEIGHT),
+        );
+
+        let mut y_offset = 0;
+        for element in &tab.content {
+            let element_height = element.height();
+            if y_offset >= content_area.height {
+                break;
+            }
+            let element_area = Rect::new(
+                content_area.x,
+                content_area.y + y_offset,
+                content_area.width,
+                element_height.min(content_area.height - y_offset),
+            );
+            element.render(element_area, buf, ctx);
+            y_offset += element_height;
+        }
+    }
+}
+
+/// Render the tab bar (labels line + separator line)
+fn render_tab_bar(
+    tabs: &[super::DocTabDef],
+    active_index: usize,
+    x: u16,
+    y: u16,
+    width: u16,
+    buf: &mut Buffer,
+    ctx: &RenderContext,
+) {
+    let bc = ctx.box_chars();
+    let base_style = ctx.text_style();
+    let border_style = ctx.boxchar_style();
+
+    // Calculate tab widths (each tab gets its title width + padding)
+    const TAB_PADDING: usize = 2; // space before and after title
+    let tab_widths: Vec<usize> = tabs
+        .iter()
+        .map(|t| t.title.chars().count() + TAB_PADDING)
+        .collect();
+
+    // Line 1: Tab labels
+    let mut x_pos = x;
+    for (idx, tab) in tabs.iter().enumerate() {
+        let tab_width = tab_widths[idx];
+        let is_active = idx == active_index;
+
+        // Tab style - active tab is highlighted
+        let tab_style = if is_active {
+            ctx.emphasis_style()
+        } else {
+            base_style
+        };
+
+        // Render tab label with padding
+        let label = format!(" {} ", tab.title);
+        buf.set_string(x_pos, y, &label, tab_style);
+
+        // Move to next tab position
+        x_pos += tab_width as u16;
+
+        // Add separator between tabs (not after the last one)
+        if idx < tabs.len() - 1 {
+            buf.set_string(x_pos, y, bc.vertical, border_style);
+            x_pos += 1;
+        }
+    }
+
+    // Line 2: Separator with connectors under the tab dividers
+    let sep_char = bc.horizontal.chars().next().unwrap_or('─');
+    let tee_char = bc.bottom_junction.chars().next().unwrap_or('┴');
+
+    // Fill the separator line
+    for i in 0..width {
+        let cell = buf.cell_mut((x + i, y + 1));
+        if let Some(cell) = cell {
+            cell.set_char(sep_char);
+            cell.set_style(border_style);
+        }
+    }
+
+    // Place tee connectors at tab boundaries
+    let mut connector_x = x;
+    for (idx, &tab_width) in tab_widths.iter().enumerate() {
+        connector_x += tab_width as u16;
+
+        // Place tee at boundary (if not last tab)
+        if idx < tabs.len() - 1 && connector_x < x + width {
+            let cell = buf.cell_mut((connector_x, y + 1));
+            if let Some(cell) = cell {
+                cell.set_char(tee_char);
+            }
+            connector_x += 1; // Account for the vertical separator
+        }
+    }
+}

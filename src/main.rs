@@ -102,6 +102,15 @@ enum Commands {
     },
     /// Display all NHL franchises
     Franchises,
+    /// Display player stats for the day
+    PlayerStats {
+        /// Player name to search for
+        player: String,
+
+        /// Date in YYYY-MM-DD format (optional, shows recent games if not specified)
+        #[arg(short, long)]
+        date: Option<String>,
+    },
     /// Display current configuration
     Config,
     /// Display play-by-play events (like Unix tail)
@@ -262,6 +271,9 @@ async fn execute_command(
         Commands::Schedule { date } => commands::schedule::run(client, date).await,
         Commands::Scores { date } => commands::scores::run(client, date).await,
         Commands::Franchises => commands::franchises::run(client).await,
+        Commands::PlayerStats { player, date } => {
+            commands::player_stats::run(client, &player, date, config).await
+        }
         Commands::Tail {
             game_id,
             count,
