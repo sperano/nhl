@@ -21,8 +21,6 @@ pub fn reduce_navigation(state: AppState, action: &Action) -> Result<(AppState, 
         Action::NavigateTabRight => Ok(navigate_tab_right(state)),
         Action::EnterContentFocus => Ok(enter_content_focus(state)),
         Action::ExitContentFocus => Ok(exit_content_focus(state)),
-        Action::NavigateUp => Ok(navigate_up(state)),
-        Action::ToggleCommandPalette => Ok((state, Effect::None)),
         _ => Err(state),
     }
 }
@@ -112,44 +110,6 @@ fn exit_content_focus(state: AppState) -> (AppState, Effect) {
     (new_state, Effect::None)
 }
 
-/// Unified "navigate up" action (ESC key)
-///
-/// Hierarchical fallthrough:
-/// 1. If document stack not empty → pop document
-/// 2. If focus_in_content → set focus_in_content = false
-/// 3. Otherwise do nothing (already at top level)
-///
-/// Components may intercept NavigateUp to handle their own modes (e.g., clear item focus,
-/// close modal) before falling through to exit_content_focus.
-fn navigate_up(state: AppState) -> (AppState, Effect) {
-    let mut new_state = state;
-
-    // 1. If document stack not empty → pop document
-    if !new_state.navigation.document_stack.is_empty() {
-        debug!("NAVIGATE_UP: Popping document from stack");
-        new_state.navigation.document_stack.pop();
-        return (new_state, Effect::None);
-    }
-
-    // 2. If focus_in_content → exit content focus
-    if new_state.navigation.focus_in_content {
-        debug!("NAVIGATE_UP: Exiting content focus");
-
-        // Reset status message if exiting from Demo tab
-        #[cfg(feature = "development")]
-        if new_state.navigation.current_tab == Tab::Demo {
-            new_state.system.reset_status_message();
-        }
-
-        new_state.navigation.focus_in_content = false;
-        return (new_state, Effect::None);
-    }
-
-    // 3. At top level, do nothing
-    debug!("NAVIGATE_UP: Already at top level, ignoring");
-    (new_state, Effect::None)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -214,49 +174,5 @@ mod tests {
 
         let (state, _) = navigate_tab_right(state);
         assert_eq!(state.navigation.current_tab, Tab::Standings);
-    }
-
-    #[test]
-    fn test_navigate_up_pops_document_stack() {
-        use crate::tui::state::DocumentStackEntry;
-        use crate::tui::types::StackedDocument;
-
-        let mut state = AppState::default();
-        state.navigation.focus_in_content = true;
-        state
-            .navigation
-            .document_stack
-            .push(DocumentStackEntry::new(StackedDocument::TeamDetail {
-                abbrev: "BOS".to_string(),
-            }));
-
-        let (new_state, _) = navigate_up(state);
-
-        // Should pop the document, not exit content focus
-        assert!(new_state.navigation.document_stack.is_empty());
-        assert!(new_state.navigation.focus_in_content);
-    }
-
-    #[test]
-    fn test_navigate_up_exits_content_focus_when_stack_empty() {
-        let mut state = AppState::default();
-        state.navigation.focus_in_content = true;
-
-        let (new_state, _) = navigate_up(state);
-
-        assert!(!new_state.navigation.focus_in_content);
-    }
-
-    #[test]
-    fn test_navigate_up_does_nothing_at_top_level() {
-        let state = AppState::default();
-        assert!(!state.navigation.focus_in_content);
-        assert!(state.navigation.document_stack.is_empty());
-
-        let (new_state, _) = navigate_up(state.clone());
-
-        // Should be unchanged
-        assert!(!new_state.navigation.focus_in_content);
-        assert!(new_state.navigation.document_stack.is_empty());
     }
 }

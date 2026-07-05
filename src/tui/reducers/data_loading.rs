@@ -58,7 +58,7 @@ pub fn reduce_data_loading(
 
 fn handle_standings_loaded(
     state: AppState,
-    result: Result<Vec<nhl_api::Standing>, String>,
+    result: Result<Vec<nhl_api::Standing>, Arc<nhl_api::NHLApiError>>,
     component_states: &mut crate::tui::component_store::ComponentStateStore,
 ) -> (AppState, Effect) {
     let mut new_state = state;
@@ -131,7 +131,7 @@ fn handle_standings_loaded(
 
 fn handle_schedule_loaded(
     state: AppState,
-    result: Result<nhl_api::DailySchedule, String>,
+    result: Result<nhl_api::DailySchedule, Arc<nhl_api::NHLApiError>>,
     component_states: &mut crate::tui::component_store::ComponentStateStore,
 ) -> (AppState, Effect) {
     let mut new_state = state;
@@ -211,7 +211,7 @@ fn handle_schedule_loaded(
 fn handle_game_details_loaded(
     state: AppState,
     game_id: i64,
-    result: Result<nhl_api::GameMatchup, String>,
+    result: Result<nhl_api::GameMatchup, Arc<nhl_api::NHLApiError>>,
 ) -> (AppState, Effect) {
     let mut new_state = state;
 
@@ -248,7 +248,7 @@ fn handle_game_details_loaded(
 fn handle_boxscore_loaded(
     state: AppState,
     game_id: i64,
-    result: Result<nhl_api::Boxscore, String>,
+    result: Result<nhl_api::Boxscore, Arc<nhl_api::NHLApiError>>,
 ) -> (AppState, Effect) {
     let mut new_state = state;
 
@@ -281,7 +281,7 @@ fn handle_boxscore_loaded(
 fn handle_team_roster_loaded(
     state: AppState,
     team_abbrev: String,
-    result: Result<nhl_api::ClubStats, String>,
+    result: Result<nhl_api::ClubStats, Arc<nhl_api::NHLApiError>>,
 ) -> (AppState, Effect) {
     let mut new_state = state;
 
@@ -318,7 +318,7 @@ fn handle_team_roster_loaded(
 fn handle_player_stats_loaded(
     state: AppState,
     player_id: i64,
-    result: Result<nhl_api::PlayerLanding, String>,
+    result: Result<nhl_api::PlayerLanding, Arc<nhl_api::NHLApiError>>,
 ) -> (AppState, Effect) {
     let mut new_state = state;
 
@@ -370,7 +370,8 @@ mod tests {
         const TEST_GAME_ID: i64 = 2024020123;
 
         // Verify the function signature exists and handles both Ok and Err cases
-        let result_ok: Result<nhl_api::GameMatchup, String> = Err("test".to_string());
+        let result_ok: Result<nhl_api::GameMatchup, Arc<nhl_api::NHLApiError>> =
+            Err(Arc::new(nhl_api::NHLApiError::Other("test".to_string())));
         let (new_state, _effect) =
             handle_game_details_loaded(state.clone(), TEST_GAME_ID, result_ok);
 

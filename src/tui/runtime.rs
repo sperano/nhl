@@ -94,15 +94,16 @@ impl Runtime {
                 "ACTION: RefreshSchedule({:?}) - generating fetch effects",
                 date
             );
+            let date = date.clone();
 
-            // Mutate in place - no clone needed
-            self.state.ui.scores.game_date = date.clone();
-            self.state.data.schedule = Arc::new(None);
-            Arc::make_mut(&mut self.state.data.game_info).clear();
-            Arc::make_mut(&mut self.state.data.period_scores).clear();
+            // Take ownership temporarily, run reducer (handles the state transition), put back
+            let state = std::mem::take(&mut self.state);
+            let (new_state, _reducer_effect) =
+                reduce(state, action.clone(), &mut self.component_states);
+            self.state = new_state;
 
-            // Generate schedule fetch effect for the specific date
-            self.data_effects.handle_refresh_schedule(date.clone())
+            // Then generate the schedule fetch effect for the specific date
+            self.data_effects.handle_refresh_schedule(date)
         } else {
             // Take ownership temporarily using mem::take pattern (no clone!)
             let state = std::mem::take(&mut self.state);
@@ -362,6 +363,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_refresh_schedule_updates_state_via_reducer() {
+        use crate::commands::scores_format::PeriodScores;
+        use nhl_api::GameDate;
+
+        let mut state = AppState::default();
+        state.data.period_scores = Arc::new(std::collections::HashMap::from([(
+            1,
+            PeriodScores {
+                away_periods: vec![1, 0],
+                home_periods: vec![0, 1],
+                has_ot: false,
+                has_so: false,
+            },
+        )]));
+        let data_effects = create_test_data_effects();
+        let mut runtime = Runtime::new(state, data_effects);
+
+        let new_date = GameDate::today().add_days(1);
+        runtime.dispatch(Action::RefreshSchedule(new_date.clone()));
+
+        // The state transition (game_date switch + stale-data clear) must go through the
+        // reducer, not be hand-mutated in Runtime::dispatch - this is what a plain state
+        // inspection after dispatch verifies regardless of which layer did the mutation.
+        assert_eq!(runtime.state().ui.scores.game_date, new_date);
+        assert!(runtime.state().data.schedule.is_none());
+        assert!(runtime.state().data.period_scores.is_empty());
+    }
+
+    #[tokio::test]
     async fn test_action_queue() {
         let state = AppState::default();
         let data_effects = create_test_data_effects();
@@ -460,6 +490,61 @@ mod tests {
             total_count >= 1,
             "Expected at least 1 action from data refresh after {} seconds",
             start.elapsed().as_secs_f32()
+        );
+    }
+
+    /// Regression test for the "fake auto-refresh" bug: `Tick` used to only advance
+    /// the animation frame and never re-triggered `RefreshData`, so live scores froze
+    /// even though the status bar implied a refresh was imminent. This drives `Tick`
+    /// through the real Runtime/reducer/effect pipeline with a mocked data provider
+    /// (no real network, no real wall-clock sleeps) and asserts a refresh actually
+    /// lands as new state - not just that a counter incremented.
+    #[tokio::test]
+    #[cfg(feature = "development")]
+    async fn test_tick_triggers_real_refresh_once_interval_elapses() {
+        use crate::dev::mock_client::MockClient;
+        use std::time::{Duration, SystemTime};
+
+        const REFRESH_INTERVAL_SECS: u32 = 30;
+
+        let mut state = AppState::default();
+        state.system.config.refresh_interval = REFRESH_INTERVAL_SECS;
+        // Simulate that the refresh interval has already elapsed by backdating
+        // last_refresh - no real sleep needed to observe the elapsed-time check.
+        state.system.last_refresh =
+            Some(SystemTime::now() - Duration::from_secs(u64::from(REFRESH_INTERVAL_SECS) + 1));
+
+        let data_effects = Arc::new(DataEffects::new(Arc::new(MockClient::new())));
+        let mut runtime = Runtime::new(state, data_effects);
+
+        assert!(
+            runtime.state().data.standings.is_none(),
+            "Precondition: standings should not be loaded yet"
+        );
+
+        // Tick should detect the elapsed interval and queue Effect::Action(RefreshData),
+        // which the background effect executor forwards back onto the action queue.
+        runtime.dispatch(Action::Tick);
+
+        // Drain the action queue, yielding so the effect executor and mock fetches
+        // (which resolve instantly - no real I/O) get scheduled. Bounded iteration
+        // count avoids hanging forever if this regresses; no wall-clock sleeps used.
+        let mut total_actions = 0;
+        for _ in 0..500 {
+            total_actions += runtime.process_actions();
+            if runtime.state().data.standings.is_some() {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+
+        assert!(
+            total_actions > 0,
+            "Expected Tick to trigger at least one follow-up action via RefreshData"
+        );
+        assert!(
+            runtime.state().data.standings.is_some(),
+            "Expected the Tick-triggered auto-refresh to load standings from the mock provider"
         );
     }
 

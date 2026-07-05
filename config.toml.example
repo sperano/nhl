@@ -14,14 +14,17 @@ display_standings_western_first = false
 # Time format for status bar (strftime format)
 time_format = "%H:%M:%S"
 
-# Theme configuration
-[theme]
-# Selection foreground color (when tab bar is focused) - supports multiple formats:
+# Display configuration
+[display]
+# Use unicode box-drawing characters (set to false for plain ASCII)
+use_unicode = true
+
+# Color theme name - supports: orange, green, blue, purple, white, red, yellow,
+# cyan, north_stars, habs, sabres, sharks, bruins, islanders, flames, red_wings
+theme = "orange"
+
+# Error message foreground color - supports multiple formats:
 # - Named colors: "orange", "red", "blue", "cyan", "green", "yellow", etc.
 # - Hex colors: "#FF6600" or "#f60"
 # - RGB tuples: "255,165,0"
-selection_fg = "orange"  # Default: orange (RGB 255,165,0)
-
-# Selection foreground color when tab bar is unfocused
-# If not specified, defaults to 50% darker version of selection_fg
-# unfocused_selection_fg = "blue"  # Optional: specify a custom color
+error_fg = "226,74,74"

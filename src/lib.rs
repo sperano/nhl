@@ -7,7 +7,6 @@ pub mod formatting;
 pub mod layout_constants;
 pub mod team_abbrev;
 pub mod tui;
-pub mod types;
 
 #[cfg(any(test, feature = "development"))]
 pub mod fixtures;

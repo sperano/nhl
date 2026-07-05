@@ -1,4 +1,3 @@
-use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{buffer::Buffer, layout::Rect};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -51,9 +50,6 @@ impl TabState for ScoresTabState {
 /// Messages handled by ScoresTab component
 #[derive(Clone, Debug)]
 pub enum ScoresTabMsg {
-    /// Key event when this tab is focused
-    Key(KeyEvent),
-
     /// Navigate up request (ESC in browse mode, returns to tab bar otherwise)
     /// Returns Effect::Handled if consumed, Effect::None if should bubble up
     NavigateUp,
@@ -130,8 +126,6 @@ impl Component for ScoresTab {
 
         // Handle tab-specific messages
         match msg {
-            ScoresTabMsg::Key(key) => self.handle_key(key, state),
-
             ScoresTabMsg::NavigateLeft => {
                 // Navigate left in the date window
                 if state.selected_date_index > 0 {
@@ -284,50 +278,6 @@ impl ScoresTab {
             animation_frame: props.animation_frame,
             focused: props.focused && state.has_item_focus(),
         }))
-    }
-
-    /// Handle key events when this tab is focused
-    ///
-    /// This method handles all key logic that was previously in keys.rs.
-    /// Returns an Effect which may be an Action to dispatch.
-    fn handle_key(&mut self, key: KeyEvent, state: &mut ScoresTabState) -> Effect {
-        if state.has_item_focus() {
-            // Box selection mode - arrow keys navigate games
-            match key.code {
-                KeyCode::Up => crate::tui::document_nav::handle_message(
-                    &mut state.doc_nav,
-                    &DocumentNavMsg::FocusPrev,
-                ),
-                KeyCode::Down => crate::tui::document_nav::handle_message(
-                    &mut state.doc_nav,
-                    &DocumentNavMsg::FocusNext,
-                ),
-                KeyCode::Left => crate::tui::document_nav::handle_message(
-                    &mut state.doc_nav,
-                    &DocumentNavMsg::FocusLeft,
-                ),
-                KeyCode::Right => crate::tui::document_nav::handle_message(
-                    &mut state.doc_nav,
-                    &DocumentNavMsg::FocusRight,
-                ),
-                KeyCode::Enter => {
-                    // Activate the focused game
-                    self.update(ScoresTabMsg::ActivateGame, state)
-                }
-                _ => Effect::None,
-            }
-        } else {
-            // Date navigation mode - arrow keys navigate dates
-            match key.code {
-                KeyCode::Left => self.update(ScoresTabMsg::NavigateLeft, state),
-                KeyCode::Right => self.update(ScoresTabMsg::NavigateRight, state),
-                KeyCode::Down | KeyCode::Enter => {
-                    // Enter box selection mode
-                    self.update(ScoresTabMsg::EnterBoxSelection, state)
-                }
-                _ => Effect::None,
-            }
-        }
     }
 }
 

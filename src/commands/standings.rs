@@ -465,8 +465,13 @@ pub async fn run(
             .context("Failed to fetch current standings")?
     };
 
-    // Use the shared formatting function (CLI always uses default order)
-    let output = format_standings_by_group(&standings, by, false, &config.display);
+    // Use the shared formatting function, honoring the user's configured column order
+    let output = format_standings_by_group(
+        &standings,
+        by,
+        config.display_standings_western_first,
+        &config.display,
+    );
     print!("{}", output);
 
     Ok(())

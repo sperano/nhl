@@ -22,7 +22,9 @@ use crate::tui::SettingsCategory;
 /// Props for SettingsTab component
 #[derive(Clone)]
 pub struct SettingsTabProps {
-    pub config: Config,
+    // Arc'd by the caller so cloning props each render is a pointer bump, not a
+    // deep copy of the underlying Config.
+    pub config: Arc<Config>,
     pub selected_category: SettingsCategory,
     pub focused: bool,
 }
@@ -453,7 +455,7 @@ impl ElementWidget for SettingsTabWithModal {
 /// Widget for rendering the Settings tab content
 struct SettingsTabWidget {
     category: SettingsCategory,
-    config: Config,
+    config: Arc<Config>,
     focus_index: Option<usize>,
     scroll_offset: u16,
     viewport_height: u16,
@@ -498,33 +500,62 @@ impl ElementWidget for SettingsTabWidget {
 }
 
 /// Helper to get focusable IDs for a settings category (for testing)
+///
+/// Reads focusable IDs from the real `SettingsDocument` rather than a hardcoded
+/// list, so this can't drift from actual navigation behavior.
 #[cfg(test)]
 fn get_focusable_ids_for_category(category: SettingsCategory) -> Vec<FocusableId> {
-    match category {
-        SettingsCategory::Logging => vec![
-            FocusableId::Link("log_level".to_string()),
-            FocusableId::Link("log_file".to_string()),
-        ],
-        SettingsCategory::Display => vec![
-            FocusableId::Link("theme".to_string()),
-            FocusableId::Link("use_unicode".to_string()),
-        ],
-        SettingsCategory::Data => vec![
-            FocusableId::Link("refresh_interval".to_string()),
-            FocusableId::Link("western_teams_first".to_string()),
-            FocusableId::Link("time_format".to_string()),
-        ],
-    }
+    use crate::tui::document::Document;
+
+    SettingsDocument::new(category, Arc::new(Config::default())).focusable_ids()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tui::testing::assert_buffer;
+
+    #[test]
+    fn test_data_settings_navigation_skips_inert_rows() {
+        // Data category renders "Refresh Interval" (inert), then "Western
+        // Teams First" (focusable), then "Time Format" (inert). Focus index 0
+        // refers to the first *focusable* row, so the selector marker should
+        // land directly on "Western Teams First" and never on the two inert,
+        // display-only rows.
+        let widget = SettingsTabWidget {
+            category: SettingsCategory::Data,
+            config: Arc::new(Config::default()),
+            focus_index: Some(0),
+            scroll_offset: 0,
+            viewport_height: 8,
+            focused: true,
+        };
+
+        let area = Rect::new(0, 0, 60, 8);
+        let mut buf = Buffer::empty(area);
+        let display_config = Config::default().display;
+        let ctx = RenderContext::focused(&display_config);
+        widget.render(area, &mut buf, &ctx);
+
+        assert_buffer(
+            &buf,
+            &[
+                "",
+                " Refresh Interval:      60 seconds",
+                "",
+                " ▶ Western Teams First:   false",
+                "",
+                " Time Format:           %H:%M:%S",
+                "",
+                "",
+            ],
+        );
+    }
 
     #[test]
     fn test_settings_tab_init() {
         let props = SettingsTabProps {
-            config: Config::default(),
+            config: Arc::new(Config::default()),
             selected_category: SettingsCategory::Logging,
             focused: false,
         };
@@ -538,7 +569,7 @@ mod tests {
     fn test_settings_tab_renders() {
         let settings_tab = SettingsTab;
         let props = SettingsTabProps {
-            config: Config::default(),
+            config: Arc::new(Config::default()),
             selected_category: SettingsCategory::Logging,
             focused: false,
         };
@@ -624,20 +655,32 @@ mod tests {
 
     #[test]
     fn test_get_focusable_ids_logging() {
+        // "log_file" is display-only (not editable via the UI), so only
+        // "log_level" is focusable.
         let ids = get_focusable_ids_for_category(SettingsCategory::Logging);
-        assert_eq!(ids.len(), 2);
-        assert!(matches!(ids[0], FocusableId::Link(_)));
+        assert_eq!(ids, vec![FocusableId::Link("log_level".to_string())]);
     }
 
     #[test]
     fn test_get_focusable_ids_display() {
         let ids = get_focusable_ids_for_category(SettingsCategory::Display);
-        assert_eq!(ids.len(), 2);
+        assert_eq!(
+            ids,
+            vec![
+                FocusableId::Link("theme".to_string()),
+                FocusableId::Link("use_unicode".to_string()),
+            ]
+        );
     }
 
     #[test]
     fn test_get_focusable_ids_data() {
+        // "refresh_interval" and "time_format" are display-only (not editable
+        // via the UI), so only "western_teams_first" is focusable.
         let ids = get_focusable_ids_for_category(SettingsCategory::Data);
-        assert_eq!(ids.len(), 3);
+        assert_eq!(
+            ids,
+            vec![FocusableId::Link("western_teams_first".to_string())]
+        );
     }
 }

@@ -1,173 +1,404 @@
 # Navigation Behavior Specification
 
-This document specifies the expected navigation behavior from a user's perspective.
+This document specifies keyboard navigation as implemented in `src/tui/keys.rs`
+(`key_to_action`) and `src/tui/nav_handler.rs` (`key_to_nav_msg`). The
+`#[cfg(test)] mod tests` block in `keys.rs` (`base_cases()` / `dev_cases()`,
+~100 table-driven cases) is the executable ground truth this document is kept
+in sync with; every binding below corresponds to a row in that table or an
+arm in the functions it exercises.
 
 ## Key Event Flow
 
 ```
-KeyEvent -> key_to_action(key, state) -> Option<Action>
+KeyEvent -> key_to_action(key, state, component_states) -> Option<Action>
 ```
 
-Priority:
-1. Global keys (q=Quit, /=CommandPalette)
-2. ESC key (priority-based: document → modal → browse mode → content focus)
-3. Document stack navigation (when stacked document open)
-4. Number keys (1-6 direct tab switching)
-5. Tab bar focused: arrows navigate tabs
-6. Content focused: delegated to tab-specific handlers
+`key_to_action` resolves a key in this order (matching the numbered steps in
+its own source comments):
 
-## Focus Hierarchy
+1. **Global keys** (`handle_global_keys`): `q` / `Q` -> `Action::Quit`,
+   checked before anything else - it fires even with a document open or
+   content focused.
+2. **ESC** (`handle_esc_key`): a fixed priority chain, see below.
+3. **Document stack routing**: if `state.navigation.document_stack` is
+   non-empty, every remaining key (including number keys and `Enter`) becomes
+   `Action::StackedDocumentKey(key)` and is handled by the stacked document's
+   `StackedDocumentHandler` instead of anything below.
+4. **Number keys** (`handle_number_keys`): direct tab switching, only
+   reachable when the document stack is empty.
+5. **Tab bar vs. content focus**: if `!state.navigation.focus_in_content`,
+   delegate to `handle_tab_bar_navigation`.
+6. **Up-key special case**: if the key is `Up` and content is focused, handle
+   it here for nested modes that need bespoke Up behavior (see below) before
+   falling through to step 7.
+7. **Tab-specific handlers**: dispatch on `state.navigation.current_tab` to
+   `handle_scores_tab_keys` / `handle_standings_tab_keys` (or
+   `handle_standings_league_keys`) / `handle_settings_tab_keys` /
+   `handle_demo_tab_keys` (development only).
 
-1. Tab bar (top level)
-2. Content area (subtabs)
-3. Item selection (within content)
-4. Document stack (drill-down views)
+There is no `/` command-palette binding - it was removed; `handle_global_keys`
+only matches `q`/`Q`.
 
-## Main Tabs
+## Global Keys
 
-- **Left/Right arrows**: Navigate between Scores, Standings, Settings
-- **Down arrow**: Enter content focus
-- **ESC**: Context-dependent (pop document, close modal, exit content focus, or quit)
-- **Number keys 1-6**: Direct tab switching
+- **`q` / `Q`**: `Action::Quit`, unconditionally - from the tab bar, with
+  content focused, with box-selection active, or with a document on the
+  stack.
 
-## Scores Tab Navigation (5-Date Sliding Window)
+## ESC Priority Chain
+
+`handle_esc_key` checks these conditions in order and returns on the first
+match:
+
+1. **Document stack non-empty** -> `Action::PopDocument`.
+2. **Settings modal open** (`is_settings_modal_open`) ->
+   `SettingsTabMsg::Modal(ModalMsg::Cancel)`.
+3. **Scores tab has item focus** (`has_scores_item_focus`) ->
+   `ScoresTabMsg::ExitBoxSelection`.
+4. **Standings tab has item focus** (`has_standings_item_focus`) ->
+   `StandingsTabMsg::ExitBrowseMode`.
+5. **Settings tab has item focus** (`has_settings_item_focus`) ->
+   `SettingsTabMsg::NavigateUp` (priority "4.5" in the source comments).
+6. **Demo tab has content focus** (`state.navigation.focus_in_content` while
+   `current_tab == Tab::Demo`, development feature only) ->
+   `DemoTabMsg::ExitFocus` (priority "4.6").
+7. **Content is focused** (`state.navigation.focus_in_content`) ->
+   `Action::ExitContentFocus` (returns to the tab bar).
+8. **Otherwise** (at the tab bar, nothing else focused): no-op - use `q` to
+   quit.
+
+Note: none of the `has_*_item_focus` / modal checks are gated on
+`state.navigation.current_tab`. This is intentional as far as ordering
+(it's how the tests pin priority 2 winning over priority 3, 3 over 4, etc.,
+by exercising them cross-tab), but it is also the root cause of the latent
+focus-bleed bug documented at the end of this file.
+
+## Document Stack Routing
+
+While `state.navigation.document_stack` is non-empty, `key_to_action` returns
+`Action::StackedDocumentKey(key)` for anything that isn't `q`/`Q` or `Esc`
+(ESC's priority-1 check pops the document instead of routing the key). This
+means:
+
+- Number keys (`1`-`4`) do **not** switch tabs while a document is open - they
+  are forwarded to the document instead.
+- `Enter` and all arrow/paging keys are forwarded to the document's
+  `StackedDocumentHandler::handle_key` (see `docs/document-system.md`), not to
+  any tab-specific handler.
+
+## Tab Switching
+
+### Number keys (`handle_number_keys`)
+
+Only reachable when the document stack is empty (step 4).
+
+| Key | Action |
+|-----|--------|
+| `1` | `Action::NavigateTab(Tab::Scores)` |
+| `2` | `Action::NavigateTab(Tab::Standings)` |
+| `3` | `Action::NavigateTab(Tab::Settings)` |
+| `4` | `Action::NavigateTab(Tab::Demo)` - only compiled in with `--features development` |
+
+Number-key tab switching ignores modifiers (`Shift+1` still switches tabs) and
+works regardless of current focus level. Without the `development` feature,
+`4` is unmapped and falls through to whatever the current focus-level handler
+does with an unrecognized character (a no-op from the tab bar).
+
+### Tab bar arrows (`handle_tab_bar_navigation`, focus not in content)
+
+| Key | Action |
+|-----|--------|
+| `Left` | `Action::NavigateTabLeft` (cycles Scores -> Demo -> Settings -> Standings -> Scores in dev builds; Scores -> Settings -> Standings -> Scores otherwise) |
+| `Right` | `Action::NavigateTabRight` (reverse order) |
+| `Down` / `Enter` | `Action::EnterContentFocus` |
+| anything else (incl. `Up`) | no-op |
+
+`NavigateTab`, `NavigateTabLeft`, and `NavigateTabRight` all clear
+`document_stack` and reset `focus_in_content = false` (see
+`src/tui/reducers/navigation.rs`). Entering content focus on the Demo tab
+additionally sends `DemoTabMsg::EnterFocus` to focus its first item and sets a
+tab-specific status-bar hint; leaving content focus on the Demo tab resets
+that status message.
+
+**None of the tab-switch reducers touch per-tab component state** (the
+`ComponentStateStore`, e.g. `ScoresTabState.doc_nav.focus_index`). That state
+is scoped to each component's own path and outlives a tab switch - see
+"Known issue: cross-tab focus bleed" below.
+
+## The Up-Key Special Case (step 6)
+
+When content is focused and the key is `Up`, `key_to_action` checks nested
+modes *before* falling through to the tab-specific handlers:
+
+- **Scores box-selection active** (`has_scores_item_focus`): handled directly
+  here as `ScoresTabMsg::DocNav(DocumentNavMsg::FocusPrev)`. This check is
+  `key.code == KeyCode::Up` with no modifier check, so it fires the same way
+  whether or not Shift is held - i.e. in Scores box-selection, `Shift+Up`
+  still produces `FocusPrev`, not a scroll (unlike Standings/Settings/Demo
+  browse modes, where `Shift+Up` scrolls). This is why
+  `handle_scores_tab_keys`'s box-selection arm has no `Up` case of its own -
+  it's unreachable from there.
+- **Demo tab** (development only), **Settings tab**, or **Standings tab with
+  item focus**: this step does nothing and lets the tab-specific handler
+  process `Up` itself (both plain and `Shift+Up`).
+- **Otherwise**: `Action::ExitContentFocus` - `Up` returns to the tab bar.
+
+The `has_scores_item_focus` check here is also not gated on the current tab -
+see the known issue below.
+
+## The Canonical Document-Navigation Mapping (`key_to_nav_msg`)
+
+`nav_handler::key_to_nav_msg` is the shared mapping used, with documented
+exceptions, by Standings browse mode, the Settings tab, the Demo tab, and
+stacked documents (`StackedDocumentHandler::handle_key`):
+
+| Key | Without Shift | With Shift |
+|-----|----------------|------------|
+| `Tab` | `FocusNext` | `FocusPrev` |
+| `BackTab` | `FocusPrev` | (n/a - BackTab carries no Shift state) |
+| `Up` | `FocusPrev` | `ScrollUp(1)` |
+| `Down` | `FocusNext` | `ScrollDown(1)` |
+| `Left` | `FocusLeft` | `ScrollUp(1)` (not left - scrolling wins) |
+| `Right` | `FocusRight` | `ScrollDown(1)` (not right - scrolling wins) |
+| `PageUp` | `PageUp` | - |
+| `PageDown` | `PageDown` | - |
+| `Home` | `ScrollToTop` | - |
+| `End` | `ScrollToBottom` | - |
+
+`Enter` and `Esc` return `None` from `key_to_nav_msg` - both are handled
+separately by each caller (activation and the global ESC chain,
+respectively).
+
+## Per-Tab Navigation
+
+### Scores tab (`handle_scores_tab_keys`)
+
+Two modes, distinguished by `has_scores_item_focus`:
+
+**Date-navigation mode** (no item focus):
+
+| Key | Result |
+|-----|--------|
+| `Left` | `ScoresTabMsg::NavigateLeft` |
+| `Right` | `ScoresTabMsg::NavigateRight` |
+| `Down` | `ScoresTabMsg::EnterBoxSelection` |
+| `Enter` | `Action::SelectGame(id)` for the first game in `state.data.schedule`, or no-op if no schedule is loaded |
+| `Up` | `Action::ExitContentFocus` (via the step-6 special case, since there's no nested mode) |
+| anything else | no-op |
+
+**Box-selection mode** (item focus active):
+
+| Key | Result |
+|-----|--------|
+| `Up` | `ScoresTabMsg::DocNav(FocusPrev)` - handled by the step-6 special case, not by this function |
+| `Down` | `ScoresTabMsg::DocNav(FocusNext)` |
+| `Left` | `ScoresTabMsg::DocNav(FocusLeft)` |
+| `Right` | `ScoresTabMsg::DocNav(FocusRight)` |
+| `Enter` | `ScoresTabMsg::ActivateGame` - the component itself resolves `focus_index` to a game ID via `focusable_ids`; an out-of-range `focus_index` still delegates unconditionally and the component's own bounds check turns it into a no-op |
+| `Esc` | `ScoresTabMsg::ExitBoxSelection` (ESC priority 3) |
+| anything else | no-op |
+
+Deliberate divergence from the canonical mapping: Scores box-selection has
+**no** `Tab`/`BackTab`, `PageUp`/`PageDown`, `Home`/`End`, or `Shift`-scroll
+support. Only `Up`/`Down`/`Left`/`Right`/`Enter` are wired; everything else
+falls through to `None`.
+
+### Standings tab
+
+Two modes, distinguished by `has_standings_item_focus`.
+
+**View-selection mode** (`handle_standings_tab_keys`, no item focus):
+
+| Key | Result |
+|-----|--------|
+| `Left` | `StandingsTabMsg::CycleViewLeft` |
+| `Right` | `StandingsTabMsg::CycleViewRight` |
+| `Down` | `StandingsTabMsg::EnterBrowseMode` |
+| `Up` | `Action::ExitContentFocus` |
+| anything else (incl. `PageUp`/`PageDown`/`Home`/`End`) | no-op |
+
+Manual scrolling (`PageUp`/`PageDown`/`Home`/`End`) is **not** available in
+view-selection mode - only in browse mode below.
+
+**Browse mode** (`handle_standings_league_keys`, item focus active): `Enter`
+activates the focused team (`StandingsTabMsg::ActivateTeam`, pushes a
+`TeamDetail` document); every other key goes through the canonical
+`key_to_nav_msg` mapping exactly, wrapped in `StandingsTabMsg::DocNav`. In
+particular `Shift+Left`/`Shift+Right` scroll (they do not switch columns) and
+`PageUp`/`PageDown`/`Home`/`End` page/jump the viewport. Plain `Left`/`Right`
+move focus to the same row position in the adjacent column
+(`document_nav::find_row_sibling`), wrapping at the edges.
+
+`Esc` in browse mode is `StandingsTabMsg::ExitBrowseMode` (ESC priority 4).
+
+### Settings tab (`handle_settings_tab_keys`)
+
+**Modal open** (`is_settings_modal_open`): only `Up`, `Down`, and `Enter` are
+handled (`Modal(Up)` / `Modal(Down)` / `Modal(Confirm)`); everything else,
+including `Left` and `Tab`, is a no-op inside this branch. There is no `Esc`
+arm here - ESC priority 2 intercepts it globally before this function is ever
+reached, so an `Esc` arm here would be dead code (and was removed in the
+A13/A14 refactor along with a corresponding characterization test).
+
+**Normal mode** (no modal):
+
+| Key | Result |
+|-----|--------|
+| `Left` | `SettingsAction::NavigateCategoryLeft` - **always**, even with item focus active |
+| `Right` | `SettingsAction::NavigateCategoryRight` - always |
+| `Enter` | `SettingsTabMsg::ActivateSetting(config)`, carrying the current `state.system.config` |
+| `BackTab` | no-op - explicitly guarded out (see below) |
+| everything else | delegated to `key_to_nav_msg`, wrapped in `SettingsTabMsg::DocNav` |
+
+Two deliberate divergences from the canonical mapping:
+
+- **`Left`/`Right` are claimed for category navigation**, not row/scroll
+  navigation - Settings is the only tab where these keys don't reach
+  `key_to_nav_msg` at all.
+- **`BackTab` is explicitly a no-op.** Unlike Standings and Demo, Settings
+  never maps `BackTab` to `FocusPrev` - it's guarded out before delegating to
+  `key_to_nav_msg`, which would otherwise treat it as `FocusPrev`.
+
+Settings also has a divergence in the *global* Up handling (step 6, not in
+this function): the step-6 special case treats Settings as a nested mode
+unconditionally (even before any item has focus), so plain `Up` in the
+Settings tab is *always* funneled into `handle_settings_tab_keys` ->
+`key_to_nav_msg` -> `FocusPrev`, and can never return Settings content focus
+to the tab bar - only `Esc` can.
+
+### Demo tab (`handle_demo_tab_keys`, `--features development` only)
+
+| Key | Result |
+|-----|--------|
+| `Enter` | `DemoTabMsg::ActivateLink` |
+| `Left` | `DemoTabMsg::DocNav(FocusLeft)` - **always row-navigates**, even with Shift held |
+| `Right` | `DemoTabMsg::DocNav(FocusRight)` - always row-navigates, even with Shift held |
+| everything else | delegated to `key_to_nav_msg`, wrapped in `DemoTabMsg::DocNav` |
+
+Deliberate divergence: unlike Standings browse mode, the Demo tab has **no**
+`Shift+Left`/`Shift+Right` scroll - those combinations always row-navigate.
+`Shift+Up`/`Shift+Down` do scroll, matching the canonical mapping.
+
+`Esc` in the Demo tab is ESC priority 4.6 (`DemoTabMsg::ExitFocus`), but only
+when nothing at a higher priority (document stack, settings modal, scores
+box-selection, standings item focus, settings item focus) is also set - see
+the cross-tab bleed note below for why a Demo-tab ESC press can actually
+resolve to a *different* tab's message.
+
+## Known Issue: Cross-Tab Focus-State Bleed
+
+`has_scores_item_focus`, `has_standings_item_focus`, and
+`has_settings_item_focus` (used throughout `handle_esc_key` and the step-6 Up
+special case) read component state unconditionally - they are **not** gated
+on `state.navigation.current_tab`. Meanwhile `navigate_to_tab`,
+`navigate_tab_left`, and `navigate_tab_right` (`src/tui/reducers/navigation.rs`)
+reset `AppState.navigation.focus_in_content` and clear the document stack, but
+**do not** reset any per-tab `ComponentStateStore` entry (e.g.
+`ScoresTabState.doc_nav.focus_index`).
+
+Net effect: if a user enters Scores box-selection (setting
+`ScoresTabState.doc_nav.focus_index = Some(_)`) and then switches to another
+tab via a number key or tab-bar arrow *without* first pressing ESC to exit
+box-selection, the stale focus persists. On the new tab:
+
+- `Esc` is intercepted by ESC priority 3 (scores box-selection) instead of
+  whatever priority would otherwise apply on the new tab, and routes to
+  `ScoresTabMsg::ExitBoxSelection` even though the user is no longer looking
+  at the Scores tab.
+- Plain `Up` is swallowed by the step-6 special case and routes to
+  `ScoresTabMsg::DocNav(FocusPrev)` instead of returning the *current* tab's
+  content focus to the tab bar.
+
+The same ordering issue exists between Standings item focus and Settings item
+focus (standings wins), and between Settings item focus and Demo content
+focus (settings wins) - all because none of these checks know which tab is
+actually active. This is intended behavior only in the narrow sense that the
+*priority order* is fixed and tested; the cross-tab reachability of a stale
+check is a latent bug, not a designed feature. It is exercised directly by
+`keys.rs`'s own test suite (see the cases documented as "latent bug: ..." and
+the several "exercised while the current tab is X, since neither check is
+gated on the current tab" cases in `base_cases()`/`dev_cases()`).
+
+## Scores Tab: 5-Date Sliding Window
+
+This section describes `ScoresTab`'s internal date-window bookkeeping
+(`src/tui/components/scores_tab.rs`), which sits behind the
+`NavigateLeft`/`NavigateRight` messages above; it is component state, not key
+routing.
 
 ### Architecture
 
-The window has a **sticky base date** (leftmost date) that only shifts at edges:
+The window has a **sticky base date** (leftmost date) that only shifts at
+edges:
 
-- **window_base_date** = game_date - selected_index
-- **Window** = `[base, base+1, base+2, base+3, base+4]` (always 5 dates)
-- **game_date** = `window_base_date + selected_index`
-- **selected_index** = position within window (0-4)
+- `window_base_date = game_date - selected_date_index`
+- Window = `[base, base+1, base+2, base+3, base+4]` (`DATE_WINDOW_SIZE = 5`)
+- `game_date = window_base_date + selected_date_index`
+- `selected_date_index` = position within the window (0-4)
+
+This is computed inline in `render_date_tabs` (not a separate function):
+
+```rust
+const DATE_WINDOW_SIZE: usize = 5;
+let window_base_date = state
+    .game_date
+    .add_days(-(state.selected_date_index as i64));
+let dates: Vec<GameDate> = (0..DATE_WINDOW_SIZE)
+    .map(|i| window_base_date.add_days(i as i64))
+    .collect();
+```
 
 ### Navigation Behavior
 
-**Within Window (index 1-3 → 0-4):**
-- `selected_index` changes
-- `game_date` changes to match
-- Window stays the same
-- Refresh triggered
+**Within window** (`selected_date_index` in `1..=3`, pressing Left/Right):
+`selected_date_index` changes, `game_date` changes to match, the window
+itself stays the same, and a refresh is triggered.
 
-**At Left Edge (index = 0, press Left):**
-- `selected_index` stays at 0
-- `game_date` decrements by 1 day
-- Window shifts left by 1 day
-- Refresh triggered
+**At left edge** (`selected_date_index == 0`, press `Left`):
+`selected_date_index` stays at 0, `game_date` decrements by 1 day, and the
+window shifts left by 1 day.
 
-**At Right Edge (index = 4, press Right):**
-- `selected_index` stays at 4
-- `game_date` increments by 1 day
-- Window shifts right by 1 day
-- Refresh triggered
+**At right edge** (`selected_date_index == DATE_WINDOW_SIZE - 1`, press
+`Right`): `selected_date_index` stays at 4, `game_date` increments by 1 day,
+and the window shifts right by 1 day.
 
 ### Example Sequence
 
 ```
-Start: game_date=11/02, selected_index=2
+Start: game_date=11/02, selected_date_index=2
   Window: [10/31, 11/01, 11/02, 11/03, 11/04]
 
-Press Left: selected_index=1, game_date=11/01
-  Window: [10/31, 11/01, 11/02, 11/03, 11/04] ← Same window
+Press Left: selected_date_index=1, game_date=11/01
+  Window: [10/31, 11/01, 11/02, 11/03, 11/04] <- same window
 
-Press Left: selected_index=0, game_date=10/31
-  Window: [10/31, 11/01, 11/02, 11/03, 11/04] ← Same window
+Press Left: selected_date_index=0, game_date=10/31
+  Window: [10/31, 11/01, 11/02, 11/03, 11/04] <- same window
 
-Press Left at edge: game_date=10/30, selected_index=0
-  Window: [10/30, 10/31, 11/01, 11/02, 11/03] ← Window shifted
+Press Left at edge: game_date=10/30, selected_date_index=0
+  Window: [10/30, 10/31, 11/01, 11/02, 11/03] <- window shifted
 
-Press Right: game_date=10/31, selected_index=1
-  Window: [10/30, 10/31, 11/01, 11/02, 11/03] ← Same window
+Press Right: game_date=10/31, selected_date_index=1
+  Window: [10/30, 10/31, 11/01, 11/02, 11/03] <- same window
 ```
 
-### Implementation
+## Standings Tab: Column Behavior by View
 
-**Date Window Calculation (`scores_tab.rs`):**
-```rust
-fn calculate_date_window(game_date: &GameDate, selected_index: usize) -> [GameDate; 5] {
-    let window_base_date = game_date.add_days(-(selected_index as i64));
-    [
-        window_base_date.add_days(0),
-        window_base_date.add_days(1),
-        window_base_date.add_days(2),
-        window_base_date.add_days(3),
-        window_base_date.add_days(4),
-    ]
-}
-```
+Behavior of `Left`/`Right` during browse mode depends on the active view
+(`StandingsTabMsg::CycleViewLeft`/`CycleViewRight` in view-selection mode
+switch between these views):
 
-### Critical Rules
+- **League view**: single column, all teams sorted by points - `Left`/`Right`
+  have no sibling to move to, so they have no effect.
+- **Conference view**: two columns; order depends on the
+  `display_standings_western_first` config setting; `Left`/`Right` switch
+  columns, preserving row position via `find_row_sibling`.
+- **Division view**: two columns (grouped by division, sorted by points
+  within each); same column-order config and `Left`/`Right` behavior as
+  Conference view.
 
-1. **NEVER** change the window calculation formula without updating this spec
-2. **ALWAYS** ensure game_date updates on every arrow key press
-3. **ALWAYS** maintain `window_base = game_date - selected_index`
-4. **ALWAYS** run tests after navigation changes
-5. **REFRESH** must trigger on every date change
-
-### Common Mistakes
-
-❌ Making game_date always at center (index 2)
-❌ Not updating game_date when navigating within window
-❌ Forgetting to trigger refresh on within-window navigation
-❌ Shifting window when navigating within it
-
-✅ Window base is sticky until edge is reached
-✅ game_date moves within the window
-✅ Refresh triggers on every date change
-✅ Window only shifts at edges (index 0 or 4)
-
-## Standings Tab Navigation
-
-### View Selection Mode (Initial State)
-
-User starts focused on subtab bar:
-- **Division** (default)
-- **Conference**
-- **League**
-
-**Navigation keys:**
-- **Left/Right**: Cycle through views
-- **Down**: Enter team selection mode
-- **ESC**: Exit to main tabs
-
-### Team Selection Mode
-
-**Visual indicator**: Selected team highlighted in `selection_fg` color.
-
-**Navigation keys:**
-- **Up**: Move up; if at first team, exit to view selection mode
-- **Down**: Move down; if at last team, stay
-- **Left/Right**: Switch columns (Conference/Division views only)
-- **ESC**: Exit to view selection mode
-- **Enter**: Activate team (opens TeamDetail)
-- **PageUp/PageDown/Home/End**: Scroll viewport
-
-### Column Behavior by View
-
-**League View:**
-- Single column, all 32 teams
-- Sorted by points
-- Left/Right have no effect
-
-**Conference View:**
-- Two columns
-- Order depends on `display_standings_western_first` config
-- Left/Right switch columns, preserving row position
-
-**Division View:**
-- Two columns (Eastern/Western divisions)
-- Order depends on `display_standings_western_first` config
-- Teams grouped by division, sorted by points within
-- Left/Right switch columns, preserving row position
-
-### Auto-scrolling
-
-When navigating with Up/Down:
-- Viewport scrolls to keep selected team visible
-- Scrolling is immediate during navigation
-
-**Manual scrolling** (PageUp/PageDown/Home/End):
-- Available in both view selection and team selection modes
-- Does not change team selection
-- PageUp/PageDown: Scroll by 10 lines
-- Home/End: Scroll to top/bottom
+Auto-scrolling: `Up`/`Down` focus navigation autoscrolls the viewport to keep
+the focused row visible (`document_nav::autoscroll_to_focus`). Manual
+scrolling via `PageUp`/`PageDown`/`Home`/`End` is only available in browse
+mode (not view-selection mode, see above), does not change team selection,
+and pages by `viewport_height` (minimum `MIN_PAGE_SIZE = 10` lines, see
+`document_nav::page_up`/`page_down`); `Home`/`End` jump to the top/bottom.

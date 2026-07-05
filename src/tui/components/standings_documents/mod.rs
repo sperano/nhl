@@ -41,7 +41,7 @@ impl StandingsDocumentWidget {
     /// Create widget for League standings
     pub fn league(
         standings: Arc<Vec<Standing>>,
-        config: Config,
+        config: impl Into<Arc<Config>>,
         focus_index: Option<usize>,
         scroll_offset: u16,
         focused: bool,
@@ -57,7 +57,7 @@ impl StandingsDocumentWidget {
     /// Create widget for Conference standings
     pub fn conference(
         standings: Arc<Vec<Standing>>,
-        config: Config,
+        config: impl Into<Arc<Config>>,
         focus_index: Option<usize>,
         scroll_offset: u16,
         focused: bool,
@@ -73,7 +73,7 @@ impl StandingsDocumentWidget {
     /// Create widget for Division standings
     pub fn division(
         standings: Arc<Vec<Standing>>,
-        config: Config,
+        config: impl Into<Arc<Config>>,
         focus_index: Option<usize>,
         scroll_offset: u16,
         focused: bool,
@@ -89,7 +89,7 @@ impl StandingsDocumentWidget {
     /// Create widget for Wildcard standings
     pub fn wildcard(
         standings: Arc<Vec<Standing>>,
-        config: Config,
+        config: impl Into<Arc<Config>>,
         focus_index: Option<usize>,
         scroll_offset: u16,
         focused: bool,
@@ -148,7 +148,7 @@ mod tests {
     #[test]
     fn test_league_standings_document_renders() {
         let standings = Arc::new(create_test_standings());
-        let config = Config::default();
+        let config = Arc::new(Config::default());
         let doc = LeagueStandingsDocument::new(standings, config);
 
         // Build with no focus
@@ -171,7 +171,7 @@ mod tests {
     #[test]
     fn test_league_standings_document_full_render() {
         let standings = Arc::new(create_test_standings());
-        let config = Config::default();
+        let config = Arc::new(Config::default());
         let doc = LeagueStandingsDocument::new(standings, config);
 
         let display_config = DisplayConfig::default();
@@ -226,7 +226,7 @@ mod tests {
     #[test]
     fn test_league_standings_document_with_focus() {
         let standings = Arc::new(create_test_standings());
-        let config = Config::default();
+        let config = Arc::new(Config::default());
         let doc = LeagueStandingsDocument::new(standings, config);
 
         // Create focus context for row 2
@@ -247,7 +247,7 @@ mod tests {
     #[test]
     fn test_league_standings_document_metadata() {
         let standings = Arc::new(create_test_standings());
-        let config = Config::default();
+        let config = Arc::new(Config::default());
         let doc = LeagueStandingsDocument::new(standings, config);
 
         assert_eq!(doc.title(), "League Standings");
@@ -257,7 +257,7 @@ mod tests {
     #[test]
     fn test_league_standings_focusable_positions() {
         let standings = Arc::new(create_test_standings());
-        let config = Config::default();
+        let config = Arc::new(Config::default());
         let doc = LeagueStandingsDocument::new(standings, config);
 
         let positions = doc.focusable_positions();
@@ -279,7 +279,7 @@ mod tests {
     #[test]
     fn test_conference_standings_document_renders() {
         let standings = Arc::new(create_test_standings());
-        let config = Config::default();
+        let config = Arc::new(Config::default());
         let doc = ConferenceStandingsDocument::new(standings, config);
 
         // Build with no focus
@@ -320,7 +320,7 @@ mod tests {
     #[test]
     fn test_conference_standings_document_metadata() {
         let standings = Arc::new(create_test_standings());
-        let config = Config::default();
+        let config = Arc::new(Config::default());
         let doc = ConferenceStandingsDocument::new(standings, config);
 
         assert_eq!(doc.title(), "Conference Standings");
@@ -330,7 +330,7 @@ mod tests {
     #[test]
     fn test_conference_standings_focusable_positions() {
         let standings = Arc::new(create_test_standings());
-        let config = Config::default();
+        let config = Arc::new(Config::default());
         let doc = ConferenceStandingsDocument::new(standings, config);
 
         let positions = doc.focusable_positions();
@@ -370,7 +370,7 @@ mod tests {
     #[test]
     fn test_conference_standings_row_positions() {
         let standings = Arc::new(create_test_standings());
-        let config = Config::default();
+        let config = Arc::new(Config::default());
         let doc = ConferenceStandingsDocument::new(standings, config);
 
         let row_positions = doc.focusable_row_positions();
@@ -403,7 +403,7 @@ mod tests {
         // Test with western_first = false (Eastern left, Western right)
         let mut config = Config::default();
         config.display_standings_western_first = false;
-        let doc = ConferenceStandingsDocument::new(standings.clone(), config);
+        let doc = ConferenceStandingsDocument::new(standings.clone(), Arc::new(config));
         let elements = doc.build(&FocusContext::default());
 
         // Verify Row structure
@@ -420,7 +420,7 @@ mod tests {
         // Test with western_first = true (Western left, Eastern right)
         let mut config = Config::default();
         config.display_standings_western_first = true;
-        let doc = ConferenceStandingsDocument::new(standings, config);
+        let doc = ConferenceStandingsDocument::new(standings, Arc::new(config));
         let elements = doc.build(&FocusContext::default());
 
         // Verify Row structure (same structure, different internal ordering)
@@ -440,7 +440,7 @@ mod tests {
     #[test]
     fn test_division_standings_document_renders() {
         let standings = Arc::new(create_test_standings());
-        let config = Config::default();
+        let config = Arc::new(Config::default());
         let doc = DivisionStandingsDocument::new(standings, config);
 
         // Build with no focus
@@ -489,7 +489,7 @@ mod tests {
     #[test]
     fn test_division_standings_document_metadata() {
         let standings = Arc::new(create_test_standings());
-        let config = Config::default();
+        let config = Arc::new(Config::default());
         let doc = DivisionStandingsDocument::new(standings, config);
 
         assert_eq!(doc.title(), "Division Standings");
@@ -499,7 +499,7 @@ mod tests {
     #[test]
     fn test_division_standings_focusable_positions() {
         let standings = Arc::new(create_test_standings());
-        let config = Config::default();
+        let config = Arc::new(Config::default());
         let doc = DivisionStandingsDocument::new(standings, config);
 
         let positions = doc.focusable_positions();
@@ -511,7 +511,7 @@ mod tests {
     #[test]
     fn test_division_standings_row_positions() {
         let standings = Arc::new(create_test_standings());
-        let config = Config::default();
+        let config = Arc::new(Config::default());
         let doc = DivisionStandingsDocument::new(standings, config);
 
         let row_positions = doc.focusable_row_positions();
@@ -544,7 +544,7 @@ mod tests {
         // Test with western_first = false (Eastern divisions left, Western divisions right)
         let mut config = Config::default();
         config.display_standings_western_first = false;
-        let doc = DivisionStandingsDocument::new(standings.clone(), config);
+        let doc = DivisionStandingsDocument::new(standings.clone(), Arc::new(config));
         let elements = doc.build(&FocusContext::default());
 
         // Verify Row structure with Groups
@@ -560,7 +560,7 @@ mod tests {
         // Test with western_first = true (Western divisions left, Eastern divisions right)
         let mut config = Config::default();
         config.display_standings_western_first = true;
-        let doc = DivisionStandingsDocument::new(standings, config);
+        let doc = DivisionStandingsDocument::new(standings, Arc::new(config));
         let elements = doc.build(&FocusContext::default());
 
         // Verify Row structure (same structure, different internal ordering)

@@ -2,6 +2,8 @@
 //!
 //! This module provides the document-based implementation for settings display.
 
+use std::sync::Arc;
+
 use crate::config::Config;
 use crate::tui::document::{Document, DocumentBuilder, DocumentElement, FocusContext, LinkTarget};
 use crate::tui::SettingsCategory;
@@ -9,12 +11,19 @@ use crate::tui::SettingsCategory;
 /// Settings document for a specific category
 pub struct SettingsDocument {
     category: SettingsCategory,
-    config: Config,
+    config: Arc<Config>,
 }
 
 impl SettingsDocument {
-    pub fn new(category: SettingsCategory, config: Config) -> Self {
-        Self { category, config }
+    /// `config` accepts anything convertible to `Arc<Config>`: an owned `Config`
+    /// (allocates a fresh Arc, used by the reducer's occasional category-switch
+    /// rebuild) or an existing `Arc<Config>` (zero-cost, used by the per-frame
+    /// render path).
+    pub fn new(category: SettingsCategory, config: impl Into<Arc<Config>>) -> Self {
+        Self {
+            category,
+            config: config.into(),
+        }
     }
 
     /// Build the logging settings section
@@ -40,17 +49,13 @@ impl SettingsDocument {
                 focus,
             )
             .spacer(1)
-            .link_with_focus(
-                "log_file",
-                format!(
-                    "{:width$}   {}",
-                    "Log File:",
-                    self.config.log_file,
-                    width = LABEL_WIDTH
-                ),
-                LinkTarget::Action("edit:log_file".to_string()),
-                focus,
-            )
+            // Not editable via the UI yet, so this is display-only (not focusable).
+            .text(format!(
+                "{:width$}   {}",
+                "Log File:",
+                self.config.log_file,
+                width = LABEL_WIDTH
+            ))
     }
 
     /// Build the display settings section
@@ -110,17 +115,13 @@ impl SettingsDocument {
 
         builder
             .spacer(1)
-            .link_with_focus(
-                "refresh_interval",
-                format!(
-                    "{:width$}   {} seconds",
-                    "Refresh Interval:",
-                    self.config.refresh_interval,
-                    width = LABEL_WIDTH
-                ),
-                LinkTarget::Action("edit:refresh_interval".to_string()),
-                focus,
-            )
+            // Not editable via the UI yet, so this is display-only (not focusable).
+            .text(format!(
+                "{:width$}   {} seconds",
+                "Refresh Interval:",
+                self.config.refresh_interval,
+                width = LABEL_WIDTH
+            ))
             .spacer(1)
             .link_with_focus(
                 "western_teams_first",
@@ -134,17 +135,13 @@ impl SettingsDocument {
                 focus,
             )
             .spacer(1)
-            .link_with_focus(
-                "time_format",
-                format!(
-                    "{:width$}   {}",
-                    "Time Format:",
-                    self.config.time_format,
-                    width = LABEL_WIDTH
-                ),
-                LinkTarget::Action("edit:time_format".to_string()),
-                focus,
-            )
+            // Not editable via the UI yet, so this is display-only (not focusable).
+            .text(format!(
+                "{:width$}   {}",
+                "Time Format:",
+                self.config.time_format,
+                width = LABEL_WIDTH
+            ))
     }
 }
 
@@ -206,10 +203,11 @@ fn format_color(color: &ratatui::style::Color) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tui::document::FocusableId;
 
     #[test]
     fn test_logging_document_builds() {
-        let config = Config::default();
+        let config = Arc::new(Config::default());
         let doc = SettingsDocument::new(SettingsCategory::Logging, config);
         let elements = doc.build(&FocusContext::default());
 
@@ -219,7 +217,7 @@ mod tests {
 
     #[test]
     fn test_display_document_builds() {
-        let config = Config::default();
+        let config = Arc::new(Config::default());
         let doc = SettingsDocument::new(SettingsCategory::Display, config);
         let elements = doc.build(&FocusContext::default());
 
@@ -228,8 +226,28 @@ mod tests {
     }
 
     #[test]
+    fn test_logging_focusable_ids_exclude_log_file() {
+        // "log_file" is display-only (not editable via the UI), so it must
+        // not be reachable through keyboard navigation.
+        let doc = SettingsDocument::new(SettingsCategory::Logging, Arc::new(Config::default()));
+        let ids = doc.focusable_ids();
+
+        assert_eq!(ids, vec![FocusableId::link("log_level")]);
+    }
+
+    #[test]
+    fn test_data_focusable_ids_exclude_refresh_interval_and_time_format() {
+        // "refresh_interval" and "time_format" are display-only (not editable
+        // via the UI), so only "western_teams_first" should be focusable.
+        let doc = SettingsDocument::new(SettingsCategory::Data, Arc::new(Config::default()));
+        let ids = doc.focusable_ids();
+
+        assert_eq!(ids, vec![FocusableId::link("western_teams_first")]);
+    }
+
+    #[test]
     fn test_data_document_builds() {
-        let config = Config::default();
+        let config = Arc::new(Config::default());
         let doc = SettingsDocument::new(SettingsCategory::Data, config);
         let elements = doc.build(&FocusContext::default());
 
@@ -239,7 +257,7 @@ mod tests {
 
     #[test]
     fn test_document_titles() {
-        let config = Config::default();
+        let config = Arc::new(Config::default());
 
         let logging_doc = SettingsDocument::new(SettingsCategory::Logging, config.clone());
         assert_eq!(logging_doc.title(), "Logging Settings");

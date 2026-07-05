@@ -14,12 +14,19 @@ use super::{standings_columns, TableWidget};
 /// Conference standings document - two tables side-by-side in a Row element
 pub struct ConferenceStandingsDocument {
     standings: Arc<Vec<Standing>>,
-    config: Config,
+    config: Arc<Config>,
 }
 
 impl ConferenceStandingsDocument {
-    pub fn new(standings: Arc<Vec<Standing>>, config: Config) -> Self {
-        Self { standings, config }
+    /// `config` accepts anything convertible to `Arc<Config>`: an owned `Config`
+    /// (allocates a fresh Arc, used by the reducer's occasional focusable-metadata
+    /// rebuild) or an existing `Arc<Config>` (zero-cost, used by the per-frame
+    /// render path).
+    pub fn new(standings: Arc<Vec<Standing>>, config: impl Into<Arc<Config>>) -> Self {
+        Self {
+            standings,
+            config: config.into(),
+        }
     }
 
     /// Group standings by conference and return (Eastern, Western) sorted by points

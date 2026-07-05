@@ -58,7 +58,7 @@ impl DataEffects {
         let client = self.client.clone();
         Effect::Async(Box::pin(async move {
             let result = cache::fetch_standings_cached(client.as_ref()).await;
-            Action::StandingsLoaded(result.map_err(|e| e.to_string()))
+            Action::StandingsLoaded(result.map_err(Arc::new))
         }))
     }
 
@@ -67,7 +67,7 @@ impl DataEffects {
         let client = self.client.clone();
         Effect::Async(Box::pin(async move {
             let result = cache::fetch_schedule_cached(client.as_ref(), date).await;
-            Action::ScheduleLoaded(result.map_err(|e| e.to_string()))
+            Action::ScheduleLoaded(result.map_err(Arc::new))
         }))
     }
 
@@ -76,7 +76,7 @@ impl DataEffects {
         let client = self.client.clone();
         Effect::Async(Box::pin(async move {
             let result = cache::fetch_game_cached(client.as_ref(), game_id).await;
-            Action::GameDetailsLoaded(game_id, result.map_err(|e| e.to_string()))
+            Action::GameDetailsLoaded(game_id, result.map_err(Arc::new))
         }))
     }
 
@@ -118,7 +118,7 @@ impl DataEffects {
                 Err(e) => Err(e),
             };
 
-            Action::TeamRosterStatsLoaded(team_abbrev, result.map_err(|e| e.to_string()))
+            Action::TeamRosterStatsLoaded(team_abbrev, result.map_err(Arc::new))
         }))
     }
 
@@ -127,7 +127,7 @@ impl DataEffects {
         let client = self.client.clone();
         Effect::Async(Box::pin(async move {
             let result = cache::fetch_player_landing_cached(client.as_ref(), player_id).await;
-            Action::PlayerStatsLoaded(player_id, result.map_err(|e| e.to_string()))
+            Action::PlayerStatsLoaded(player_id, result.map_err(Arc::new))
         }))
     }
 
@@ -136,7 +136,7 @@ impl DataEffects {
         let client = self.client.clone();
         Effect::Async(Box::pin(async move {
             let result = cache::fetch_boxscore_cached(client.as_ref(), game_id).await;
-            Action::BoxscoreLoaded(game_id, result.map_err(|e| e.to_string()))
+            Action::BoxscoreLoaded(game_id, result.map_err(Arc::new))
         }))
     }
 }

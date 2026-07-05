@@ -152,7 +152,7 @@ pub struct SettingsUiState {
 
 /// Default help message shown in the status bar
 pub const DEFAULT_STATUS_MESSAGE: &str =
-    "Keys: ←→ navigate | ↓ enter | ↑/ESC back | q quit | 1-6 jump to tab | / command palette";
+    "Keys: ←→ navigate | ↓ enter | ↑/ESC back | q quit | 1-6 jump to tab";
 
 #[derive(Debug, Clone, Default)]
 pub struct SystemState {

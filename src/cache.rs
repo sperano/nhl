@@ -141,7 +141,7 @@ pub async fn refresh_schedule(
     client: &dyn NHLDataProvider,
     date: GameDate,
 ) -> Result<DailySchedule, NHLApiError> {
-    let key = format!("{}", date);
+    let key = date.to_string();
     SCHEDULE_CACHE.lock().await.cache_remove(&key);
     fetch_schedule_cached(client, date).await
 }

@@ -1,6 +1,9 @@
 use crossterm::event::KeyEvent;
-use nhl_api::{Boxscore, ClubStats, DailySchedule, GameDate, GameMatchup, PlayerLanding, Standing};
+use nhl_api::{
+    Boxscore, ClubStats, DailySchedule, GameDate, GameMatchup, NHLApiError, PlayerLanding, Standing,
+};
 use std::any::Any;
+use std::sync::Arc;
 
 use super::component::Effect;
 use super::types::{StackedDocument, Tab};
@@ -36,16 +39,6 @@ pub enum Action {
     ExitContentFocus,  // Up key: move focus from content back to tab bar
     PushDocument(StackedDocument),
     PopDocument,
-    ToggleCommandPalette,
-
-    /// Unified "navigate up" action (ESC key)
-    ///
-    /// Hierarchical fallthrough:
-    /// 1. If document stack not empty → pop document
-    /// 2. Send NavigateUpMsg to current tab component
-    /// 3. Component returns whether it handled it (closed modal, cleared item focus)
-    /// 4. If not handled and focus_in_content → set focus_in_content = false
-    NavigateUp,
 
     /// Route key events to stacked documents
     ///
@@ -60,12 +53,12 @@ pub enum Action {
     RefreshSchedule(GameDate), // Refresh schedule for specific date
 
     // Data loaded (from effects)
-    StandingsLoaded(Result<Vec<Standing>, String>),
-    ScheduleLoaded(Result<DailySchedule, String>),
-    GameDetailsLoaded(i64, Result<GameMatchup, String>),
-    BoxscoreLoaded(i64, Result<Boxscore, String>),
-    TeamRosterStatsLoaded(String, Result<ClubStats, String>),
-    PlayerStatsLoaded(i64, Result<PlayerLanding, String>),
+    StandingsLoaded(Result<Vec<Standing>, Arc<NHLApiError>>),
+    ScheduleLoaded(Result<DailySchedule, Arc<NHLApiError>>),
+    GameDetailsLoaded(i64, Result<GameMatchup, Arc<NHLApiError>>),
+    BoxscoreLoaded(i64, Result<Boxscore, Arc<NHLApiError>>),
+    TeamRosterStatsLoaded(String, Result<ClubStats, Arc<NHLApiError>>),
+    PlayerStatsLoaded(i64, Result<PlayerLanding, Arc<NHLApiError>>),
 
     // UI actions
     FocusNext,
@@ -124,8 +117,6 @@ impl Clone for Action {
             Self::ExitContentFocus => Self::ExitContentFocus,
             Self::PushDocument(doc) => Self::PushDocument(doc.clone()),
             Self::PopDocument => Self::PopDocument,
-            Self::ToggleCommandPalette => Self::ToggleCommandPalette,
-            Self::NavigateUp => Self::NavigateUp,
             Self::StackedDocumentKey(key) => Self::StackedDocumentKey(*key),
             Self::RefreshData => Self::RefreshData,
             Self::RefreshSchedule(date) => Self::RefreshSchedule(date.clone()),
@@ -177,11 +168,9 @@ mod tests {
         assert!(Action::ExitContentFocus.should_render());
         assert!(Action::RefreshData.should_render());
         assert!(Action::Quit.should_render());
-        assert!(Action::ToggleCommandPalette.should_render());
         assert!(Action::PopDocument.should_render());
         assert!(Action::FocusNext.should_render());
         assert!(Action::FocusPrevious.should_render());
-        assert!(Action::NavigateUp.should_render());
     }
 
     #[test]

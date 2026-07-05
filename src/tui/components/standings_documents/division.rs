@@ -28,12 +28,19 @@ use super::{standings_columns, TableWidget};
 /// left column first, then down through right column).
 pub struct DivisionStandingsDocument {
     standings: Arc<Vec<Standing>>,
-    config: Config,
+    config: Arc<Config>,
 }
 
 impl DivisionStandingsDocument {
-    pub fn new(standings: Arc<Vec<Standing>>, config: Config) -> Self {
-        Self { standings, config }
+    /// `config` accepts anything convertible to `Arc<Config>`: an owned `Config`
+    /// (allocates a fresh Arc, used by the reducer's occasional focusable-metadata
+    /// rebuild) or an existing `Arc<Config>` (zero-cost, used by the per-frame
+    /// render path).
+    pub fn new(standings: Arc<Vec<Standing>>, config: impl Into<Arc<Config>>) -> Self {
+        Self {
+            standings,
+            config: config.into(),
+        }
     }
 
     /// Group standings by division and return maps for each conference

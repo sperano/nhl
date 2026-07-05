@@ -1,4 +1,3 @@
-use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -57,9 +56,6 @@ impl TabState for StandingsTabState {
 /// Messages handled by StandingsTab component
 #[derive(Clone, Debug)]
 pub enum StandingsTabMsg {
-    /// Key event when this tab is focused
-    Key(KeyEvent),
-
     /// Navigate up request (ESC in browse mode, returns to tab bar otherwise)
     NavigateUp,
 
@@ -104,8 +100,9 @@ pub struct StandingsTabProps {
     // Navigation state
     pub document_stack: Vec<DocumentStackEntry>,
     pub focused: bool,
-    // Config
-    pub config: Config,
+    // Config (Arc'd by the caller so cloning props each render is a pointer bump,
+    // not a deep copy of the underlying Config)
+    pub config: Arc<Config>,
     // Animation frame for loading indicator
     pub animation_frame: u8,
 }
@@ -131,8 +128,6 @@ impl Component for StandingsTab {
 
         // Handle tab-specific messages
         match msg {
-            StandingsTabMsg::Key(key) => self.handle_key(key, state),
-
             StandingsTabMsg::CycleViewLeft => {
                 state.view = match state.view {
                     GroupBy::Wildcard => GroupBy::League,
@@ -191,50 +186,11 @@ impl Component for StandingsTab {
     }
 
     fn view(&self, props: &Self::Props, state: &Self::State) -> Element {
-        // If in document stack view, render the stacked document instead
-        if !props.document_stack.is_empty() {
-            tracing::debug!(
-                "RENDER: Document stack has {} items, rendering stacked document",
-                props.document_stack.len()
-            );
-            return self.render_stacked_document(props);
-        }
-
         self.render_view_tabs(props, state)
     }
 }
 
 impl StandingsTab {
-    /// Handle key events when this tab is focused
-    fn handle_key(&mut self, key: KeyEvent, state: &mut StandingsTabState) -> Effect {
-        use crate::tui::nav_handler::key_to_nav_msg;
-
-        if state.has_item_focus() {
-            // Browse mode - arrow keys navigate teams
-
-            // Try standard navigation first (handles Tab, arrows, PageUp/Down, etc.)
-            if let Some(nav_msg) = key_to_nav_msg(key) {
-                return crate::tui::document_nav::handle_message(&mut state.doc_nav, &nav_msg);
-            }
-
-            // Handle Enter to activate focused element
-            match key.code {
-                KeyCode::Enter => self.update(StandingsTabMsg::ActivateTeam, state),
-                _ => Effect::None,
-            }
-        } else {
-            // View selection mode - arrow keys navigate views
-            match key.code {
-                KeyCode::Left => self.update(StandingsTabMsg::CycleViewLeft, state),
-                KeyCode::Right => self.update(StandingsTabMsg::CycleViewRight, state),
-                KeyCode::Down | KeyCode::Enter => {
-                    self.update(StandingsTabMsg::EnterBrowseMode, state)
-                }
-                _ => Effect::None,
-            }
-        }
-    }
-
     /// Render view tabs using TabbedPanel (Wildcard/Division/Conference/League)
     fn render_view_tabs(&self, props: &StandingsTabProps, state: &StandingsTabState) -> Element {
         // All inactive tabs get Element::None to avoid cloning issues
@@ -371,30 +327,6 @@ impl StandingsTab {
             props.focused && state.has_item_focus(),
         )))
     }
-
-    fn render_stacked_document(&self, props: &StandingsTabProps) -> Element {
-        // Get the current stacked document info
-        let doc_info = if let Some(doc_entry) = props.document_stack.last() {
-            let msg = match &doc_entry.document {
-                super::super::StackedDocument::TeamDetail { abbrev } => {
-                    format!("Team Detail: {}\n\n(Document rendering not yet implemented)\n\nPress ESC to go back", abbrev)
-                }
-                super::super::StackedDocument::PlayerDetail { player_id, .. } => {
-                    format!("Player Detail: {}\n\n(Document rendering not yet implemented)\n\nPress ESC to go back", player_id)
-                }
-                super::super::StackedDocument::Boxscore { game_id, .. } => {
-                    format!("Boxscore: {}\n\n(Document rendering not yet implemented)\n\nPress ESC to go back", game_id)
-                }
-            };
-            tracing::debug!("RENDER: Rendering stacked document with message: {}", msg);
-            msg
-        } else {
-            tracing::warn!("RENDER: render_stacked_document called but document_stack is empty!");
-            "No document".to_string()
-        };
-
-        Element::Widget(Box::new(StackedDocumentWidget { message: doc_info }))
-    }
 }
 
 /// Animated loading widget - shows the pulsing dots animation
@@ -433,28 +365,6 @@ impl ElementWidget for LoadingWidget {
     }
 }
 
-/// Stacked document widget placeholder
-struct StackedDocumentWidget {
-    message: String,
-}
-
-impl ElementWidget for StackedDocumentWidget {
-    fn render(&self, area: Rect, buf: &mut Buffer, _ctx: &RenderContext) {
-        let widget = Paragraph::new(self.message.as_str()).block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("Document View"),
-        );
-        ratatui::widgets::Widget::render(widget, area, buf);
-    }
-
-    fn clone_box(&self) -> Box<dyn ElementWidget> {
-        Box::new(StackedDocumentWidget {
-            message: self.message.clone(),
-        })
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -472,7 +382,7 @@ mod tests {
             standings: Arc::new(None),
             document_stack: Vec::new(),
             focused: false,
-            config: Config::default(),
+            config: Arc::new(Config::default()),
             animation_frame: 0,
         };
 
@@ -495,7 +405,7 @@ mod tests {
             standings: Arc::new(Some(standings)),
             document_stack: Vec::new(),
             focused: false,
-            config: Config::default(),
+            config: Arc::new(Config::default()),
             animation_frame: 0,
         };
 
@@ -536,7 +446,7 @@ mod tests {
             standings: Arc::new(Some(standings)),
             document_stack: Vec::new(),
             focused: false,
-            config: Config::default(),
+            config: Arc::new(Config::default()),
             animation_frame: 0,
         };
 
@@ -603,7 +513,7 @@ mod tests {
             standings: Arc::new(Some(standings)),
             document_stack: Vec::new(),
             focused: false,
-            config: Config::default(),
+            config: Arc::new(Config::default()),
             animation_frame: 0,
         };
 
@@ -673,7 +583,7 @@ mod tests {
             standings: Arc::new(Some(standings)),
             document_stack: Vec::new(),
             focused: false,
-            config: Config::default(),
+            config: Arc::new(Config::default()),
             animation_frame: 0,
         };
 
@@ -740,7 +650,7 @@ mod tests {
             standings: Arc::new(Some(standings)),
             document_stack: Vec::new(),
             focused: false,
-            config: Config::default(),
+            config: Arc::new(Config::default()),
             animation_frame: 0,
         };
 

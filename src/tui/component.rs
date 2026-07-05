@@ -34,27 +34,11 @@ pub trait Component: Send {
 
     /// Render component given props and state (pure function)
     fn view(&self, props: &Self::Props, state: &Self::State) -> Element;
-
-    /// Should this component re-render? (like React.shouldComponentUpdate)
-    ///
-    /// Override this to implement memoization. Default is to always re-render.
-    /// Return false to skip re-rendering when props haven't meaningfully changed.
-    fn should_update(&self, _old_props: &Self::Props, _new_props: &Self::Props) -> bool {
-        true // Default: always update
-    }
-
-    /// Lifecycle: called when props change
-    fn did_update(&mut self, _old_props: &Self::Props, _new_props: &Self::Props) -> Effect {
-        Effect::None
-    }
 }
 
 /// Element in virtual component tree
 #[derive(Clone)]
 pub enum Element {
-    /// A component that needs to be rendered
-    Component(Box<dyn ComponentWrapper>),
-
     /// A widget that can be directly rendered to ratatui buffer
     Widget(Box<dyn ElementWidget>),
 
@@ -187,18 +171,6 @@ impl Clone for Box<dyn ElementWidget> {
     }
 }
 
-/// Type-erased component wrapper for dynamic dispatch
-pub trait ComponentWrapper: Send + Sync {
-    fn view_any(&self) -> Element;
-    fn clone_box(&self) -> Box<dyn ComponentWrapper>;
-}
-
-impl Clone for Box<dyn ComponentWrapper> {
-    fn clone(&self) -> Self {
-        self.clone_box()
-    }
-}
-
 /// Helper to create a container with vertical layout
 pub fn vertical<const N: usize>(constraints: [Constraint; N], children: Vec<Element>) -> Element {
     Element::Container {
@@ -241,7 +213,6 @@ mod tests {
 
         // Using default init (lines 26-27)
         // Using default update (lines 31-32)
-        // Using default did_update (lines 39-40)
 
         fn view(&self, _props: &Self::Props, _state: &Self::State) -> Element {
             Element::None
@@ -265,19 +236,6 @@ mod tests {
         // Using default preferred_width (lines 123-124)
     }
 
-    // Test component wrapper for clone test
-    struct TestComponentWrapper;
-
-    impl ComponentWrapper for TestComponentWrapper {
-        fn view_any(&self) -> Element {
-            Element::None
-        }
-
-        fn clone_box(&self) -> Box<dyn ComponentWrapper> {
-            Box::new(TestComponentWrapper)
-        }
-    }
-
     #[test]
     fn test_component_init_default() {
         let state = TestComponent::init(&TestProps);
@@ -292,18 +250,6 @@ mod tests {
         let effect = component.update(TestMessage::Increment, &mut state);
 
         // Default update returns Effect::None
-        matches!(effect, Effect::None);
-    }
-
-    #[test]
-    fn test_component_did_update_default() {
-        let mut component = TestComponent;
-        let old_props = TestProps;
-        let new_props = TestProps;
-
-        let effect = component.did_update(&old_props, &new_props);
-
-        // Default did_update returns Effect::None
         matches!(effect, Effect::None);
     }
 
@@ -324,13 +270,6 @@ mod tests {
         let widget: Box<dyn ElementWidget> = Box::new(TestWidget);
         let _cloned = widget.clone();
         // If we get here, clone worked
-    }
-
-    #[test]
-    fn test_box_component_wrapper_clone() {
-        let wrapper: Box<dyn ComponentWrapper> = Box::new(TestComponentWrapper);
-        let _cloned = wrapper.clone();
-        // If we get here, clone worked (tests lines 141-142)
     }
 
     #[test]

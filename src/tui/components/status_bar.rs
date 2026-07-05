@@ -14,10 +14,14 @@ use crate::tui::{
     state::SystemState,
 };
 
-/// StatusBar component - renders status bar with refresh countdown and error messages
+/// If the data hasn't refreshed in this many multiples of `refresh_interval`,
+/// flag it as stale (auto-refresh is likely failing, e.g. repeated network errors).
+const STALE_THRESHOLD_MULTIPLIER: u32 = 3;
+
+/// StatusBar component - renders status bar with last-refresh indicator and error messages
 ///
 /// Left side: status/error messages
-/// Right side: refresh countdown
+/// Right side: time elapsed since the last data refresh (real timestamp, not a countdown)
 pub struct StatusBar;
 
 impl Component for StatusBar {
@@ -54,19 +58,24 @@ impl ElementWidget for StatusBarWidget {
             String::new()
         };
 
-        // Right side: countdown to next refresh
+        // Right side: how long ago data was actually refreshed (real timestamp, not a
+        // countdown to a promised refresh - see reducer::should_auto_refresh for the
+        // logic that actually triggers refreshes on a `Tick`).
         let right_text = if let Some(refresh_time) = self.last_refresh {
-            if let Ok(elapsed) = SystemTime::now().duration_since(refresh_time) {
-                let elapsed_secs = elapsed.as_secs();
-                let remaining_secs = self.refresh_interval.saturating_sub(elapsed_secs as u32);
+            match SystemTime::now().duration_since(refresh_time) {
+                Ok(elapsed) => {
+                    let elapsed_secs = elapsed.as_secs();
+                    let stale_threshold_secs =
+                        u64::from(self.refresh_interval) * u64::from(STALE_THRESHOLD_MULTIPLIER);
 
-                if remaining_secs > 0 {
-                    format!("Refresh in {}s", remaining_secs)
-                } else {
-                    "Refreshing...".to_string()
+                    if elapsed_secs > stale_threshold_secs {
+                        format!("Updated {}s ago (stale)", elapsed_secs)
+                    } else {
+                        format!("Updated {}s ago", elapsed_secs)
+                    }
                 }
-            } else {
-                "Refresh in ?s".to_string()
+                // Clock skew or a refresh timestamp from the future - can't compute elapsed time.
+                Err(_) => "Updated ?s ago".to_string(),
             }
         } else {
             "Loading...".to_string()
@@ -210,7 +219,7 @@ mod tests {
                 widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
                 assert_buffer(&buf, &[
                     "────────────────────────────────────────────────────────────────┬───────────────",
-                    "                                                                │ Refresh in 55s",
+                    "                                                                │ Updated 5s ago",
                 ]);
             }
             _ => panic!("Expected widget element"),
@@ -244,7 +253,9 @@ mod tests {
     }
 
     #[test]
-    fn test_status_bar_refreshing_state() {
+    fn test_status_bar_shows_elapsed_time_at_refresh_interval_boundary() {
+        // Elapsed time exactly equal to the interval is not yet stale
+        // (stale threshold is a multiple of the interval, see STALE_THRESHOLD_MULTIPLIER).
         let widget = StatusBarWidget {
             last_refresh: Some(SystemTime::now() - std::time::Duration::from_secs(60)),
             refresh_interval: 60,
@@ -257,14 +268,42 @@ mod tests {
         let ctx = RenderContext::focused(&config);
         widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
 
-        // Should show "Refreshing..." when time has elapsed
         let line2 = (0..RENDER_WIDTH)
             .map(|x| buf.cell((x, 1)).map(|c| c.symbol()).unwrap_or(""))
             .collect::<String>();
 
         assert!(
-            line2.contains("Refreshing..."),
-            "Refreshing message not found in: {}",
+            line2.contains("Updated 60s ago") && !line2.contains("stale"),
+            "Expected non-stale elapsed indicator in: {}",
+            line2
+        );
+    }
+
+    #[test]
+    fn test_status_bar_flags_stale_data_past_threshold() {
+        // Regression test: previously the status bar showed a "Refresh in Ns"
+        // countdown that implied an imminent refresh even though `Tick` never
+        // re-dispatched `RefreshData`, so scores froze silently. Now the bar
+        // reflects the real last-refresh timestamp and flags stale data.
+        let widget = StatusBarWidget {
+            last_refresh: Some(SystemTime::now() - std::time::Duration::from_secs(200)),
+            refresh_interval: 60,
+            status_message: None,
+            is_error: false,
+        };
+
+        let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
+        let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
+        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
+
+        let line2 = (0..RENDER_WIDTH)
+            .map(|x| buf.cell((x, 1)).map(|c| c.symbol()).unwrap_or(""))
+            .collect::<String>();
+
+        assert!(
+            line2.contains("Updated 200s ago (stale)"),
+            "Stale indicator not found in: {}",
             line2
         );
     }
@@ -284,13 +323,13 @@ mod tests {
         let ctx = RenderContext::focused(&config);
         widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
 
-        // Should show "Refresh in ?s" when duration_since fails
+        // Should show "Updated ?s ago" when duration_since fails
         let line2 = (0..RENDER_WIDTH)
             .map(|x| buf.cell((x, 1)).map(|c| c.symbol()).unwrap_or(""))
             .collect::<String>();
 
         assert!(
-            line2.contains("Refresh in ?s"),
+            line2.contains("Updated ?s ago"),
             "Error fallback not found in: {}",
             line2
         );
@@ -339,7 +378,7 @@ mod tests {
             &buf,
             &[
                 "────────────────────────────────────────────────────────────────┬───────────────",
-                " Configuration saved                                            │ Refresh in 55s",
+                " Configuration saved                                            │ Updated 5s ago",
             ],
         );
 
@@ -367,7 +406,7 @@ mod tests {
             &buf,
             &[
                 "────────────────────────────────────────────────────────────────┬───────────────",
-                " Failed to save config                                          │ Refresh in 55s",
+                " Failed to save config                                          │ Updated 5s ago",
             ],
         );
 
@@ -395,7 +434,7 @@ mod tests {
             &buf,
             &[
                 "────────────────────────────────────────────────────────────────┬───────────────",
-                "                                                                │ Refresh in 55s",
+                "                                                                │ Updated 5s ago",
             ],
         );
     }
@@ -632,7 +671,7 @@ mod tests {
             "Vertical separator should be present despite CJK characters"
         );
         assert!(
-            line1.contains("Refresh in"),
+            line1.contains("Updated") && line1.contains("ago"),
             "Refresh text should still be visible"
         );
     }

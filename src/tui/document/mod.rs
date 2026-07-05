@@ -333,11 +333,12 @@ impl DocumentView {
     /// - `document`: The document to display
     /// - `viewport_height`: Height of the visible viewport
     pub fn new(document: Arc<dyn Document>, viewport_height: u16) -> Self {
-        let doc_height = document.calculate_height();
-        let viewport = Viewport::new(0, viewport_height, doc_height);
-
-        // Build focus manager from document elements (no focus initially)
+        // Build once and derive both height and focus manager from it, instead of calling
+        // calculate_height() (which independently calls build() again internally) followed by
+        // a second build() call here for the focus manager.
         let elements = document.build(&FocusContext::default());
+        let doc_height = elements.iter().map(|e| e.height()).sum();
+        let viewport = Viewport::new(0, viewport_height, doc_height);
         let focus_manager = FocusManager::from_elements(&elements);
 
         Self {

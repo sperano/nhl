@@ -1,6 +1,8 @@
+use anyhow::Context;
 use phf::phf_map;
-use ratatui::style::{Color, Modifier};
+use ratatui::style::{Color, Modifier, Style};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::OnceLock;
@@ -413,22 +415,22 @@ impl DisplayConfig {
     }
 
     /// Get the base style with just background color if theme specifies one
-    pub fn base_style(&self) -> ratatui::style::Style {
+    pub fn base_style(&self) -> Style {
         self.theme
             .as_ref()
             .and_then(|t| t.bg)
-            .map(|bg| ratatui::style::Style::default().bg(bg))
+            .map(|bg| Style::default().bg(bg))
             .unwrap_or_default()
     }
 
     /// Get the default text style using fg2 from theme
     ///
     /// This is the primary text color for normal content.
-    pub fn text_style(&self) -> ratatui::style::Style {
+    pub fn text_style(&self) -> Style {
         self.theme
             .as_ref()
             .map(|t| {
-                let style = ratatui::style::Style::default().fg(t.fg);
+                let style = Style::default().fg(t.fg);
                 match t.bg {
                     Some(bg) => style.bg(bg),
                     None => style,
@@ -438,11 +440,11 @@ impl DisplayConfig {
     }
 
     /// This is for separators, borders, etc
-    pub fn boxchar_style(&self) -> ratatui::style::Style {
+    pub fn boxchar_style(&self) -> Style {
         self.theme
             .as_ref()
             .map(|t| {
-                let style = ratatui::style::Style::default().fg(t.boxchar_fg);
+                let style = Style::default().fg(t.boxchar_fg);
                 match t.bg {
                     Some(bg) => style.bg(bg),
                     None => style,
@@ -452,11 +454,11 @@ impl DisplayConfig {
     }
 
     /// Dimmed version of boxchar_style for unfocused elements
-    pub fn boxchar_style_dim(&self) -> ratatui::style::Style {
+    pub fn boxchar_style_dim(&self) -> Style {
         self.theme
             .as_ref()
             .map(|t| {
-                let style = ratatui::style::Style::default().fg(t.boxchar_fg_dark());
+                let style = Style::default().fg(t.boxchar_fg_dark());
                 match t.bg_dark() {
                     Some(bg) => style.bg(bg),
                     None => style,
@@ -466,7 +468,7 @@ impl DisplayConfig {
     }
 
     /// Get a heading style with bold modifier
-    pub fn heading_style(&self, level: u8) -> ratatui::style::Style {
+    pub fn heading_style(&self, level: u8) -> Style {
         let base = self.text_style();
         match level {
             1 | 2 => base.add_modifier(Modifier::BOLD),
@@ -475,20 +477,20 @@ impl DisplayConfig {
     }
 
     /// Dimmed version of base_style for unfocused elements
-    pub fn base_style_dim(&self) -> ratatui::style::Style {
+    pub fn base_style_dim(&self) -> Style {
         self.theme
             .as_ref()
             .and_then(|t| t.bg_dark())
-            .map(|bg| ratatui::style::Style::default().bg(bg))
+            .map(|bg| Style::default().bg(bg))
             .unwrap_or_default()
     }
 
     /// Dimmed version of text_style for unfocused elements
-    pub fn text_style_dim(&self) -> ratatui::style::Style {
+    pub fn text_style_dim(&self) -> Style {
         self.theme
             .as_ref()
             .map(|t| {
-                let style = ratatui::style::Style::default().fg(t.fg_dark());
+                let style = Style::default().fg(t.fg_dark());
                 match t.bg_dark() {
                     Some(bg) => style.bg(bg),
                     None => style,
@@ -498,7 +500,7 @@ impl DisplayConfig {
     }
 
     /// Dimmed version of heading_style for unfocused elements
-    pub fn heading_style_dim(&self, level: u8) -> ratatui::style::Style {
+    pub fn heading_style_dim(&self, level: u8) -> Style {
         let base = self.text_style_dim();
         match level {
             1 | 2 => base.add_modifier(Modifier::BOLD),
@@ -509,11 +511,11 @@ impl DisplayConfig {
     /// Get the emphasis style (bold with emphasis_fg color)
     ///
     /// Used for section titles and other emphasized text.
-    pub fn emphasis_style(&self) -> ratatui::style::Style {
+    pub fn emphasis_style(&self) -> Style {
         self.theme
             .as_ref()
             .map(|t| {
-                let style = ratatui::style::Style::default()
+                let style = Style::default()
                     .fg(t.emphasis_fg)
                     .add_modifier(Modifier::BOLD);
                 match t.bg {
@@ -521,15 +523,15 @@ impl DisplayConfig {
                     None => style,
                 }
             })
-            .unwrap_or_else(|| ratatui::style::Style::default().add_modifier(Modifier::BOLD))
+            .unwrap_or_else(|| Style::default().add_modifier(Modifier::BOLD))
     }
 
     /// Dimmed version of emphasis_style for unfocused elements
-    pub fn emphasis_style_dim(&self) -> ratatui::style::Style {
+    pub fn emphasis_style_dim(&self) -> Style {
         self.theme
             .as_ref()
             .map(|t| {
-                let style = ratatui::style::Style::default()
+                let style = Style::default()
                     .fg(t.emphasis_fg_dark())
                     .add_modifier(Modifier::BOLD);
                 match t.bg_dark() {
@@ -537,7 +539,7 @@ impl DisplayConfig {
                     None => style,
                 }
             })
-            .unwrap_or_else(|| ratatui::style::Style::default().add_modifier(Modifier::BOLD))
+            .unwrap_or_else(|| Style::default().add_modifier(Modifier::BOLD))
     }
 }
 
@@ -550,7 +552,7 @@ pub struct RenderContext<'a> {
     pub config: &'a DisplayConfig,
     pub focused: bool,
     /// Tab selections for embedded tabs in documents (tabs_id -> active_index)
-    pub tab_selections: std::collections::HashMap<String, usize>,
+    pub tab_selections: HashMap<String, usize>,
 }
 
 impl<'a> RenderContext<'a> {
@@ -559,7 +561,7 @@ impl<'a> RenderContext<'a> {
         Self {
             config,
             focused,
-            tab_selections: std::collections::HashMap::new(),
+            tab_selections: HashMap::new(),
         }
     }
 
@@ -568,21 +570,18 @@ impl<'a> RenderContext<'a> {
         Self {
             config,
             focused: true,
-            tab_selections: std::collections::HashMap::new(),
+            tab_selections: HashMap::new(),
         }
     }
 
     /// Set tab selections for embedded tabs
-    pub fn with_tab_selections(
-        mut self,
-        selections: std::collections::HashMap<String, usize>,
-    ) -> Self {
+    pub fn with_tab_selections(mut self, selections: HashMap<String, usize>) -> Self {
         self.tab_selections = selections;
         self
     }
 
     /// Get the base style (with background color if theme specifies one)
-    pub fn base_style(&self) -> ratatui::style::Style {
+    pub fn base_style(&self) -> Style {
         if self.focused {
             self.config.base_style()
         } else {
@@ -591,7 +590,7 @@ impl<'a> RenderContext<'a> {
     }
 
     /// Get the text style
-    pub fn text_style(&self) -> ratatui::style::Style {
+    pub fn text_style(&self) -> Style {
         if self.focused {
             self.config.text_style()
         } else {
@@ -600,7 +599,7 @@ impl<'a> RenderContext<'a> {
     }
 
     /// Get the box character style (for borders, separators)
-    pub fn boxchar_style(&self) -> ratatui::style::Style {
+    pub fn boxchar_style(&self) -> Style {
         if self.focused {
             self.config.boxchar_style()
         } else {
@@ -609,7 +608,7 @@ impl<'a> RenderContext<'a> {
     }
 
     /// Get the heading style
-    pub fn heading_style(&self, level: u8) -> ratatui::style::Style {
+    pub fn heading_style(&self, level: u8) -> Style {
         if self.focused {
             self.config.heading_style(level)
         } else {
@@ -618,7 +617,7 @@ impl<'a> RenderContext<'a> {
     }
 
     /// Get the emphasis style (for section titles)
-    pub fn emphasis_style(&self) -> ratatui::style::Style {
+    pub fn emphasis_style(&self) -> Style {
         if self.focused {
             self.config.emphasis_style()
         } else {
@@ -841,7 +840,14 @@ pub fn read() -> Config {
         Err(_) => return Config::default(),
     };
 
-    let mut config: Config = toml::from_str(&content).unwrap_or_else(|_| Config::default());
+    let mut config: Config = toml::from_str(&content).unwrap_or_else(|err| {
+        tracing::warn!(
+            "Failed to parse config file at {}: {}. Falling back to default configuration.",
+            config_path.display(),
+            err
+        );
+        Config::default()
+    });
 
     // Initialize box_chars based on use_unicode (since it's not serialized)
     config.display.box_chars =
@@ -854,8 +860,8 @@ pub fn read() -> Config {
 }
 
 /// Write a config to the config file
-pub fn write(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
-    let config_path = get_config_path().ok_or("Failed to get config path")?;
+pub fn write(config: &Config) -> anyhow::Result<()> {
+    let config_path = get_config_path().context("Failed to get config path")?;
 
     // Create parent directory if it doesn't exist
     if let Some(parent) = config_path.parent() {
@@ -954,6 +960,19 @@ use_unicode = false
 error_fg = "255,0,0"
 "#;
         assert_eq!(toml_str.trim(), expected.trim());
+    }
+
+    #[test]
+    fn test_config_toml_example_parses() {
+        // Guards against config.toml.example drifting from the real Config schema.
+        let example = include_str!("../config.toml.example");
+        let config: Config = toml::from_str(example)
+            .expect("config.toml.example should parse into Config without unknown/missing keys");
+
+        assert_eq!(config.log_level, "info");
+        assert_eq!(config.refresh_interval, 60);
+        assert!(config.display.use_unicode);
+        assert_eq!(config.display.theme_name, Some("orange".to_string()));
     }
 
     #[test]
