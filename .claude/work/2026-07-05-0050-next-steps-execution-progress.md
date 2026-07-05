@@ -36,11 +36,18 @@ build/test/clippy/fmt across default + development + game_stats:
 668 lib tests + 3 bin + 4 doctests passing, 0 failures, clippy/fmt clean.
 (Baseline was 601 → +67 net new tests.)
 
-## Latent bugs surfaced by Phase A (documented, deliberately NOT fixed — need user decision)
-1. **Cross-tab focus-state bleed** (A.1, real repro): `has_*_item_focus` checks in keys.rs are
-   not gated on `current_tab`, and `navigate_to_tab` never resets per-tab focus state — stale
-   `focus_index` from a previous tab misroutes Up/ESC on the current tab (e.g. Up on Standings
-   silently swallowed as if exiting Scores box-selection). Pinned by tests.
+## Latent bugs surfaced by Phase A (documented; #1 now FIXED, rest need user decision)
+1. **Cross-tab focus-state bleed** — **FIXED 2026-07-05** (user-directed follow-up, committed
+   after 36f14a2). Two layers: (a) keys.rs `has_scores/standings/settings_item_focus` +
+   `is_settings_modal_open` now gated on `current_tab` matching their tab, so foreign tab state
+   never drives routing; (b) `navigate_to_tab/left/right` (reducers/navigation.rs, now taking
+   `&mut ComponentStateStore`) call new `clear_all_tab_item_focus` — clears every tab's
+   `doc_nav` focus/scroll (incl. Demo's DocumentNavState) and closes any settings modal. UX
+   consequence: tab switch always resets inner selection. 5 test-table rows flipped from
+   pinning the bug to pinning the fix; 2 new reducer regression tests
+   (`test_tab_switch_clears_all_item_focus_and_modal`, `test_tab_cycling_clears_item_focus`);
+   navigation.md "Known Issue" section replaced with "Cross-Tab Focus Isolation". Verified:
+   668 dev + 651 default tests, clippy/fmt clean across all three feature sets.
 2. **PlayerDetail activate index mismatch** (A.4): `activate()` indexes the full filtered season
    array with a focus index that counts only *focusable* cells; a season row with unresolvable
    team name ahead of a valid one makes activation of the focused row silently no-op. Pinned by

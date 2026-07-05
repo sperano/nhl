@@ -77,7 +77,7 @@ pub fn reduce(
     // Each returns Ok((state, effect)) if handled, Err(state) to continue
 
     // Navigation actions
-    let state = match reduce_navigation(state, &action) {
+    let state = match reduce_navigation(state, &action, component_states) {
         Ok(result) => return result,
         Err(state) => state,
     };

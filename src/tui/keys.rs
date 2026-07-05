@@ -21,38 +21,45 @@ use super::state::AppState;
 use super::tab_component::TabState;
 use super::types::Tab;
 
-/// Helper to check if scores tab has an item focused (box selection)
-fn has_scores_item_focus(component_states: &ComponentStateStore) -> bool {
-    component_states
-        .get::<ScoresTabState>(SCORES_TAB_PATH)
-        .map(|s| s.has_item_focus())
-        .unwrap_or(false)
+/// Helper to check if scores tab has an item focused (box selection).
+///
+/// Gated on the Scores tab being current: another tab's stale focus state must
+/// never influence key routing (cross-tab focus bleed).
+fn has_scores_item_focus(state: &AppState, component_states: &ComponentStateStore) -> bool {
+    state.navigation.current_tab == Tab::Scores
+        && component_states
+            .get::<ScoresTabState>(SCORES_TAB_PATH)
+            .map(|s| s.has_item_focus())
+            .unwrap_or(false)
 }
 
-/// Helper to check if standings tab has an item focused
-fn has_standings_item_focus(component_states: &ComponentStateStore) -> bool {
-    component_states
-        .get::<StandingsTabState>(STANDINGS_TAB_PATH)
-        .map(|s| s.has_item_focus())
-        .unwrap_or(false)
+/// Helper to check if standings tab has an item focused (gated on current tab)
+fn has_standings_item_focus(state: &AppState, component_states: &ComponentStateStore) -> bool {
+    state.navigation.current_tab == Tab::Standings
+        && component_states
+            .get::<StandingsTabState>(STANDINGS_TAB_PATH)
+            .map(|s| s.has_item_focus())
+            .unwrap_or(false)
 }
 
-/// Helper to check if settings tab has modal open
-fn is_settings_modal_open(component_states: &ComponentStateStore) -> bool {
+/// Helper to check if settings tab has modal open (gated on current tab)
+fn is_settings_modal_open(state: &AppState, component_states: &ComponentStateStore) -> bool {
     use super::components::settings_tab::SettingsTabState;
-    component_states
-        .get::<SettingsTabState>(SETTINGS_TAB_PATH)
-        .map(|s| s.modal.is_some())
-        .unwrap_or(false)
+    state.navigation.current_tab == Tab::Settings
+        && component_states
+            .get::<SettingsTabState>(SETTINGS_TAB_PATH)
+            .map(|s| s.modal.is_some())
+            .unwrap_or(false)
 }
 
-/// Helper to check if settings tab has an item focused
-fn has_settings_item_focus(component_states: &ComponentStateStore) -> bool {
+/// Helper to check if settings tab has an item focused (gated on current tab)
+fn has_settings_item_focus(state: &AppState, component_states: &ComponentStateStore) -> bool {
     use super::components::settings_tab::SettingsTabState;
-    component_states
-        .get::<SettingsTabState>(SETTINGS_TAB_PATH)
-        .map(|s| s.has_item_focus())
-        .unwrap_or(false)
+    state.navigation.current_tab == Tab::Settings
+        && component_states
+            .get::<SettingsTabState>(SETTINGS_TAB_PATH)
+            .map(|s| s.has_item_focus())
+            .unwrap_or(false)
 }
 
 /// Handle global keys that work regardless of tab or focus state
@@ -74,7 +81,7 @@ fn handle_esc_key(state: &AppState, component_states: &ComponentStateStore) -> O
     }
 
     // Priority 2: If settings modal is open, close it
-    if is_settings_modal_open(component_states) {
+    if is_settings_modal_open(state, component_states) {
         debug!("KEY: ESC pressed with settings modal open - closing modal");
         return Some(Action::ComponentMessage {
             path: SETTINGS_TAB_PATH.to_string(),
@@ -83,7 +90,7 @@ fn handle_esc_key(state: &AppState, component_states: &ComponentStateStore) -> O
     }
 
     // Priority 3: If in box selection mode on Scores tab, exit to date subtabs
-    if has_scores_item_focus(component_states) {
+    if has_scores_item_focus(state, component_states) {
         debug!("KEY: ESC pressed in box selection - exiting to date subtabs");
         return Some(Action::ComponentMessage {
             path: SCORES_TAB_PATH.to_string(),
@@ -92,7 +99,7 @@ fn handle_esc_key(state: &AppState, component_states: &ComponentStateStore) -> O
     }
 
     // Priority 4: If standings tab has item focus, clear it
-    if has_standings_item_focus(component_states) {
+    if has_standings_item_focus(state, component_states) {
         debug!("KEY: ESC pressed with standings item focus - clearing focus");
         return Some(Action::ComponentMessage {
             path: STANDINGS_TAB_PATH.to_string(),
@@ -101,7 +108,7 @@ fn handle_esc_key(state: &AppState, component_states: &ComponentStateStore) -> O
     }
 
     // Priority 4.5: If settings tab has item focus, clear it
-    if has_settings_item_focus(component_states) {
+    if has_settings_item_focus(state, component_states) {
         debug!("KEY: ESC pressed with settings item focus - clearing focus");
         return Some(Action::ComponentMessage {
             path: SETTINGS_TAB_PATH.to_string(),
@@ -163,7 +170,7 @@ fn handle_scores_tab_keys(
 ) -> Option<Action> {
     use crate::tui::document_nav::DocumentNavMsg;
 
-    if has_scores_item_focus(component_states) {
+    if has_scores_item_focus(state, component_states) {
         // Box selection mode - use document navigation. Note: Up is handled by
         // key_to_action's own special-case before this function is ever reached
         // (see step 6 there), so there is no Up arm here.
@@ -274,7 +281,7 @@ fn handle_settings_tab_keys(
     use crate::tui::components::settings_tab::{ModalMsg, SettingsTabMsg};
 
     // Check if modal is open - if so, handle modal navigation first
-    if is_settings_modal_open(component_states) {
+    if is_settings_modal_open(state, component_states) {
         return match key.code {
             KeyCode::Up => Some(Action::ComponentMessage {
                 path: SETTINGS_TAB_PATH.to_string(),
@@ -430,7 +437,7 @@ pub fn key_to_action(
     // 6. Handle Up key with special logic (returns to tab bar unless in nested mode)
     if key.code == KeyCode::Up {
         // Check if we're in a nested mode first
-        if has_scores_item_focus(component_states) {
+        if has_scores_item_focus(state, component_states) {
             // In box selection - Up uses document navigation
             use crate::tui::document_nav::DocumentNavMsg;
             return Some(Action::ComponentMessage {
@@ -447,7 +454,8 @@ pub fn key_to_action(
             // Demo tab - Up handled by handle_demo_tab_keys (both plain and Shift)
         } else if current_tab == Tab::Settings {
             // Settings tab - Up handled by handle_settings_tab_keys (both plain and Shift)
-        } else if current_tab == Tab::Standings && has_standings_item_focus(component_states) {
+        } else if current_tab == Tab::Standings && has_standings_item_focus(state, component_states)
+        {
             // Standings browse mode - Up handled by handle_standings_league_keys (both plain and Shift)
         } else {
             // Not in nested mode - Up returns to tab bar
@@ -467,7 +475,7 @@ pub fn key_to_action(
         Tab::Scores => handle_scores_tab_keys(state, key.code, component_states),
         Tab::Standings => {
             // All standings views use document navigation in browse mode
-            if has_standings_item_focus(component_states) {
+            if has_standings_item_focus(state, component_states) {
                 handle_standings_league_keys(key, state)
             } else {
                 handle_standings_tab_keys(key.code, state)
@@ -777,8 +785,8 @@ mod tests {
                 check: Box::new(|a| is_component_message(a, SETTINGS_TAB_PATH, "Modal(Cancel)")),
             },
             KeyCase {
-                description: "ESC prioritizes closing the settings modal over exiting scores box-selection (priority 2 over 3) - \
-                    note: the scores-box-selection check is not gated on the current tab, so this holds even while on the Settings tab",
+                description: "ESC closes the settings modal and ignores stale Scores box-selection focus \
+                    (priority 2; the scores check is gated on the current tab being Scores)",
                 state: state_for(Tab::Settings, true),
                 store: store_with_settings_modal_and_scores_focus(),
                 key: key(KeyCode::Esc),
@@ -792,12 +800,12 @@ mod tests {
                 check: Box::new(|a| is_component_message(a, SCORES_TAB_PATH, "ExitBoxSelection")),
             },
             KeyCase {
-                description: "ESC prioritizes exiting scores box-selection over standings browse mode (priority 3 over 4) - \
-                    exercised while the current tab is Standings, since neither check is gated on the current tab",
+                description: "ESC on the Standings tab exits browse mode and ignores stale Scores box-selection focus \
+                    (cross-tab focus bleed regression: only the current tab's focus may drive ESC)",
                 state: state_for(Tab::Standings, true),
                 store: store_with_scores_and_standings_focus(),
                 key: key(KeyCode::Esc),
-                check: Box::new(|a| is_component_message(a, SCORES_TAB_PATH, "ExitBoxSelection")),
+                check: Box::new(|a| is_component_message(a, STANDINGS_TAB_PATH, "ExitBrowseMode")),
             },
             KeyCase {
                 description: "ESC exits standings browse mode when active and scores has no focus (priority 4)",
@@ -807,12 +815,12 @@ mod tests {
                 check: Box::new(|a| is_component_message(a, STANDINGS_TAB_PATH, "ExitBrowseMode")),
             },
             KeyCase {
-                description: "ESC prioritizes standings browse mode over settings item focus (priority 4 over 4.5) - \
-                    exercised while the current tab is Settings, since neither check is gated on the current tab",
+                description: "ESC on the Settings tab clears settings item focus and ignores stale Standings browse focus \
+                    (cross-tab focus bleed regression: only the current tab's focus may drive ESC)",
                 state: state_for(Tab::Settings, true),
                 store: store_with_standings_and_settings_focus(),
                 key: key(KeyCode::Esc),
-                check: Box::new(|a| is_component_message(a, STANDINGS_TAB_PATH, "ExitBrowseMode")),
+                check: Box::new(|a| is_component_message(a, SETTINGS_TAB_PATH, "NavigateUp")),
             },
             KeyCase {
                 description: "ESC clears settings item focus (priority 4.5)",
@@ -1360,18 +1368,17 @@ mod tests {
                 key: key(KeyCode::Tab),
                 check: Box::new(is_none),
             },
-            // --- Latent-behavior regression case: the scores-item-focus check used by
-            // key_to_action's own Up-key special-case is not gated on the current tab,
-            // so stale ScoresTabState focus (e.g. left over from switching tabs away
-            // from Scores mid box-selection, which navigate_to_tab does not clear)
-            // silently swallows Up on a *different* tab instead of returning to the
-            // tab bar as the user would expect. ---
+            // --- Cross-tab focus bleed regression: the scores-item-focus check used by
+            // key_to_action's own Up-key special-case is gated on the current tab
+            // being Scores, so stale ScoresTabState focus (which navigate_to_tab now
+            // also clears, as defense in depth) can no longer swallow Up on a
+            // different tab. ---
             KeyCase {
-                description: "latent bug: Up on the Standings tab is swallowed by stale Scores box-selection focus instead of returning to the tab bar",
+                description: "Up on the Standings tab returns to the tab bar even with stale Scores box-selection focus present",
                 state: state_for(Tab::Standings, true),
                 store: store_with_scores_focus(Some(0)),
                 key: key(KeyCode::Up),
-                check: Box::new(|a| is_component_message(a, SCORES_TAB_PATH, "DocNav(FocusPrev)")),
+                check: Box::new(|a| matches!(a, Some(Action::ExitContentFocus))),
             },
         ]
     }
@@ -1403,12 +1410,12 @@ mod tests {
                 check: Box::new(|a| is_component_message(a, DEMO_TAB_PATH, "ExitFocus")),
             },
             KeyCase {
-                description: "ESC prioritizes settings item focus over exiting Demo tab focus (priority 4.5 over 4.6) - \
-                    exercised while the current tab is Demo, since the settings-item-focus check is not gated on the current tab",
+                description: "ESC on the Demo tab exits Demo focus and ignores stale Settings item focus \
+                    (cross-tab focus bleed regression: the settings check is gated on the current tab being Settings)",
                 state: state_for(Tab::Demo, true),
                 store: store_with_settings_focus(Some(0)),
                 key: key(KeyCode::Esc),
-                check: Box::new(|a| is_component_message(a, SETTINGS_TAB_PATH, "NavigateUp")),
+                check: Box::new(|a| is_component_message(a, DEMO_TAB_PATH, "ExitFocus")),
             },
             KeyCase {
                 description: "Tab in the Demo tab focuses the next element",

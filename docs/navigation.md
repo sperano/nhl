@@ -67,11 +67,13 @@ match:
 8. **Otherwise** (at the tab bar, nothing else focused): no-op - use `q` to
    quit.
 
-Note: none of the `has_*_item_focus` / modal checks are gated on
-`state.navigation.current_tab`. This is intentional as far as ordering
-(it's how the tests pin priority 2 winning over priority 3, 3 over 4, etc.,
-by exercising them cross-tab), but it is also the root cause of the latent
-focus-bleed bug documented at the end of this file.
+Note: every `has_*_item_focus` / modal check is gated on
+`state.navigation.current_tab` matching the tab it belongs to, so only the
+current tab's focus state can drive ESC routing. Checks 3, 4, and 5 are
+therefore mutually exclusive; the priority ordering only ever arbitrates
+between same-tab states (e.g. the Settings modal at priority 2 beating
+Settings item focus at priority 5). See "Cross-Tab Focus Isolation" at the
+end of this file.
 
 ## Document Stack Routing
 
@@ -120,10 +122,12 @@ additionally sends `DemoTabMsg::EnterFocus` to focus its first item and sets a
 tab-specific status-bar hint; leaving content focus on the Demo tab resets
 that status message.
 
-**None of the tab-switch reducers touch per-tab component state** (the
-`ComponentStateStore`, e.g. `ScoresTabState.doc_nav.focus_index`). That state
-is scoped to each component's own path and outlives a tab switch - see
-"Known issue: cross-tab focus bleed" below.
+All three tab-switch reducers also clear every tab's item focus and any open
+settings modal via `clear_all_tab_item_focus` (`ScoresTabState`,
+`StandingsTabState`, `SettingsTabState`, and the Demo tab's `DocumentNavState`
+all get `TabState::clear_item_focus()`; `SettingsTabState.modal` is set to
+`None`). Switching tabs therefore always lands you at the tab bar with no
+inner focus anywhere - see "Cross-Tab Focus Isolation" below.
 
 ## The Up-Key Special Case (step 6)
 
@@ -143,8 +147,8 @@ modes *before* falling through to the tab-specific handlers:
   process `Up` itself (both plain and `Shift+Up`).
 - **Otherwise**: `Action::ExitContentFocus` - `Up` returns to the tab bar.
 
-The `has_scores_item_focus` check here is also not gated on the current tab -
-see the known issue below.
+The `has_scores_item_focus` check here is gated on the current tab being
+Scores, so it can only fire while the Scores tab is actually active.
 
 ## The Canonical Document-Navigation Mapping (`key_to_nav_msg`)
 
@@ -279,45 +283,38 @@ Deliberate divergence: unlike Standings browse mode, the Demo tab has **no**
 `Shift+Left`/`Shift+Right` scroll - those combinations always row-navigate.
 `Shift+Up`/`Shift+Down` do scroll, matching the canonical mapping.
 
-`Esc` in the Demo tab is ESC priority 4.6 (`DemoTabMsg::ExitFocus`), but only
-when nothing at a higher priority (document stack, settings modal, scores
-box-selection, standings item focus, settings item focus) is also set - see
-the cross-tab bleed note below for why a Demo-tab ESC press can actually
-resolve to a *different* tab's message.
+`Esc` in the Demo tab is ESC priority 4.6 (`DemoTabMsg::ExitFocus`). The
+higher-priority checks (settings modal, scores box-selection, standings and
+settings item focus) are all gated on their own tab being current, so on the
+Demo tab only the document-stack check (priority 1) can outrank it.
 
-## Known Issue: Cross-Tab Focus-State Bleed
+## Cross-Tab Focus Isolation
 
-`has_scores_item_focus`, `has_standings_item_focus`, and
-`has_settings_item_focus` (used throughout `handle_esc_key` and the step-6 Up
-special case) read component state unconditionally - they are **not** gated
-on `state.navigation.current_tab`. Meanwhile `navigate_to_tab`,
-`navigate_tab_left`, and `navigate_tab_right` (`src/tui/reducers/navigation.rs`)
-reset `AppState.navigation.focus_in_content` and clear the document stack, but
-**do not** reset any per-tab `ComponentStateStore` entry (e.g.
-`ScoresTabState.doc_nav.focus_index`).
+Two independent layers guarantee that one tab's focus state can never affect
+key routing on another tab (this was a real bug - stale Scores box-selection
+focus used to swallow `Up`/`Esc` on other tabs after a number-key tab switch):
 
-Net effect: if a user enters Scores box-selection (setting
-`ScoresTabState.doc_nav.focus_index = Some(_)`) and then switches to another
-tab via a number key or tab-bar arrow *without* first pressing ESC to exit
-box-selection, the stale focus persists. On the new tab:
+1. **Input layer** (`src/tui/keys.rs`): `has_scores_item_focus`,
+   `has_standings_item_focus`, `has_settings_item_focus`, and
+   `is_settings_modal_open` are all gated on `state.navigation.current_tab`
+   matching their own tab. A non-current tab's component state is never
+   consulted, so even if stale focus existed it could not misroute a key.
+2. **State layer** (`src/tui/reducers/navigation.rs`): `navigate_to_tab`,
+   `navigate_tab_left`, and `navigate_tab_right` call
+   `clear_all_tab_item_focus`, which resets `doc_nav.focus_index`/
+   `scroll_offset` on every tab's state and closes any open settings modal.
+   Stale focus does not survive a tab switch in the first place (this also
+   prevents a phantom selection highlight from rendering on return to the
+   tab).
 
-- `Esc` is intercepted by ESC priority 3 (scores box-selection) instead of
-  whatever priority would otherwise apply on the new tab, and routes to
-  `ScoresTabMsg::ExitBoxSelection` even though the user is no longer looking
-  at the Scores tab.
-- Plain `Up` is swallowed by the step-6 special case and routes to
-  `ScoresTabMsg::DocNav(FocusPrev)` instead of returning the *current* tab's
-  content focus to the tab bar.
+Consequence for UX: switching tabs always resets you to the tab bar with no
+remembered inner selection; re-entering a tab's content starts from the top.
 
-The same ordering issue exists between Standings item focus and Settings item
-focus (standings wins), and between Settings item focus and Demo content
-focus (settings wins) - all because none of these checks know which tab is
-actually active. This is intended behavior only in the narrow sense that the
-*priority order* is fixed and tested; the cross-tab reachability of a stale
-check is a latent bug, not a designed feature. It is exercised directly by
-`keys.rs`'s own test suite (see the cases documented as "latent bug: ..." and
-the several "exercised while the current tab is X, since neither check is
-gated on the current tab" cases in `base_cases()`/`dev_cases()`).
+Regression coverage: the "cross-tab focus bleed regression" cases in
+`keys.rs`'s `base_cases()`/`dev_cases()` pin layer 1 (stale foreign focus
+present in the store, routing still follows the current tab), and
+`test_tab_switch_clears_all_item_focus_and_modal` /
+`test_tab_cycling_clears_item_focus` in `reducers/navigation.rs` pin layer 2.
 
 ## Scores Tab: 5-Date Sliding Window
 
