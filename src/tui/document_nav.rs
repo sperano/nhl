@@ -424,6 +424,30 @@ mod tests {
     }
 
     #[test]
+    fn test_focus_next_no_focusables_is_noop() {
+        // Ported from the deleted DocumentView::focus_next (Engine A) test of the same
+        // edge case: navigating an empty document must not panic or set a focus index.
+        let mut state = DocumentNavState::default();
+
+        let wrapped = focus_next(&mut state);
+
+        assert!(!wrapped);
+        assert_eq!(state.focus_index, None);
+    }
+
+    #[test]
+    fn test_focus_prev_no_focusables_is_noop() {
+        // Ported from the deleted DocumentView::focus_prev (Engine A) test of the same
+        // edge case.
+        let mut state = DocumentNavState::default();
+
+        let wrapped = focus_prev(&mut state);
+
+        assert!(!wrapped);
+        assert_eq!(state.focus_index, None);
+    }
+
+    #[test]
     fn test_focus_next_wraps_around() {
         let mut state = DocumentNavState {
             focus_index: Some(2),

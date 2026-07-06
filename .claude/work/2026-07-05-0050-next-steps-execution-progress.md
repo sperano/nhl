@@ -155,8 +155,31 @@ Typed link activation landed (agent run, verified independently by orchestrator)
 - 19 files, +794/−694 (net +100; deletions land in F1/F2/F4 per plan). Tests 668→661 dev
   (rewrote activate tests through populate+activate; consolidated dupes), 644 default, all
   green; acceptance greps all empty; fmt/clippy clean across matrix. Tamper check clean.
-- AWAITING: user TTY spot-check (scores→boxscore→player→team, standings→team, settings
-  edit/toggle) + commit, then F2.
+- TTY check surfaced 2 regressions, both fixed + regression-tested before commit:
+  (a) scores sync site missed link_targets (newly load-bearing) — Enter on game did nothing;
+  (b) StandingsTab::init returned bare default, so standings-loaded-before-first-render (P6
+  lazy component states) left metadata empty forever — browse mode unreachable. Both are
+  Finding-2-class bugs. Committed as a50298b.
+
+## Phase F2 — DONE (committed 95887c6)
+Five parallel Vecs → one `focusables: Vec<FocusableElement>`; one sync path
+(`DocumentNavState::sync_focusables`); Document trait's five rebuild-per-call methods → one
+`focusables(ctx)`; all 12 sync sites converted; TeamDetail/PlayerDetail 4 builds/keypress → 1
+and regain row_positions. Acceptance greps: zero stray field assignments anywhere. 668 dev /
+651 default tests green. Forgetting a metadata field is no longer expressible.
+
+## Phase F4 — DONE (committed 7cd0e41)
+`document/factory.rs`: `build_stacked_document(doc, data) -> Option<Arc<dyn Document>>` owns
+all per-variant construction; app.rs builds once, widgets carry the pre-built document
+(agent found widgets were a THIRD construction site — also unified), input path syncs from
+the same output. StackedDocumentHandler trait + 3 structs + get_stacked_document_handler
+deleted → one free `handle_stacked_document_key()`. Missing-data behavior harmonized on the
+boxscore convention (leave nav untouched; spinner renders regardless — disclosed, test-pinned).
+New 9-test parity suite (factory returns None unloaded; render/input parity per variant).
+674 dev / 657 default green; acceptance greps clean (3 production construction sites, all in
+factory.rs).
+- AWAITING: user TTY check of the document stack (F4 rewired widget rendering), then F1
+  (single nav engine — requires user at TTY per plan), then F5.
 
 ## Verify command (after each phase)
 ```

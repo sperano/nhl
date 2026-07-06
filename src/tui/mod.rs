@@ -10,7 +10,6 @@ pub mod constants;
 pub mod document;
 pub mod document_nav;
 pub mod effects;
-pub mod focus_helpers;
 pub mod helpers;
 pub mod keys;
 pub mod nav_handler;

@@ -435,13 +435,11 @@ mod tests {
     #[test]
     fn test_demo_document_focusable_count_no_standings() {
         let doc = DemoDocument::new(None);
-        let doc_arc = Arc::new(doc);
-        let view = DocumentView::new(doc_arc, 20);
 
         // Should have 4 focusable elements:
         // - 4 example links (BOS, TOR, NYR, MTL)
         // - The tabs content (Standings tab with no data has no focusable elements)
-        assert_eq!(view.focus_manager().len(), 4);
+        assert_eq!(doc.focusables(&FocusContext::default()).len(), 4);
     }
 
     #[test]
@@ -473,26 +471,13 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_demo_tab_focus_navigation() {
-        let doc = Arc::new(DemoDocument::new(None));
-        let mut view = DocumentView::new(doc, 10);
-
-        // Initially no focus
-        assert!(view.focus_manager().current_index().is_none());
-
-        // First Tab focuses first link
-        view.focus_next();
-        assert_eq!(view.focus_manager().current_index(), Some(0));
-
-        // Second Tab focuses second link
-        view.focus_next();
-        assert_eq!(view.focus_manager().current_index(), Some(1));
-
-        // Shift-Tab goes back
-        view.focus_prev();
-        assert_eq!(view.focus_manager().current_index(), Some(0));
-    }
+    // Focus-order navigation (Tab/Shift-Tab advancing/wrapping through
+    // `DemoDocument`'s focusables) used to be tested here against
+    // `DocumentView::focus_next/prev` (Engine A). That engine never ran in
+    // production -- the render path only ever calls `DocumentView::focus_by_index`
+    // with an index computed by `document_nav.rs` (Engine B), whose own generic
+    // tests (`test_focus_next_advances`, `test_focus_prev_wraps_around`, etc. in
+    // document_nav.rs) already cover the same advance/wrap logic.
 
     #[test]
     fn test_activate_link_team() {
