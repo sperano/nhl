@@ -11,30 +11,26 @@
 
 pub mod builder;
 pub mod elements;
+mod factory;
 pub mod focus;
 mod handlers;
 pub mod link;
 pub mod viewport;
 pub mod widget;
 
-use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use std::sync::Arc;
 
 use crate::config::RenderContext;
-use crate::tui::action::Action;
-use crate::tui::component::Effect;
-use crate::tui::document_nav::{handle_message, DocumentNavState};
-use crate::tui::nav_handler::key_to_nav_msg;
-use crate::tui::state::DataState;
-use crate::tui::types::StackedDocument;
 
 pub use builder::DocumentBuilder;
 pub use elements::{
     DocTabDef, DocumentElement, RowAlignment, TAB_BAR_HEIGHT, TEAM_BOXSCORE_SIDE_BY_SIDE_WIDTH,
 };
+pub use factory::build_stacked_document;
 pub use focus::{FocusManager, FocusableElement, FocusableId, RowPosition};
+pub use handlers::handle_stacked_document_key;
 pub use link::LinkTarget;
 pub use viewport::Viewport;
 pub use widget::DocumentElementWidget;
@@ -218,87 +214,6 @@ pub trait Document: Send + Sync {
         }
 
         (buffer, height)
-    }
-}
-
-/// Handler trait for stacked documents to handle their own key events
-///
-/// Stacked documents (Boxscore, TeamDetail, PlayerDetail) implement this trait
-/// to encapsulate their navigation and activation logic. This keeps key handling
-/// close to the document that understands its structure.
-///
-/// Implementors provide `populate_focusable_metadata()`; `activate()` is a
-/// default method (see below). The default `handle_key()` populates metadata
-/// on-demand before navigation, eliminating the need to sync cached metadata
-/// when data loads.
-pub trait StackedDocumentHandler: Send + Sync {
-    /// Activate the focused element (Enter key)
-    ///
-    /// Reads the focused element's [`LinkTarget`], which was attached to the
-    /// link when the document made it focusable, and pushes its destination.
-    /// Handlers never re-derive "what did the user activate" from the
-    /// underlying data -- the destination was computed in the same pass that
-    /// made the element focusable, so the two can't diverge.
-    fn activate(&self, nav: &DocumentNavState, _data: &DataState) -> Effect {
-        match nav.focused_link_target() {
-            Some(LinkTarget::Push(doc)) => Effect::Action(Action::PushDocument(doc.clone())),
-            _ => Effect::None,
-        }
-    }
-
-    /// Populate focusable metadata from the document into nav state
-    ///
-    /// Called before navigation to ensure metadata is current.
-    /// Builds the document from data and extracts focusable positions/heights.
-    /// Width is used to determine layout (e.g., side-by-side vs stacked).
-    fn populate_focusable_metadata(&self, nav: &mut DocumentNavState, data: &DataState, width: u16);
-
-    /// Handle a key event for this document
-    ///
-    /// Default implementation populates focusable metadata on-demand, then handles
-    /// navigation via `key_to_nav_msg` and delegates Enter to `activate()`.
-    fn handle_key(
-        &self,
-        key: KeyEvent,
-        nav: &mut DocumentNavState,
-        data: &DataState,
-        width: u16,
-    ) -> Effect {
-        // Populate focusable metadata on-demand before navigation
-        self.populate_focusable_metadata(nav, data, width);
-
-        // Try navigation first (Tab, arrows, Page keys, etc.)
-        if let Some(nav_msg) = key_to_nav_msg(key) {
-            return handle_message(nav, &nav_msg);
-        }
-        // Handle Enter for activation
-        if key.code == KeyCode::Enter {
-            return self.activate(nav, data);
-        }
-        Effect::None
-    }
-}
-
-/// Get the appropriate handler for a stacked document type
-///
-/// Returns a handler that implements key handling for the specific document type.
-/// Each document type (Boxscore, TeamDetail, PlayerDetail) has its own handler
-/// that understands how to navigate and activate elements within it.
-pub fn get_stacked_document_handler(doc: &StackedDocument) -> Box<dyn StackedDocumentHandler> {
-    use handlers::{
-        BoxscoreDocumentHandler, PlayerDetailDocumentHandler, TeamDetailDocumentHandler,
-    };
-
-    match doc {
-        StackedDocument::Boxscore { game_id, .. } => {
-            Box::new(BoxscoreDocumentHandler { game_id: *game_id })
-        }
-        StackedDocument::TeamDetail { abbrev } => Box::new(TeamDetailDocumentHandler {
-            abbrev: abbrev.clone(),
-        }),
-        StackedDocument::PlayerDetail { player_id, .. } => Box::new(PlayerDetailDocumentHandler {
-            player_id: *player_id,
-        }),
     }
 }
 

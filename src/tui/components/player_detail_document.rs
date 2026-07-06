@@ -18,8 +18,11 @@ use crate::tui::{Alignment, CellValue, ColumnDef};
 /// Props for PlayerDetailDocument component
 #[derive(Clone)]
 pub struct PlayerDetailDocumentProps {
-    pub player_id: i64,
-    pub player_data: Option<PlayerLanding>,
+    /// Pre-built content document, or `None` while player data hasn't
+    /// arrived yet (rendered as a loading spinner). Built by
+    /// `document::build_stacked_document`, the single production
+    /// construction site shared with the input-handling path.
+    pub document: Option<Arc<dyn Document>>,
     pub loading: bool,
     pub selected_index: Option<usize>,
     pub scroll_offset: u16,
@@ -39,8 +42,7 @@ impl Component for PlayerDetailDocument {
 
     fn view(&self, props: &Self::Props, _state: &Self::State) -> Element {
         Element::Widget(Box::new(PlayerDetailDocumentWidget {
-            player_id: props.player_id,
-            player_data: props.player_data.clone(),
+            document: props.document.clone(),
             loading: props.loading,
             focus_index: props.selected_index,
             scroll_offset: props.scroll_offset,
@@ -293,8 +295,7 @@ impl Document for PlayerDetailDocumentContent {
 /// with proper scrolling and focus support.
 #[derive(Clone)]
 pub struct PlayerDetailDocumentWidget {
-    player_id: i64,
-    player_data: Option<PlayerLanding>,
+    document: Option<Arc<dyn Document>>,
     loading: bool,
     focus_index: Option<usize>,
     scroll_offset: u16,
@@ -309,19 +310,16 @@ impl ElementWidget for PlayerDetailDocumentWidget {
         let child_ctx = RenderContext::new(ctx.config, self.focused);
 
         // Handle loading state - show animation if loading or data hasn't arrived yet
-        if self.loading || self.player_data.is_none() {
+        if self.loading || self.document.is_none() {
             LoadingAnimation::new(self.animation_frame).render(area, buf, &child_ctx);
             return;
         }
 
-        // Create document
-        let doc = Arc::new(PlayerDetailDocumentContent::new(
-            self.player_data.clone(),
-            self.player_id,
-        ));
+        // Safe to unwrap since we checked is_none() above
+        let document = self.document.clone().unwrap();
 
-        // Create DocumentView and render
-        let mut view = DocumentView::new(doc, area.height);
+        // Create DocumentView and render the pre-built document
+        let mut view = DocumentView::new(document, area.height);
         if let Some(idx) = self.focus_index {
             view.focus_by_index(idx);
         }
@@ -536,13 +534,16 @@ mod tests {
 
     // === Widget tests ===
 
+    fn test_document(player: Option<PlayerLanding>) -> Arc<dyn Document> {
+        Arc::new(PlayerDetailDocumentContent::new(player, 8479318))
+    }
+
     #[test]
     fn test_widget_renders_with_data() {
         let player = create_test_player(8479318, Position::Center);
 
         let widget = PlayerDetailDocumentWidget {
-            player_id: 8479318,
-            player_data: Some(player),
+            document: Some(test_document(Some(player))),
             loading: false,
             focus_index: None,
             scroll_offset: 0,
@@ -564,8 +565,7 @@ mod tests {
     #[test]
     fn test_widget_shows_loading() {
         let widget = PlayerDetailDocumentWidget {
-            player_id: 8479318,
-            player_data: None,
+            document: None,
             loading: true,
             focus_index: None,
             scroll_offset: 0,
@@ -586,8 +586,7 @@ mod tests {
     #[test]
     fn test_widget_handles_no_data() {
         let widget = PlayerDetailDocumentWidget {
-            player_id: 8479318,
-            player_data: None,
+            document: None,
             loading: false,
             focus_index: None,
             scroll_offset: 0,
@@ -610,8 +609,7 @@ mod tests {
         let player = create_test_player(8479318, Position::Center);
 
         let widget = PlayerDetailDocumentWidget {
-            player_id: 8479318,
-            player_data: Some(player),
+            document: Some(test_document(Some(player))),
             loading: false,
             focus_index: Some(0), // Focus on first focusable element
             scroll_offset: 0,
@@ -635,8 +633,7 @@ mod tests {
         let player = create_test_player(8479318, Position::Center);
 
         let widget = PlayerDetailDocumentWidget {
-            player_id: 8479318,
-            player_data: Some(player),
+            document: Some(test_document(Some(player))),
             loading: false,
             focus_index: None,
             scroll_offset: 5, // Scroll down 5 lines

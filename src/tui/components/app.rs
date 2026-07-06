@@ -5,6 +5,7 @@ use crate::tui::component_store::ComponentStateStore;
 #[cfg(feature = "development")]
 use crate::tui::constants::DEMO_TAB_PATH;
 use crate::tui::constants::{SCORES_TAB_PATH, SETTINGS_TAB_PATH, STANDINGS_TAB_PATH};
+use crate::tui::document::build_stacked_document;
 use crate::tui::state::{AppState, LoadingKey};
 
 #[cfg(feature = "development")]
@@ -12,7 +13,7 @@ use super::demo_tab::DemoTabProps;
 #[cfg(feature = "development")]
 use super::DemoTab;
 use super::{
-    boxscore_document::{BoxscoreDocument, BoxscoreDocumentProps, TeamView},
+    boxscore_document::{BoxscoreDocument, BoxscoreDocumentProps},
     player_detail_document::PlayerDetailDocumentProps,
     scores_tab::ScoresTabProps,
     settings_tab::SettingsTabProps,
@@ -147,13 +148,16 @@ impl App {
     }
 
     fn render_stacked_document(&self, state: &AppState, doc_entry: &DocumentStackEntry) -> Element {
+        // Single construction path: the same factory the input-handling path
+        // uses to sync focus metadata, so render and input can't disagree
+        // about which document is on screen.
+        let document = build_stacked_document(&doc_entry.document, &state.data);
+
         match &doc_entry.document {
             StackedDocument::Boxscore { game_id, .. } => {
                 let props = BoxscoreDocumentProps {
-                    game_id: *game_id,
-                    boxscore: state.data.boxscores.get(game_id).cloned(),
+                    document,
                     loading: state.data.loading.contains(&LoadingKey::Boxscore(*game_id)),
-                    team_view: TeamView::Away,
                     selected_index: doc_entry.nav.focus_index,
                     scroll_offset: doc_entry.nav.scroll_offset,
                     focused: true, // Document has focus when it's on the stack
@@ -162,23 +166,8 @@ impl App {
                 BoxscoreDocument.view(&props, &())
             }
             StackedDocument::TeamDetail { abbrev } => {
-                // Find the standing for this team
-                let standing = state
-                    .data
-                    .standings
-                    .as_ref()
-                    .as_ref()
-                    .and_then(|standings| {
-                        standings
-                            .iter()
-                            .find(|s| s.team_abbrev.default == *abbrev)
-                            .cloned()
-                    });
-                //
                 let props = TeamDetailDocumentProps {
-                    team_abbrev: abbrev.clone(),
-                    standing,
-                    club_stats: state.data.team_roster_stats.get(abbrev).cloned(),
+                    document,
                     loading: state
                         .data
                         .loading
@@ -192,8 +181,7 @@ impl App {
             }
             StackedDocument::PlayerDetail { player_id, .. } => {
                 let props = PlayerDetailDocumentProps {
-                    player_id: *player_id,
-                    player_data: state.data.player_data.get(player_id).cloned(),
+                    document,
                     loading: state
                         .data
                         .loading

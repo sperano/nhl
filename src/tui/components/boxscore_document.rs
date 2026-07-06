@@ -24,10 +24,12 @@ pub enum TeamView {
 /// BoxscoreDocument component props
 #[derive(Clone)]
 pub struct BoxscoreDocumentProps {
-    pub game_id: i64,
-    pub boxscore: Option<Boxscore>,
+    /// Pre-built content document, or `None` while boxscore data hasn't
+    /// arrived yet (rendered as a loading spinner). Built by
+    /// `document::build_stacked_document`, the single production
+    /// construction site shared with the input-handling path.
+    pub document: Option<Arc<dyn Document>>,
     pub loading: bool,
-    pub team_view: TeamView,
     pub selected_index: Option<usize>,
     pub scroll_offset: u16,
     pub focused: bool,
@@ -44,10 +46,8 @@ impl Component for BoxscoreDocument {
 
     fn view(&self, props: &Self::Props, _state: &Self::State) -> Element {
         Element::Widget(Box::new(BoxscoreDocumentWidget {
-            game_id: props.game_id,
-            boxscore: props.boxscore.clone(),
+            document: props.document.clone(),
             loading: props.loading,
-            team_view: props.team_view.clone(),
             selected_index: props.selected_index,
             scroll_offset: props.scroll_offset,
             focused: props.focused,
@@ -384,10 +384,8 @@ fn boxscore_to_status(boxscore: &Boxscore) -> ScoreBoxStatus {
 
 /// Widget for rendering boxscore document
 struct BoxscoreDocumentWidget {
-    game_id: i64,
-    boxscore: Option<Boxscore>,
+    document: Option<Arc<dyn Document>>,
     loading: bool,
-    team_view: TeamView,
     selected_index: Option<usize>,
     scroll_offset: u16,
     focused: bool,
@@ -400,23 +398,20 @@ impl ElementWidget for BoxscoreDocumentWidget {
         let child_ctx = RenderContext::new(ctx.config, self.focused);
 
         // Show animation if loading or data hasn't arrived yet
-        if self.loading || self.boxscore.is_none() {
+        if self.loading || self.document.is_none() {
             LoadingAnimation::new(self.animation_frame).render(area, buf, &child_ctx);
             return;
         }
 
         // Safe to unwrap since we checked is_none() above
-        let boxscore = self.boxscore.as_ref().unwrap();
+        let document = self.document.clone().unwrap();
 
         if area.width == 0 || area.height == 0 {
             return;
         }
 
-        // Create document and render with DocumentView
-        let doc =
-            BoxscoreDocumentContent::new(self.game_id, boxscore.clone(), self.team_view.clone());
-
-        let mut view = DocumentView::new(Arc::new(doc), area.height);
+        // Render the pre-built document with DocumentView
+        let mut view = DocumentView::new(document, area.height);
 
         // Apply focus state
         if let Some(idx) = self.selected_index {
@@ -432,10 +427,8 @@ impl ElementWidget for BoxscoreDocumentWidget {
 
     fn clone_box(&self) -> Box<dyn ElementWidget> {
         Box::new(BoxscoreDocumentWidget {
-            game_id: self.game_id,
-            boxscore: self.boxscore.clone(),
+            document: self.document.clone(),
             loading: self.loading,
-            team_view: self.team_view.clone(),
             selected_index: self.selected_index,
             scroll_offset: self.scroll_offset,
             focused: self.focused,
@@ -638,10 +631,8 @@ mod tests {
     #[test]
     fn test_loading_state_renders() {
         let widget = BoxscoreDocumentWidget {
-            game_id: 2024020001,
-            boxscore: None,
+            document: None,
             loading: true,
-            team_view: TeamView::Away,
             selected_index: None,
             scroll_offset: 0,
             focused: true,
@@ -662,10 +653,8 @@ mod tests {
     #[test]
     fn test_no_boxscore_renders() {
         let widget = BoxscoreDocumentWidget {
-            game_id: 2024020001,
-            boxscore: None,
+            document: None,
             loading: false,
-            team_view: TeamView::Away,
             selected_index: None,
             scroll_offset: 0,
             focused: true,
@@ -686,11 +675,14 @@ mod tests {
     #[test]
     fn test_boxscore_renders() {
         let boxscore = create_test_boxscore();
+        let document: Arc<dyn Document> = Arc::new(BoxscoreDocumentContent::new(
+            2024020001,
+            boxscore,
+            TeamView::Away,
+        ));
         let widget = BoxscoreDocumentWidget {
-            game_id: 2024020001,
-            boxscore: Some(boxscore),
+            document: Some(document),
             loading: false,
-            team_view: TeamView::Away,
             selected_index: None,
             scroll_offset: 0,
             focused: true,

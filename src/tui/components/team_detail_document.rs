@@ -17,9 +17,11 @@ use crate::tui::{
 /// Props for TeamDetailDocument component
 #[derive(Clone)]
 pub struct TeamDetailDocumentProps {
-    pub team_abbrev: String,
-    pub standing: Option<Standing>,
-    pub club_stats: Option<ClubStats>,
+    /// Pre-built content document, or `None` while roster data hasn't
+    /// arrived yet (rendered as a loading spinner). Built by
+    /// `document::build_stacked_document`, the single production
+    /// construction site shared with the input-handling path.
+    pub document: Option<Arc<dyn Document>>,
     pub loading: bool,
     pub selected_index: Option<usize>,
     pub scroll_offset: u16,
@@ -39,9 +41,7 @@ impl Component for TeamDetailDocument {
 
     fn view(&self, props: &Self::Props, _state: &Self::State) -> Element {
         Element::Widget(Box::new(TeamDetailDocumentWidget {
-            team_abbrev: props.team_abbrev.clone(),
-            standing: props.standing.clone(),
-            club_stats: props.club_stats.clone(),
+            document: props.document.clone(),
             loading: props.loading,
             selected_index: props.selected_index,
             scroll_offset: props.scroll_offset,
@@ -245,9 +245,7 @@ fn goalie_columns() -> Vec<ColumnDef<ClubGoalieStats>> {
 
 /// Widget for rendering the team detail document
 struct TeamDetailDocumentWidget {
-    team_abbrev: String,
-    standing: Option<Standing>,
-    club_stats: Option<ClubStats>,
+    document: Option<Arc<dyn Document>>,
     loading: bool,
     selected_index: Option<usize>,
     scroll_offset: u16,
@@ -262,7 +260,7 @@ impl ElementWidget for TeamDetailDocumentWidget {
         let child_ctx = RenderContext::new(ctx.config, self.focused);
 
         // Show animation if loading or data hasn't arrived yet
-        if self.loading || self.club_stats.is_none() {
+        if self.loading || self.document.is_none() {
             LoadingAnimation::new(self.animation_frame).render(area, buf, &child_ctx);
             return;
         }
@@ -271,14 +269,11 @@ impl ElementWidget for TeamDetailDocumentWidget {
             return;
         }
 
-        // Create document and render with DocumentView
-        let doc = TeamDetailDocumentContent::new(
-            self.team_abbrev.clone(),
-            self.standing.clone(),
-            self.club_stats.clone(),
-        );
+        // Safe to unwrap since we checked is_none() above
+        let document = self.document.clone().unwrap();
 
-        let mut view = DocumentView::new(Arc::new(doc), area.height);
+        // Render the pre-built document with DocumentView
+        let mut view = DocumentView::new(document, area.height);
 
         // Apply focus state
         if let Some(idx) = self.selected_index {
@@ -294,9 +289,7 @@ impl ElementWidget for TeamDetailDocumentWidget {
 
     fn clone_box(&self) -> Box<dyn ElementWidget> {
         Box::new(TeamDetailDocumentWidget {
-            team_abbrev: self.team_abbrev.clone(),
-            standing: self.standing.clone(),
-            club_stats: self.club_stats.clone(),
+            document: self.document.clone(),
             loading: self.loading,
             selected_index: self.selected_index,
             scroll_offset: self.scroll_offset,
@@ -521,11 +514,14 @@ mod tests {
         };
 
         let standing = create_test_standing();
+        let document: Arc<dyn Document> = Arc::new(TeamDetailDocumentContent::new(
+            "TST".to_string(),
+            Some(standing),
+            Some(club_stats),
+        ));
 
         let widget = TeamDetailDocumentWidget {
-            team_abbrev: "TST".to_string(),
-            standing: Some(standing),
-            club_stats: Some(club_stats),
+            document: Some(document),
             loading: false,
             selected_index: None,
             scroll_offset: 0,
@@ -567,11 +563,14 @@ mod tests {
         };
 
         let standing = create_test_standing();
+        let document: Arc<dyn Document> = Arc::new(TeamDetailDocumentContent::new(
+            "TST".to_string(),
+            Some(standing),
+            Some(club_stats),
+        ));
 
         let widget = TeamDetailDocumentWidget {
-            team_abbrev: "TST".to_string(),
-            standing: Some(standing),
-            club_stats: Some(club_stats),
+            document: Some(document),
             loading: false,
             selected_index: None,
             scroll_offset: 0,
@@ -592,9 +591,7 @@ mod tests {
     #[test]
     fn test_loading_state_renders() {
         let widget = TeamDetailDocumentWidget {
-            team_abbrev: "TST".to_string(),
-            standing: None,
-            club_stats: None,
+            document: None,
             loading: true,
             selected_index: None,
             scroll_offset: 0,
@@ -616,9 +613,7 @@ mod tests {
     #[test]
     fn test_no_stats_renders() {
         let widget = TeamDetailDocumentWidget {
-            team_abbrev: "TST".to_string(),
-            standing: None,
-            club_stats: None,
+            document: None,
             loading: false,
             selected_index: None,
             scroll_offset: 0,

@@ -248,7 +248,7 @@ fn handle_boxscore_loaded(
     match result {
         Ok(boxscore) => {
             debug!("DATA: Loaded boxscore for game {}", game_id);
-            // Focusable metadata is populated on-demand by StackedDocumentHandler
+            // Focusable metadata is populated on-demand by handle_stacked_document_key
             Arc::make_mut(&mut new_state.data.boxscores).insert(game_id, boxscore);
             new_state
                 .data
@@ -281,7 +281,7 @@ fn handle_team_roster_loaded(
     match result {
         Ok(roster) => {
             debug!("DATA: Loaded roster for team {}", team_abbrev);
-            // Focusable metadata is populated on-demand by StackedDocumentHandler
+            // Focusable metadata is populated on-demand by handle_stacked_document_key
             Arc::make_mut(&mut new_state.data.team_roster_stats)
                 .insert(team_abbrev.clone(), roster);
             new_state
@@ -318,7 +318,7 @@ fn handle_player_stats_loaded(
     match result {
         Ok(stats) => {
             debug!("DATA: Loaded stats for player {}", player_id);
-            // Focusable metadata is populated on-demand by StackedDocumentHandler
+            // Focusable metadata is populated on-demand by handle_stacked_document_key
             Arc::make_mut(&mut new_state.data.player_data).insert(player_id, stats);
             new_state
                 .data

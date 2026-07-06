@@ -1,114 +1,65 @@
-//! Handler implementations for stacked documents
+//! Key handling for stacked documents (Boxscore, TeamDetail, PlayerDetail)
 //!
-//! This module contains the concrete implementations of `StackedDocumentHandler`
-//! for each stacked document type (Boxscore, TeamDetail, PlayerDetail).
+//! Stacked documents used to each own a `StackedDocumentHandler` impl with
+//! per-type `populate_focusable_metadata()` (and, before F3, per-type
+//! `activate()`). With activation generic over `LinkTarget::Push` (F3),
+//! focusable metadata collapsed into one `Vec<FocusableElement>` synced by
+//! one function (F2), and document construction collapsed into
+//! [`super::build_stacked_document`] (F4), there is no per-type logic left:
+//! every stacked document is handled by the same sequence of steps. This
+//! module holds that single free function.
 
-#[cfg(test)]
+use crossterm::event::{KeyCode, KeyEvent};
+
+use crate::tui::action::Action;
 use crate::tui::component::Effect;
-use crate::tui::document_nav::DocumentNavState;
+use crate::tui::document_nav::{handle_message, DocumentNavState};
+use crate::tui::nav_handler::key_to_nav_msg;
 use crate::tui::state::DataState;
+use crate::tui::types::StackedDocument;
 
-use super::StackedDocumentHandler;
+use super::{build_stacked_document, FocusContext, LinkTarget};
 
-/// Handler for Boxscore documents
-pub(super) struct BoxscoreDocumentHandler {
-    pub(super) game_id: i64,
-}
-
-impl StackedDocumentHandler for BoxscoreDocumentHandler {
-    // `activate()` uses the trait's default implementation: the focused
-    // player cell's `LinkTarget::Push(PlayerDetail { .. })` was attached when
-    // `DocumentElement::team_boxscore()` built the table, so there's no
-    // index math to duplicate here anymore.
-
-    fn populate_focusable_metadata(
-        &self,
-        nav: &mut DocumentNavState,
-        data: &DataState,
-        width: u16,
-    ) {
-        use crate::tui::components::boxscore_document::{BoxscoreDocumentContent, TeamView};
-        use crate::tui::document::FocusContext;
-
-        if let Some(boxscore) = data.boxscores.get(&self.game_id) {
-            let doc = BoxscoreDocumentContent::new(self.game_id, boxscore.clone(), TeamView::Away);
-            // Build with width so layout (side-by-side vs stacked) is correct
-            let focus = FocusContext::default().with_width(width);
-            nav.sync_focusables(&doc, &focus);
-        }
+/// Handle a key event routed to the document on top of the document stack.
+///
+/// Syncs focusable metadata on demand (via the same factory the render path
+/// uses, so the two can't disagree about what's on screen), then handles
+/// navigation via [`key_to_nav_msg`] and delegates `Enter` to activating the
+/// focused element's [`LinkTarget`].
+///
+/// If the document's backing data hasn't loaded yet, `nav`'s existing
+/// metadata is left untouched (there is nothing new to sync); navigation
+/// simply has nothing to move through until the data arrives.
+pub fn handle_stacked_document_key(
+    doc: &StackedDocument,
+    key: KeyEvent,
+    nav: &mut DocumentNavState,
+    data: &DataState,
+    width: u16,
+) -> Effect {
+    if let Some(document) = build_stacked_document(doc, data) {
+        let ctx = FocusContext::default().with_width(width);
+        nav.sync_focusables(document.as_ref(), &ctx);
     }
-}
 
-/// Handler for TeamDetail documents
-pub(super) struct TeamDetailDocumentHandler {
-    pub(super) abbrev: String,
-}
-
-impl StackedDocumentHandler for TeamDetailDocumentHandler {
-    // `activate()` uses the trait's default implementation: each roster row's
-    // `LinkTarget::Push(PlayerDetail { .. })` is attached when
-    // `TeamDetailDocumentContent` builds its skater/goalie tables (already
-    // sorted for display), so activation no longer re-sorts/re-clones the
-    // roster to guess which row is focused.
-
-    fn populate_focusable_metadata(
-        &self,
-        nav: &mut DocumentNavState,
-        data: &DataState,
-        _width: u16,
-    ) {
-        use crate::tui::components::team_detail_document::TeamDetailDocumentContent;
-        use crate::tui::document::FocusContext;
-
-        let roster = data.team_roster_stats.get(&self.abbrev);
-        let standing = data.standings.as_ref().as_ref().and_then(|standings| {
-            standings
-                .iter()
-                .find(|s| s.team_abbrev.default == self.abbrev)
-                .cloned()
-        });
-
-        let doc = TeamDetailDocumentContent::new(self.abbrev.clone(), standing, roster.cloned());
-        nav.sync_focusables(&doc, &FocusContext::default());
+    if let Some(nav_msg) = key_to_nav_msg(key) {
+        return handle_message(nav, &nav_msg);
     }
-}
 
-/// Handler for PlayerDetail documents
-pub(super) struct PlayerDetailDocumentHandler {
-    pub(super) player_id: i64,
-}
-
-impl StackedDocumentHandler for PlayerDetailDocumentHandler {
-    // `activate()` uses the trait's default implementation: a season row's
-    // `LinkTarget::Push(TeamDetail { .. })` is attached (via the generic
-    // `DocumentElement::table()` cell match on `CellValue::TeamLink`) only
-    // when the row's team resolves to a real abbreviation, so a season whose
-    // team can't be mapped simply has no focusable/activatable row -- the
-    // filtered-array-index-vs-focusable-index mismatch this used to have is
-    // no longer representable.
-
-    fn populate_focusable_metadata(
-        &self,
-        nav: &mut DocumentNavState,
-        data: &DataState,
-        _width: u16,
-    ) {
-        use crate::tui::components::player_detail_document::PlayerDetailDocumentContent;
-        use crate::tui::document::FocusContext;
-
-        let player_data = data.player_data.get(&self.player_id).cloned();
-        let doc = PlayerDetailDocumentContent::new(player_data, self.player_id);
-        nav.sync_focusables(&doc, &FocusContext::default());
+    if key.code == KeyCode::Enter {
+        return match nav.focused_link_target() {
+            Some(LinkTarget::Push(target)) => Effect::Action(Action::PushDocument(target.clone())),
+            _ => Effect::None,
+        };
     }
+
+    Effect::None
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tui::action::Action;
     use crate::tui::document::{FocusableElement, FocusableId};
-    use crate::tui::types::StackedDocument;
-    use crossterm::event::{KeyCode, KeyEvent};
     use nhl_api::{
         Boxscore, BoxscoreTeam, ClubGoalieStats, ClubSkaterStats, ClubStats, GameClock, GameState,
         GameType, GoalieDecision, GoalieStats, Handedness, LocalizedString, PeriodDescriptor,
@@ -118,11 +69,13 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::Arc;
 
-    /// Width passed to `populate_focusable_metadata` in tests; large enough to force
-    /// the boxscore's side-by-side layout, which is irrelevant to focusable-item count.
+    /// Width passed to `handle_stacked_document_key` in tests; large enough
+    /// to force the boxscore's side-by-side layout, which is irrelevant to
+    /// focusable-item count.
     const TEST_WIDTH: u16 = 100;
-    /// Viewport height used for page-up/page-down tests, chosen to be larger than
-    /// `MIN_PAGE_SIZE` in `nav_handler.rs` so the page size is deterministic.
+    /// Viewport height used for page-up/page-down tests, chosen to be larger
+    /// than `MIN_PAGE_SIZE` in `nav_handler.rs` so the page size is
+    /// deterministic.
     const TEST_VIEWPORT_HEIGHT: u16 = 20;
 
     // ========================================================================
@@ -286,6 +239,17 @@ mod tests {
         }
     }
 
+    fn test_boxscore_doc(game_id: i64) -> StackedDocument {
+        StackedDocument::Boxscore {
+            game_id,
+            away_abbrev: "NJD".to_string(),
+            home_abbrev: "BUF".to_string(),
+            away_score: 3,
+            home_score: 2,
+            game_date: "2024-10-04".to_string(),
+        }
+    }
+
     fn test_club_skater(player_id: i64, last_name: &str, points: i32) -> ClubSkaterStats {
         ClubSkaterStats {
             player_id,
@@ -409,6 +373,12 @@ mod tests {
         }
     }
 
+    fn test_team_detail_doc(abbrev: &str) -> StackedDocument {
+        StackedDocument::TeamDetail {
+            abbrev: abbrev.to_string(),
+        }
+    }
+
     fn test_season_total(
         season: i32,
         game_type: GameType,
@@ -435,8 +405,8 @@ mod tests {
         }
     }
 
-    /// Player landing with 6 season-total rows exercising every filter/guard in
-    /// `PlayerDetailDocumentHandler::activate`:
+    /// Player landing with 6 season-total rows exercising every filter/guard
+    /// activation used to re-derive by hand:
     /// - idx0 -> 2023-24 Oilers (RegularSeason/NHL, valid abbrev) -> EDM
     /// - idx1 -> 2022-23 Maple Leafs (RegularSeason/NHL, valid abbrev) -> TOR
     /// - (2021-22 Oilers Playoffs, and 2020-21 AHL team, are filtered out entirely)
@@ -514,62 +484,90 @@ mod tests {
         }
     }
 
-    fn nav_with_focus(focus_index: Option<usize>) -> DocumentNavState {
-        DocumentNavState {
-            focus_index,
-            ..Default::default()
+    fn test_player_detail_doc(player_id: i64) -> StackedDocument {
+        StackedDocument::PlayerDetail {
+            player_id,
+            sweater_number: Some(34),
+            last_name: "Player".to_string(),
         }
     }
 
-    // ========================================================================
-    // BoxscoreDocumentHandler::activate
-    //
-    // The player pushed by activate() now comes straight from the focused
-    // cell's `LinkTarget::Push(PlayerDetail { .. })`, attached by
-    // `DocumentElement::team_boxscore()` when the tables were built. These
-    // tests exercise the full `populate_focusable_metadata` + `activate`
-    // pipeline (as `handle_key` does) rather than a standalone index-math
-    // helper, since there's no separate helper left to test in isolation.
-    // ========================================================================
-
-    /// Activate the boxscore handler at `focus_idx`, after populating
-    /// focusable metadata the same way `handle_key` would.
-    fn activate_boxscore_at(
-        handler: &BoxscoreDocumentHandler,
-        data: &DataState,
-        focus_idx: usize,
-    ) -> Effect {
+    /// Sync focusable metadata via `handle_stacked_document_key`'s own sync
+    /// step, without dispatching a key -- lets activation tests set an
+    /// arbitrary `focus_index` the way `handle_key` would leave it after
+    /// real navigation.
+    fn sync_metadata(doc: &StackedDocument, data: &DataState) -> DocumentNavState {
         let mut nav = DocumentNavState::default();
-        handler.populate_focusable_metadata(&mut nav, data, TEST_WIDTH);
-        nav.focus_index = Some(focus_idx);
-        handler.activate(&nav, data)
+        if let Some(document) = build_stacked_document(doc, data) {
+            nav.sync_focusables(
+                document.as_ref(),
+                &FocusContext::default().with_width(TEST_WIDTH),
+            );
+        }
+        nav
     }
+
+    fn activate_at(doc: &StackedDocument, data: &DataState, focus_idx: usize) -> Effect {
+        let mut nav = sync_metadata(doc, data);
+        nav.focus_index = Some(focus_idx);
+        handle_stacked_document_key(
+            doc,
+            KeyEvent::from(KeyCode::Enter),
+            &mut nav,
+            data,
+            TEST_WIDTH,
+        )
+    }
+
+    // ========================================================================
+    // Boxscore activation (via handle_stacked_document_key)
+    //
+    // The player pushed by activation comes straight from the focused cell's
+    // `LinkTarget::Push(PlayerDetail { .. })`, attached by
+    // `DocumentElement::team_boxscore()` when the tables were built.
+    // ========================================================================
 
     #[test]
     fn boxscore_activate_no_focus_returns_none() {
-        let handler = BoxscoreDocumentHandler { game_id: 1 };
+        let doc = test_boxscore_doc(1);
         let data = data_with_boxscore(1, test_boxscore(1));
-        let mut nav = DocumentNavState::default();
-        handler.populate_focusable_metadata(&mut nav, &data, TEST_WIDTH);
+        let mut nav = sync_metadata(&doc, &data);
 
-        assert!(matches!(handler.activate(&nav, &data), Effect::None));
+        let effect = handle_stacked_document_key(
+            &doc,
+            KeyEvent::from(KeyCode::Enter),
+            &mut nav,
+            &data,
+            TEST_WIDTH,
+        );
+        assert!(matches!(effect, Effect::None));
     }
 
     #[test]
     fn boxscore_activate_missing_boxscore_returns_none() {
-        let handler = BoxscoreDocumentHandler { game_id: 1 };
+        let doc = test_boxscore_doc(1);
         let data = DataState::default();
-        let nav = nav_with_focus(Some(0));
+        let mut nav = DocumentNavState {
+            focus_index: Some(0),
+            ..Default::default()
+        };
 
-        assert!(matches!(handler.activate(&nav, &data), Effect::None));
+        let effect = handle_stacked_document_key(
+            &doc,
+            KeyEvent::from(KeyCode::Enter),
+            &mut nav,
+            &data,
+            TEST_WIDTH,
+        );
+        assert!(matches!(effect, Effect::None));
     }
 
     #[test]
     fn boxscore_activate_pushes_first_away_forward() {
-        let handler = BoxscoreDocumentHandler { game_id: 1 };
+        let doc = test_boxscore_doc(1);
         let data = data_with_boxscore(1, test_boxscore(1));
 
-        match activate_boxscore_at(&handler, &data, 0) {
+        match activate_at(&doc, &data, 0) {
             Effect::Action(Action::PushDocument(StackedDocument::PlayerDetail {
                 player_id,
                 sweater_number,
@@ -587,10 +585,10 @@ mod tests {
     fn boxscore_activate_pushes_away_goalie_at_away_home_boundary() {
         // Index 3 is the last away-team row (away goalie), the boundary right
         // before the home team's rows begin.
-        let handler = BoxscoreDocumentHandler { game_id: 1 };
+        let doc = test_boxscore_doc(1);
         let data = data_with_boxscore(1, test_boxscore(1));
 
-        match activate_boxscore_at(&handler, &data, 3) {
+        match activate_at(&doc, &data, 3) {
             Effect::Action(Action::PushDocument(StackedDocument::PlayerDetail {
                 player_id,
                 sweater_number,
@@ -607,10 +605,10 @@ mod tests {
     #[test]
     fn boxscore_activate_pushes_first_home_forward_after_boundary() {
         // Index 4 is the first home-team row, right after the away/home boundary.
-        let handler = BoxscoreDocumentHandler { game_id: 1 };
+        let doc = test_boxscore_doc(1);
         let data = data_with_boxscore(1, test_boxscore(1));
 
-        match activate_boxscore_at(&handler, &data, 4) {
+        match activate_at(&doc, &data, 4) {
             Effect::Action(Action::PushDocument(StackedDocument::PlayerDetail {
                 player_id,
                 ..
@@ -624,10 +622,10 @@ mod tests {
     #[test]
     fn boxscore_activate_pushes_last_home_goalie() {
         // Index 7 is the last focusable element overall (boundary: last index).
-        let handler = BoxscoreDocumentHandler { game_id: 1 };
+        let doc = test_boxscore_doc(1);
         let data = data_with_boxscore(1, test_boxscore(1));
 
-        match activate_boxscore_at(&handler, &data, 7) {
+        match activate_at(&doc, &data, 7) {
             Effect::Action(Action::PushDocument(StackedDocument::PlayerDetail {
                 player_id,
                 sweater_number,
@@ -644,26 +642,22 @@ mod tests {
     #[test]
     fn boxscore_activate_out_of_range_returns_none() {
         // Only 8 focusable rows exist (index 0..=7); index 8 is one past the end.
-        let handler = BoxscoreDocumentHandler { game_id: 1 };
+        let doc = test_boxscore_doc(1);
         let data = data_with_boxscore(1, test_boxscore(1));
 
-        assert!(matches!(
-            activate_boxscore_at(&handler, &data, 8),
-            Effect::None
-        ));
+        assert!(matches!(activate_at(&doc, &data, 8), Effect::None));
     }
 
     // ========================================================================
-    // BoxscoreDocumentHandler::populate_focusable_metadata
+    // Boxscore metadata sync (via handle_stacked_document_key's own sync step)
     // ========================================================================
 
     #[test]
-    fn boxscore_populate_focusable_metadata_fills_all_vectors() {
-        let handler = BoxscoreDocumentHandler { game_id: 1 };
+    fn boxscore_sync_fills_focusables_from_all_players() {
+        let doc = test_boxscore_doc(1);
         let data = data_with_boxscore(1, test_boxscore(1));
-        let mut nav = DocumentNavState::default();
 
-        handler.populate_focusable_metadata(&mut nav, &data, TEST_WIDTH);
+        let nav = sync_metadata(&doc, &data);
 
         assert_eq!(nav.focusables.len(), 8);
         assert!(
@@ -673,12 +667,11 @@ mod tests {
     }
 
     #[test]
-    fn boxscore_populate_focusable_metadata_leaves_nav_untouched_when_missing() {
-        // Regression/behavior test: unlike TeamDetail/PlayerDetail handlers below,
-        // this handler's `if let Some(boxscore) = ...` guard means nav metadata is
-        // left exactly as it was if the boxscore hasn't loaded yet, rather than
-        // being cleared to empty.
-        let handler = BoxscoreDocumentHandler { game_id: 1 };
+    fn boxscore_sync_leaves_nav_untouched_when_missing() {
+        // When the boxscore hasn't loaded yet, `build_stacked_document`
+        // returns `None` and the sync step is skipped entirely -- stale nav
+        // metadata is left exactly as it was rather than cleared to empty.
+        let doc = test_boxscore_doc(1);
         let data = DataState::default();
         let stale = vec![FocusableElement::at(1, 1, FocusableId::link("stale"))];
         let mut nav = DocumentNavState {
@@ -686,65 +679,62 @@ mod tests {
             ..Default::default()
         };
 
-        handler.populate_focusable_metadata(&mut nav, &data, TEST_WIDTH);
+        handle_stacked_document_key(
+            &doc,
+            KeyEvent::from(KeyCode::Down),
+            &mut nav,
+            &data,
+            TEST_WIDTH,
+        );
 
         assert_eq!(nav.focusables, stale);
     }
 
     // ========================================================================
-    // TeamDetailDocumentHandler::activate
-    //
-    // As with Boxscore, the pushed player now comes from the focused table
-    // cell's `LinkTarget::Push(PlayerDetail { .. })`, attached when
-    // `TeamDetailDocumentContent` builds the (already-sorted) skater/goalie
-    // tables. These tests go through `populate_focusable_metadata` +
-    // `activate` together.
+    // TeamDetail activation (via handle_stacked_document_key)
     // ========================================================================
-
-    /// Activate the team-detail handler at `focus_idx`, after populating
-    /// focusable metadata the same way `handle_key` would.
-    fn activate_team_detail_at(
-        handler: &TeamDetailDocumentHandler,
-        data: &DataState,
-        focus_idx: usize,
-    ) -> Effect {
-        let mut nav = DocumentNavState::default();
-        handler.populate_focusable_metadata(&mut nav, data, TEST_WIDTH);
-        nav.focus_index = Some(focus_idx);
-        handler.activate(&nav, data)
-    }
 
     #[test]
     fn team_detail_activate_no_focus_returns_none() {
-        let handler = TeamDetailDocumentHandler {
-            abbrev: "TST".to_string(),
-        };
+        let doc = test_team_detail_doc("TST");
         let data = data_with_roster("TST", test_club_stats());
-        let mut nav = DocumentNavState::default();
-        handler.populate_focusable_metadata(&mut nav, &data, TEST_WIDTH);
+        let mut nav = sync_metadata(&doc, &data);
 
-        assert!(matches!(handler.activate(&nav, &data), Effect::None));
+        let effect = handle_stacked_document_key(
+            &doc,
+            KeyEvent::from(KeyCode::Enter),
+            &mut nav,
+            &data,
+            TEST_WIDTH,
+        );
+        assert!(matches!(effect, Effect::None));
     }
 
     #[test]
     fn team_detail_activate_missing_roster_returns_none() {
-        let handler = TeamDetailDocumentHandler {
-            abbrev: "TST".to_string(),
-        };
+        let doc = test_team_detail_doc("TST");
         let data = DataState::default();
-        let nav = nav_with_focus(Some(0));
+        let mut nav = DocumentNavState {
+            focus_index: Some(0),
+            ..Default::default()
+        };
 
-        assert!(matches!(handler.activate(&nav, &data), Effect::None));
+        let effect = handle_stacked_document_key(
+            &doc,
+            KeyEvent::from(KeyCode::Enter),
+            &mut nav,
+            &data,
+            TEST_WIDTH,
+        );
+        assert!(matches!(effect, Effect::None));
     }
 
     #[test]
     fn team_detail_activate_pushes_highest_scoring_skater() {
-        let handler = TeamDetailDocumentHandler {
-            abbrev: "TST".to_string(),
-        };
+        let doc = test_team_detail_doc("TST");
         let data = data_with_roster("TST", test_club_stats());
 
-        match activate_team_detail_at(&handler, &data, 0) {
+        match activate_at(&doc, &data, 0) {
             Effect::Action(Action::PushDocument(StackedDocument::PlayerDetail {
                 player_id,
                 sweater_number,
@@ -760,12 +750,10 @@ mod tests {
 
     #[test]
     fn team_detail_activate_pushes_mid_scoring_skater() {
-        let handler = TeamDetailDocumentHandler {
-            abbrev: "TST".to_string(),
-        };
+        let doc = test_team_detail_doc("TST");
         let data = data_with_roster("TST", test_club_stats());
 
-        match activate_team_detail_at(&handler, &data, 1) {
+        match activate_at(&doc, &data, 1) {
             Effect::Action(Action::PushDocument(StackedDocument::PlayerDetail {
                 player_id,
                 ..
@@ -778,12 +766,10 @@ mod tests {
     fn team_detail_activate_pushes_highest_games_played_goalie_at_skater_goalie_boundary() {
         // 3 skaters precede the goalies, so index 3 is the first sorted goalie
         // -- the boundary right after the skater rows end.
-        let handler = TeamDetailDocumentHandler {
-            abbrev: "TST".to_string(),
-        };
+        let doc = test_team_detail_doc("TST");
         let data = data_with_roster("TST", test_club_stats());
 
-        match activate_team_detail_at(&handler, &data, 3) {
+        match activate_at(&doc, &data, 3) {
             Effect::Action(Action::PushDocument(StackedDocument::PlayerDetail {
                 player_id,
                 last_name,
@@ -798,13 +784,11 @@ mod tests {
 
     #[test]
     fn team_detail_activate_pushes_last_goalie() {
-        let handler = TeamDetailDocumentHandler {
-            abbrev: "TST".to_string(),
-        };
+        let doc = test_team_detail_doc("TST");
         let data = data_with_roster("TST", test_club_stats());
 
         // Boundary: focus at the last focusable index.
-        match activate_team_detail_at(&handler, &data, 4) {
+        match activate_at(&doc, &data, 4) {
             Effect::Action(Action::PushDocument(StackedDocument::PlayerDetail {
                 player_id,
                 ..
@@ -815,31 +799,23 @@ mod tests {
 
     #[test]
     fn team_detail_activate_out_of_range_returns_none() {
-        let handler = TeamDetailDocumentHandler {
-            abbrev: "TST".to_string(),
-        };
+        let doc = test_team_detail_doc("TST");
         let data = data_with_roster("TST", test_club_stats());
         // 3 skaters + 2 goalies = 5 total; index 5 is one past the end.
-        assert!(matches!(
-            activate_team_detail_at(&handler, &data, 5),
-            Effect::None
-        ));
+        assert!(matches!(activate_at(&doc, &data, 5), Effect::None));
     }
 
     // ========================================================================
-    // TeamDetailDocumentHandler::populate_focusable_metadata
+    // TeamDetail metadata sync
     // ========================================================================
 
     #[test]
-    fn team_detail_populate_focusable_metadata_fills_vectors_from_roster() {
-        let handler = TeamDetailDocumentHandler {
-            abbrev: "TST".to_string(),
-        };
+    fn team_detail_sync_fills_focusables_from_roster() {
+        let doc = test_team_detail_doc("TST");
         let data =
             data_with_roster_and_standings("TST", test_club_stats(), vec![test_standing("TST")]);
-        let mut nav = DocumentNavState::default();
 
-        handler.populate_focusable_metadata(&mut nav, &data, TEST_WIDTH);
+        let nav = sync_metadata(&doc, &data);
 
         assert_eq!(nav.focusables.len(), 5);
         assert!(
@@ -849,99 +825,111 @@ mod tests {
     }
 
     #[test]
-    fn team_detail_populate_focusable_metadata_ignores_non_matching_standing() {
-        let handler = TeamDetailDocumentHandler {
-            abbrev: "TST".to_string(),
-        };
-        // Standings present, but none match this handler's abbrev.
+    fn team_detail_sync_ignores_non_matching_standing() {
+        let doc = test_team_detail_doc("TST");
+        // Standings present, but none match this document's abbrev.
         let data =
             data_with_roster_and_standings("TST", test_club_stats(), vec![test_standing("OTH")]);
-        let mut nav = DocumentNavState::default();
 
-        handler.populate_focusable_metadata(&mut nav, &data, TEST_WIDTH);
+        let nav = sync_metadata(&doc, &data);
 
         // Roster-derived focusable count is unaffected by the missing standing.
         assert_eq!(nav.focusables.len(), 5);
     }
 
     #[test]
-    fn team_detail_populate_focusable_metadata_overwrites_nav_when_roster_missing() {
-        // Unlike BoxscoreDocumentHandler, there is no early-return guard here:
-        // the handler always rebuilds from whatever data is available, so stale
-        // nav metadata gets cleared to empty rather than left alone.
-        let handler = TeamDetailDocumentHandler {
-            abbrev: "ZZZ".to_string(),
-        };
+    fn team_detail_sync_leaves_nav_untouched_when_roster_missing() {
+        // Unified with Boxscore/PlayerDetail: when data hasn't loaded,
+        // `build_stacked_document` returns `None` and the sync step is
+        // skipped, so stale nav metadata is left alone rather than cleared.
+        let doc = test_team_detail_doc("ZZZ");
         let data = DataState::default();
+        let stale = vec![FocusableElement::at(1, 1, FocusableId::link("stale"))];
         let mut nav = DocumentNavState {
-            focusables: vec![FocusableElement::at(1, 1, FocusableId::link("stale"))],
+            focusables: stale.clone(),
             ..Default::default()
         };
 
-        handler.populate_focusable_metadata(&mut nav, &data, TEST_WIDTH);
+        handle_stacked_document_key(
+            &doc,
+            KeyEvent::from(KeyCode::Down),
+            &mut nav,
+            &data,
+            TEST_WIDTH,
+        );
 
-        assert!(nav.focusables.is_empty());
+        assert_eq!(nav.focusables, stale);
     }
 
     // ========================================================================
-    // PlayerDetailDocumentHandler::activate
+    // PlayerDetail activation
     //
-    // The pushed team now comes from the focused season row's
+    // The pushed team comes from the focused season row's
     // `LinkTarget::Push(TeamDetail { .. })`, attached (via the generic
     // `DocumentElement::table()` cell match) only when the row's team
     // resolves to a real abbreviation. Seasons that don't resolve simply
-    // never appear in `link_targets`, so they can't be reached by navigation
-    // at all -- see `player_detail_activate_focus_index_mismatch_is_fixed`
-    // below for the regression this structurally forecloses.
+    // never appear in `focusables`, so they can't be reached by navigation at
+    // all -- see `player_detail_activate_focus_index_mismatch_is_fixed` below.
     // ========================================================================
-
-    /// Activate the player-detail handler at `focus_idx`, after populating
-    /// focusable metadata the same way `handle_key` would.
-    fn activate_player_detail_at(
-        handler: &PlayerDetailDocumentHandler,
-        data: &DataState,
-        focus_idx: usize,
-    ) -> Effect {
-        let mut nav = DocumentNavState::default();
-        handler.populate_focusable_metadata(&mut nav, data, TEST_WIDTH);
-        nav.focus_index = Some(focus_idx);
-        handler.activate(&nav, data)
-    }
 
     #[test]
     fn player_detail_activate_no_focus_returns_none() {
-        let handler = PlayerDetailDocumentHandler { player_id: 1 };
+        let doc = test_player_detail_doc(1);
         let data = data_with_player(1, test_player_with_seasons(1));
-        let mut nav = DocumentNavState::default();
-        handler.populate_focusable_metadata(&mut nav, &data, TEST_WIDTH);
+        let mut nav = sync_metadata(&doc, &data);
 
-        assert!(matches!(handler.activate(&nav, &data), Effect::None));
+        let effect = handle_stacked_document_key(
+            &doc,
+            KeyEvent::from(KeyCode::Enter),
+            &mut nav,
+            &data,
+            TEST_WIDTH,
+        );
+        assert!(matches!(effect, Effect::None));
     }
 
     #[test]
     fn player_detail_activate_missing_player_returns_none() {
-        let handler = PlayerDetailDocumentHandler { player_id: 1 };
+        let doc = test_player_detail_doc(1);
         let data = DataState::default();
-        let nav = nav_with_focus(Some(0));
+        let mut nav = DocumentNavState {
+            focus_index: Some(0),
+            ..Default::default()
+        };
 
-        assert!(matches!(handler.activate(&nav, &data), Effect::None));
+        let effect = handle_stacked_document_key(
+            &doc,
+            KeyEvent::from(KeyCode::Enter),
+            &mut nav,
+            &data,
+            TEST_WIDTH,
+        );
+        assert!(matches!(effect, Effect::None));
     }
 
     #[test]
     fn player_detail_activate_missing_season_totals_returns_none() {
-        let handler = PlayerDetailDocumentHandler { player_id: 1 };
+        let doc = test_player_detail_doc(1);
         let data = data_with_player(1, test_player_landing(1, None));
-        let nav = nav_with_focus(Some(0));
+        let mut nav = sync_metadata(&doc, &data);
+        nav.focus_index = Some(0);
 
-        assert!(matches!(handler.activate(&nav, &data), Effect::None));
+        let effect = handle_stacked_document_key(
+            &doc,
+            KeyEvent::from(KeyCode::Enter),
+            &mut nav,
+            &data,
+            TEST_WIDTH,
+        );
+        assert!(matches!(effect, Effect::None));
     }
 
     #[test]
     fn player_detail_activate_pushes_team_detail_for_first_season() {
-        let handler = PlayerDetailDocumentHandler { player_id: 1 };
+        let doc = test_player_detail_doc(1);
         let data = data_with_player(1, test_player_with_seasons(1));
 
-        match activate_player_detail_at(&handler, &data, 0) {
+        match activate_at(&doc, &data, 0) {
             Effect::Action(Action::PushDocument(StackedDocument::TeamDetail { abbrev })) => {
                 assert_eq!(abbrev, "EDM");
             }
@@ -951,10 +939,10 @@ mod tests {
 
     #[test]
     fn player_detail_activate_pushes_team_detail_for_second_season() {
-        let handler = PlayerDetailDocumentHandler { player_id: 1 };
+        let doc = test_player_detail_doc(1);
         let data = data_with_player(1, test_player_with_seasons(1));
 
-        match activate_player_detail_at(&handler, &data, 1) {
+        match activate_at(&doc, &data, 1) {
             Effect::Action(Action::PushDocument(StackedDocument::TeamDetail { abbrev })) => {
                 assert_eq!(abbrev, "TOR");
             }
@@ -965,42 +953,38 @@ mod tests {
     #[test]
     fn player_detail_activate_beyond_resolvable_seasons_returns_none() {
         // Only 2 of the fixture's seasons resolve to a real team abbreviation
-        // (see `player_detail_populate_focusable_metadata_fills_vectors_from_linkable_seasons`),
-        // so index 2 is one past the end of `link_targets` regardless of how
-        // many seasons survive the RegularSeason/NHL filter upstream (4, in
-        // this fixture). Unresolvable seasons (missing team_common_name, or
-        // an unmapped team name) never produce a focusable row in the first
-        // place, so there's no distinct "wrong reason" for this to fail --
-        // it's a plain out-of-range read.
-        let handler = PlayerDetailDocumentHandler { player_id: 1 };
+        // (see `player_detail_sync_fills_focusables_from_linkable_seasons`),
+        // so index 2 is one past the end of the focusable list regardless of
+        // how many seasons survive the RegularSeason/NHL filter upstream (4,
+        // in this fixture). Unresolvable seasons (missing team_common_name,
+        // or an unmapped team name) never produce a focusable row in the
+        // first place, so there's no distinct "wrong reason" for this to
+        // fail -- it's a plain out-of-range read.
+        let doc = test_player_detail_doc(1);
         let data = data_with_player(1, test_player_with_seasons(1));
 
-        assert!(matches!(
-            activate_player_detail_at(&handler, &data, 2),
-            Effect::None
-        ));
+        assert!(matches!(activate_at(&doc, &data, 2), Effect::None));
     }
 
     // ========================================================================
-    // PlayerDetailDocumentHandler::populate_focusable_metadata
+    // PlayerDetail metadata sync
     // ========================================================================
 
     #[test]
-    fn player_detail_populate_focusable_metadata_fills_vectors_from_linkable_seasons() {
-        let handler = PlayerDetailDocumentHandler { player_id: 1 };
+    fn player_detail_sync_fills_focusables_from_linkable_seasons() {
+        let doc = test_player_detail_doc(1);
         let data = data_with_player(1, test_player_with_seasons(1));
-        let mut nav = DocumentNavState::default();
 
-        handler.populate_focusable_metadata(&mut nav, &data, TEST_WIDTH);
+        let nav = sync_metadata(&doc, &data);
 
-        // 4 of the 6 seasons survive the RegularSeason/NHL filter, but a season's
-        // table row is only focusable when its team column renders as a link
-        // (see `DocumentElement::table()`, which skips non-link cells). Of the 4
-        // filtered seasons, only 2 (Oilers, Maple Leafs) resolve to a real team
-        // abbreviation and thus a focusable TableCell; see
-        // `player_detail_activate_focus_index_mismatch_is_fixed` for why this
-        // divergence between the filtered array and the focusable list used to
-        // matter (and no longer can).
+        // 4 of the 6 seasons survive the RegularSeason/NHL filter, but a
+        // season's table row is only focusable when its team column renders
+        // as a link (see `DocumentElement::table()`, which skips non-link
+        // cells). Of the 4 filtered seasons, only 2 (Oilers, Maple Leafs)
+        // resolve to a real team abbreviation and thus a focusable
+        // TableCell; see `player_detail_activate_focus_index_mismatch_is_fixed`
+        // for why this divergence between the filtered array and the
+        // focusable list used to matter (and no longer can).
         assert_eq!(nav.focusables.len(), 2);
         assert!(
             nav.focusables.iter().all(|f| f.link_target.is_some()),
@@ -1010,14 +994,14 @@ mod tests {
 
     #[test]
     fn player_detail_activate_focus_index_mismatch_is_fixed() {
-        // FIXED LATENT BUG: `activate()` used to index directly into the
-        // RegularSeason/NHL filtered, season-sorted `nhl_seasons` array using
+        // FIXED LATENT BUG: activation used to index directly into the
+        // RegularSeason/NHL filtered, season-sorted array using
         // `nav.focus_index`. But `nav.focus_index` is set by the navigation
-        // system to an index into the FOCUSABLE table cells, and a season row
-        // only becomes focusable when its team column resolves to a real
+        // system to an index into the FOCUSABLE table cells, and a season
+        // row only becomes focusable when its team column resolves to a real
         // abbreviation -- a season with an unresolvable team name was still
-        // included in `nhl_seasons` but contributed zero focusable rows,
-        // so the two index spaces could diverge.
+        // included in the filtered array but contributed zero focusable
+        // rows, so the two index spaces could diverge.
         //
         // Here the newest season (sorts first, array index 0) has no
         // resolvable team, so it produces no focusable row. The only
@@ -1025,7 +1009,7 @@ mod tests {
         // the focus system assigns it focus_index 0 (the first and only
         // focusable element).
         //
-        // Now that `activate()` reads `nav.focusables[nav.focus_index].link_target`
+        // Now that activation reads `nav.focusables[nav.focus_index].link_target`
         // directly -- populated by walking the same focusable cells the user
         // navigates -- the two index spaces can't diverge: pressing Enter on
         // the visibly-focused row pushes its real destination.
@@ -1033,17 +1017,15 @@ mod tests {
             test_season_total(20242025, GameType::RegularSeason, "NHL", None),
             test_season_total(20232024, GameType::RegularSeason, "NHL", Some("Oilers")),
         ];
-        let handler = PlayerDetailDocumentHandler { player_id: 1 };
+        let doc = test_player_detail_doc(1);
         let data = data_with_player(1, test_player_landing(1, Some(seasons)));
 
-        let mut nav = DocumentNavState::default();
-        handler.populate_focusable_metadata(&mut nav, &data, TEST_WIDTH);
-        // Only one focusable row exists (the Oilers season), so real keyboard
-        // navigation can only ever produce focus_index 0 here.
+        let nav = sync_metadata(&doc, &data);
+        // Only one focusable row exists (the Oilers season), so real
+        // keyboard navigation can only ever produce focus_index 0 here.
         assert_eq!(nav.focusables.len(), 1);
 
-        nav.focus_index = Some(0);
-        match handler.activate(&nav, &data) {
+        match activate_at(&doc, &data, 0) {
             Effect::Action(Action::PushDocument(StackedDocument::TeamDetail { abbrev })) => {
                 assert_eq!(abbrev, "EDM");
             }
@@ -1054,62 +1036,93 @@ mod tests {
     }
 
     #[test]
-    fn player_detail_populate_focusable_metadata_overwrites_nav_when_player_missing() {
-        let handler = PlayerDetailDocumentHandler { player_id: 999 };
+    fn player_detail_sync_leaves_nav_untouched_when_player_missing() {
+        let doc = test_player_detail_doc(999);
         let data = DataState::default();
+        let stale = vec![FocusableElement::at(1, 1, FocusableId::link("stale"))];
         let mut nav = DocumentNavState {
-            focusables: vec![FocusableElement::at(1, 1, FocusableId::link("stale"))],
+            focusables: stale.clone(),
             ..Default::default()
         };
 
-        handler.populate_focusable_metadata(&mut nav, &data, TEST_WIDTH);
+        handle_stacked_document_key(
+            &doc,
+            KeyEvent::from(KeyCode::Down),
+            &mut nav,
+            &data,
+            TEST_WIDTH,
+        );
 
-        assert!(nav.focusables.is_empty());
+        assert_eq!(nav.focusables, stale);
     }
 
     // ========================================================================
-    // handle_key integration tests (navigation, scrolling, activation)
+    // handle_stacked_document_key integration tests (navigation, scrolling,
+    // activation)
     // ========================================================================
 
     #[test]
     fn handle_key_down_focuses_first_then_advances() {
-        let handler = TeamDetailDocumentHandler {
-            abbrev: "TST".to_string(),
-        };
+        let doc = test_team_detail_doc("TST");
         let data = data_with_roster("TST", test_club_stats());
         let mut nav = DocumentNavState::default();
 
-        handler.handle_key(KeyEvent::from(KeyCode::Down), &mut nav, &data, TEST_WIDTH);
+        handle_stacked_document_key(
+            &doc,
+            KeyEvent::from(KeyCode::Down),
+            &mut nav,
+            &data,
+            TEST_WIDTH,
+        );
         assert_eq!(nav.focus_index, Some(0));
 
-        handler.handle_key(KeyEvent::from(KeyCode::Down), &mut nav, &data, TEST_WIDTH);
+        handle_stacked_document_key(
+            &doc,
+            KeyEvent::from(KeyCode::Down),
+            &mut nav,
+            &data,
+            TEST_WIDTH,
+        );
         assert_eq!(nav.focus_index, Some(1));
     }
 
     #[test]
     fn handle_key_up_wraps_from_first_to_last() {
-        let handler = TeamDetailDocumentHandler {
-            abbrev: "TST".to_string(),
-        };
+        let doc = test_team_detail_doc("TST");
         let data = data_with_roster("TST", test_club_stats());
         let mut nav = DocumentNavState::default();
 
         // Up from no focus wraps directly to the last element (index 4 of 5).
-        handler.handle_key(KeyEvent::from(KeyCode::Up), &mut nav, &data, TEST_WIDTH);
+        handle_stacked_document_key(
+            &doc,
+            KeyEvent::from(KeyCode::Up),
+            &mut nav,
+            &data,
+            TEST_WIDTH,
+        );
         assert_eq!(nav.focus_index, Some(4));
     }
 
     #[test]
     fn handle_key_enter_activates_focused_skater() {
-        let handler = TeamDetailDocumentHandler {
-            abbrev: "TST".to_string(),
-        };
+        let doc = test_team_detail_doc("TST");
         let data = data_with_roster("TST", test_club_stats());
         let mut nav = DocumentNavState::default();
 
-        handler.handle_key(KeyEvent::from(KeyCode::Down), &mut nav, &data, TEST_WIDTH);
-        let effect =
-            handler.handle_key(KeyEvent::from(KeyCode::Enter), &mut nav, &data, TEST_WIDTH);
+        handle_stacked_document_key(
+            &doc,
+            KeyEvent::from(KeyCode::Down),
+            &mut nav,
+            &data,
+            TEST_WIDTH,
+        );
+        let effect = handle_stacked_document_key(
+            &doc,
+            KeyEvent::from(KeyCode::Enter),
+            &mut nav,
+            &data,
+            TEST_WIDTH,
+        );
 
         match effect {
             Effect::Action(Action::PushDocument(StackedDocument::PlayerDetail {
@@ -1122,16 +1135,15 @@ mod tests {
 
     #[test]
     fn handle_key_page_down_and_page_up_scroll_by_viewport_size() {
-        let handler = TeamDetailDocumentHandler {
-            abbrev: "TST".to_string(),
-        };
+        let doc = test_team_detail_doc("TST");
         let data = data_with_roster("TST", test_club_stats());
         let mut nav = DocumentNavState {
             viewport_height: TEST_VIEWPORT_HEIGHT,
             ..Default::default()
         };
 
-        handler.handle_key(
+        handle_stacked_document_key(
+            &doc,
             KeyEvent::from(KeyCode::PageDown),
             &mut nav,
             &data,
@@ -1139,22 +1151,38 @@ mod tests {
         );
         assert_eq!(nav.scroll_offset, TEST_VIEWPORT_HEIGHT);
 
-        handler.handle_key(KeyEvent::from(KeyCode::PageUp), &mut nav, &data, TEST_WIDTH);
+        handle_stacked_document_key(
+            &doc,
+            KeyEvent::from(KeyCode::PageUp),
+            &mut nav,
+            &data,
+            TEST_WIDTH,
+        );
         assert_eq!(nav.scroll_offset, 0);
     }
 
     #[test]
     fn handle_key_home_and_end_scroll_to_top_and_bottom() {
-        let handler = TeamDetailDocumentHandler {
-            abbrev: "TST".to_string(),
-        };
+        let doc = test_team_detail_doc("TST");
         let data = data_with_roster("TST", test_club_stats());
         let mut nav = DocumentNavState::default();
 
-        handler.handle_key(KeyEvent::from(KeyCode::End), &mut nav, &data, TEST_WIDTH);
+        handle_stacked_document_key(
+            &doc,
+            KeyEvent::from(KeyCode::End),
+            &mut nav,
+            &data,
+            TEST_WIDTH,
+        );
         assert_eq!(nav.scroll_offset, u16::MAX);
 
-        handler.handle_key(KeyEvent::from(KeyCode::Home), &mut nav, &data, TEST_WIDTH);
+        handle_stacked_document_key(
+            &doc,
+            KeyEvent::from(KeyCode::Home),
+            &mut nav,
+            &data,
+            TEST_WIDTH,
+        );
         assert_eq!(nav.scroll_offset, 0);
     }
 
@@ -1162,13 +1190,17 @@ mod tests {
     fn handle_key_on_empty_document_does_not_set_focus() {
         // Boundary: no roster loaded for this abbrev, so there are zero
         // focusable elements. Navigation keys must be a no-op.
-        let handler = TeamDetailDocumentHandler {
-            abbrev: "ZZZ".to_string(),
-        };
+        let doc = test_team_detail_doc("ZZZ");
         let data = DataState::default();
         let mut nav = DocumentNavState::default();
 
-        let effect = handler.handle_key(KeyEvent::from(KeyCode::Down), &mut nav, &data, TEST_WIDTH);
+        let effect = handle_stacked_document_key(
+            &doc,
+            KeyEvent::from(KeyCode::Down),
+            &mut nav,
+            &data,
+            TEST_WIDTH,
+        );
 
         assert!(matches!(effect, Effect::None));
         assert_eq!(nav.focus_index, None);
@@ -1178,9 +1210,7 @@ mod tests {
     fn handle_key_on_single_element_document_wraps_to_itself() {
         // Boundary: a roster with exactly one focusable element (one skater, no
         // goalies) should keep focus pinned to index 0 across repeated FocusNext.
-        let handler = TeamDetailDocumentHandler {
-            abbrev: "TST".to_string(),
-        };
+        let doc = test_team_detail_doc("TST");
         let club_stats = ClubStats {
             season: "20242025".to_string(),
             game_type: GameType::RegularSeason,
@@ -1190,22 +1220,33 @@ mod tests {
         let data = data_with_roster("TST", club_stats);
         let mut nav = DocumentNavState::default();
 
-        handler.handle_key(KeyEvent::from(KeyCode::Down), &mut nav, &data, TEST_WIDTH);
+        handle_stacked_document_key(
+            &doc,
+            KeyEvent::from(KeyCode::Down),
+            &mut nav,
+            &data,
+            TEST_WIDTH,
+        );
         assert_eq!(nav.focus_index, Some(0));
 
-        handler.handle_key(KeyEvent::from(KeyCode::Down), &mut nav, &data, TEST_WIDTH);
+        handle_stacked_document_key(
+            &doc,
+            KeyEvent::from(KeyCode::Down),
+            &mut nav,
+            &data,
+            TEST_WIDTH,
+        );
         assert_eq!(nav.focus_index, Some(0));
     }
 
     #[test]
     fn handle_key_non_navigation_key_returns_none() {
-        let handler = TeamDetailDocumentHandler {
-            abbrev: "TST".to_string(),
-        };
+        let doc = test_team_detail_doc("TST");
         let data = data_with_roster("TST", test_club_stats());
         let mut nav = DocumentNavState::default();
 
-        let effect = handler.handle_key(
+        let effect = handle_stacked_document_key(
+            &doc,
             KeyEvent::from(KeyCode::Char('x')),
             &mut nav,
             &data,

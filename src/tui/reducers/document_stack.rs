@@ -2,7 +2,7 @@ use tracing::debug;
 
 use crate::tui::action::Action;
 use crate::tui::component::Effect;
-use crate::tui::document::get_stacked_document_handler;
+use crate::tui::document::handle_stacked_document_key;
 use crate::tui::state::{AppState, DocumentStackEntry, LoadingKey};
 use crate::tui::types::StackedDocument;
 
@@ -29,8 +29,13 @@ fn stacked_document_key(state: AppState, key: crossterm::event::KeyEvent) -> (Ap
     let width = new_state.system.terminal_width;
 
     if let Some(entry) = new_state.navigation.document_stack.last_mut() {
-        let handler = get_stacked_document_handler(&entry.document);
-        let effect = handler.handle_key(key, &mut entry.nav, &new_state.data, width);
+        let effect = handle_stacked_document_key(
+            &entry.document,
+            key,
+            &mut entry.nav,
+            &new_state.data,
+            width,
+        );
         return (new_state, effect);
     }
 
