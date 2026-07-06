@@ -99,8 +99,6 @@ pub enum Action {
 /// Tab-specific actions for Settings
 #[derive(Debug, Clone)]
 pub enum SettingsAction {
-    NavigateCategoryLeft,
-    NavigateCategoryRight,
     ToggleBoolean(String),                        // Setting key to toggle
     UpdateSetting { key: String, value: String }, // Update a setting value
     UpdateConfig(Box<crate::config::Config>),

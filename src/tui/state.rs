@@ -8,7 +8,7 @@ use crate::commands::scores_format::PeriodScores;
 use crate::config::Config;
 
 use super::document_nav::DocumentNavState;
-use super::types::{SettingsCategory, StackedDocument, Tab};
+use super::types::{StackedDocument, Tab};
 
 /// Root application state - single source of truth
 ///
@@ -116,7 +116,6 @@ pub enum LoadingKey {
 #[derive(Debug, Clone, Default)]
 pub struct UiState {
     pub scores: ScoresUiState,
-    pub settings: SettingsUiState,
 }
 
 /// UI state for Scores tab (minimal - most state in component-local ScoresTabState)
@@ -140,11 +139,6 @@ impl Default for ScoresUiState {
             game_date: GameDate::today(),
         }
     }
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct SettingsUiState {
-    pub selected_category: SettingsCategory,
 }
 
 /// Default help message shown in the status bar

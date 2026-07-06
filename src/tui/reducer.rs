@@ -96,9 +96,7 @@ pub fn reduce(
 
     // Tab-specific action delegation
     match action {
-        Action::SettingsAction(settings_action) => {
-            reduce_settings(state, settings_action, component_states)
-        }
+        Action::SettingsAction(settings_action) => reduce_settings(state, settings_action),
 
         // Scores: SelectGame pushes boxscore document onto stack
         Action::SelectGame(game_id) => {
@@ -200,7 +198,7 @@ pub fn reduce(
 mod tests {
     use super::*;
     use crate::tui::action::SettingsAction;
-    use crate::tui::types::{SettingsCategory, Tab};
+    use crate::tui::types::Tab;
 
     // Test helper that creates a ComponentStateStore for each test
     fn test_reduce(state: AppState, action: Action) -> (AppState, Effect) {
@@ -365,89 +363,12 @@ mod tests {
     }
 
     // Settings reducer tests
-    #[test]
-    fn test_settings_navigate_category_left_from_logging() {
-        let mut state = AppState::default();
-        state.ui.settings.selected_category = SettingsCategory::Logging;
-
-        let action = Action::SettingsAction(SettingsAction::NavigateCategoryLeft);
-        let (new_state, _effect) = test_reduce(state, action);
-
-        assert_eq!(
-            new_state.ui.settings.selected_category,
-            SettingsCategory::Data
-        );
-    }
-
-    #[test]
-    fn test_settings_navigate_category_left_from_display() {
-        let mut state = AppState::default();
-        state.ui.settings.selected_category = SettingsCategory::Display;
-
-        let action = Action::SettingsAction(SettingsAction::NavigateCategoryLeft);
-        let (new_state, _) = test_reduce(state, action);
-
-        assert_eq!(
-            new_state.ui.settings.selected_category,
-            SettingsCategory::Logging
-        );
-    }
-
-    #[test]
-    fn test_settings_navigate_category_left_from_data() {
-        let mut state = AppState::default();
-        state.ui.settings.selected_category = SettingsCategory::Data;
-
-        let action = Action::SettingsAction(SettingsAction::NavigateCategoryLeft);
-        let (new_state, _) = test_reduce(state, action);
-
-        assert_eq!(
-            new_state.ui.settings.selected_category,
-            SettingsCategory::Display
-        );
-    }
-
-    #[test]
-    fn test_settings_navigate_category_right_from_logging() {
-        let mut state = AppState::default();
-        state.ui.settings.selected_category = SettingsCategory::Logging;
-
-        let action = Action::SettingsAction(SettingsAction::NavigateCategoryRight);
-        let (new_state, _effect) = test_reduce(state, action);
-
-        assert_eq!(
-            new_state.ui.settings.selected_category,
-            SettingsCategory::Display
-        );
-    }
-
-    #[test]
-    fn test_settings_navigate_category_right_from_display() {
-        let mut state = AppState::default();
-        state.ui.settings.selected_category = SettingsCategory::Display;
-
-        let action = Action::SettingsAction(SettingsAction::NavigateCategoryRight);
-        let (new_state, _) = test_reduce(state, action);
-
-        assert_eq!(
-            new_state.ui.settings.selected_category,
-            SettingsCategory::Data
-        );
-    }
-
-    #[test]
-    fn test_settings_navigate_category_right_from_data() {
-        let mut state = AppState::default();
-        state.ui.settings.selected_category = SettingsCategory::Data;
-
-        let action = Action::SettingsAction(SettingsAction::NavigateCategoryRight);
-        let (new_state, _) = test_reduce(state, action);
-
-        assert_eq!(
-            new_state.ui.settings.selected_category,
-            SettingsCategory::Logging
-        );
-    }
+    //
+    // Category-navigation tests used to live here (against
+    // `Action::SettingsAction(NavigateCategoryLeft/Right)` and global
+    // `state.ui.settings.selected_category`) but moved to
+    // `components/settings_tab.rs`'s test module along with the behavior
+    // itself now that category selection is component-local.
 
     #[test]
     fn test_set_status_message_with_error() {

@@ -204,6 +204,25 @@ provably share the document, parity-tested), ONE navigation engine (document_nav
 599 dev / 583 default tests green across matrix. The two checkpoint bugs (both
 forgot-a-field sync bugs) are now structurally unrepresentable.
 
+## Open-items closure session (2026-07-05 evening, after plan completion)
+- [x] Latent bug: invisible fetch errors — FIXED (committed ac7302b). All six *Loaded(Err)
+      paths surface via set_status_error_message; prefix-scoped clearing (a feed's success only
+      clears its own error); game-details failures collapse to one generic message that never
+      clobbers specific errors. Dead data.errors field + Action::Error variant deleted.
+- [x] Latent bugs: settings — FIXED (same commit). Unknown keys: warn + no-op (no disk write,
+      no false "saved"); unknown themes: rejected with status error, previous theme kept
+      (UI-unreachable, defensive); testing.rs doc-example rot fixed.
+- [x] A12 remainder — DONE (awaiting TTY + commit). selected_category moved into
+      SettingsTabState; NavigateCategoryLeft/Right(Config) component messages (mirrors the
+      ActivateSetting config-carrying pattern — no new reducer machinery); SettingsUiState +
+      ui.settings deleted; reduce_settings dropped its store param; dead SetCategory removed;
+      3 keys.rs table rows updated; all category tests ported to the component. Net −98 lines.
+- [x] Phase E (2026-07-04 plan) — CLOSED: A9/A15/P8 completed structurally by F2/F1/F2
+      respectively. P4/P5/P10 closed as no-longer-justified: post-P1/P6/F1/F2 the only
+      remaining per-redraw cost is one document build at ~1Hz idle / per-keypress, and a
+      cross-frame buffer cache would invalidate on exactly the events that cause redraws
+      (focus is baked into built elements) — all invalidation risk, near-zero win.
+
 ## Flagged for future work (from F5 report)
 - docs/component-patterns.md has the same class of staleness (old five-Vec example,
   DocumentView-with-nav description) — not in F5's file list, needs a small pass.

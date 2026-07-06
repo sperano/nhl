@@ -30,7 +30,6 @@ pub struct SettingsTabProps {
     // Arc'd by the caller so cloning props each render is a pointer bump, not a
     // deep copy of the underlying Config.
     pub config: Arc<Config>,
-    pub selected_category: SettingsCategory,
     pub focused: bool,
 }
 
@@ -56,6 +55,10 @@ pub struct ModalState {
 /// State for SettingsTab component
 #[derive(Debug, Clone, Default)]
 pub struct SettingsTabState {
+    /// Currently selected settings category. Component-local (not global
+    /// state): every other tab already owns its selection state this way,
+    /// this was the last holdout (see module docs for background).
+    pub selected_category: SettingsCategory,
     /// Document navigation state for the current category
     pub doc_nav: DocumentNavState,
     /// Modal state for list selections (log_level, theme)
@@ -91,8 +94,15 @@ pub enum SettingsTabMsg {
     DocNav(DocumentNavMsg),
     /// Update viewport height
     UpdateViewportHeight(u16),
-    /// Change category (triggered by tab navigation)
-    SetCategory(SettingsCategory),
+    /// Cycle to the previous category (wrapping) and rebuild focus metadata.
+    ///
+    /// Carries `Config` because `update()` has no props access - mirrors
+    /// `ActivateSetting`'s existing pattern of passing the config needed for a
+    /// document rebuild through the message itself.
+    NavigateCategoryLeft(Config),
+    /// Cycle to the next category (wrapping) and rebuild focus metadata. See
+    /// `NavigateCategoryLeft` for why `Config` is carried in the message.
+    NavigateCategoryRight(Config),
     /// Activate the currently focused setting (includes config for modal initialization)
     ActivateSetting(Config),
     /// Modal navigation
@@ -131,8 +141,8 @@ impl Component for SettingsTab {
         use crate::tui::document::FocusContext;
 
         // Create document and populate focusable metadata
-        let doc = SettingsDocument::new(props.selected_category, props.config.clone());
         let mut state = SettingsTabState::default();
+        let doc = SettingsDocument::new(state.selected_category, props.config.clone());
         state
             .doc_nav
             .sync_focusables(&doc, &FocusContext::default());
@@ -167,13 +177,22 @@ impl Component for SettingsTab {
                 Effect::None
             }
 
-            SettingsTabMsg::SetCategory(_category) => {
-                // Category changed - reset document state and rebuild focusable metadata
-                *state.doc_nav_mut() = DocumentNavState::default();
-
-                // Need to get config - but we don't have props here!
-                // This will be populated by the reducer which has access to the config
-                // For now, just reset the state - the reducer will trigger a re-init
+            SettingsTabMsg::NavigateCategoryLeft(config) => {
+                state.selected_category = match state.selected_category {
+                    SettingsCategory::Logging => SettingsCategory::Data,
+                    SettingsCategory::Display => SettingsCategory::Logging,
+                    SettingsCategory::Data => SettingsCategory::Display,
+                };
+                Self::rebuild_doc_nav_for_category(state, config);
+                Effect::None
+            }
+            SettingsTabMsg::NavigateCategoryRight(config) => {
+                state.selected_category = match state.selected_category {
+                    SettingsCategory::Logging => SettingsCategory::Display,
+                    SettingsCategory::Display => SettingsCategory::Data,
+                    SettingsCategory::Data => SettingsCategory::Logging,
+                };
+                Self::rebuild_doc_nav_for_category(state, config);
                 Effect::None
             }
             SettingsTabMsg::ActivateSetting(config) => {
@@ -287,7 +306,7 @@ impl Component for SettingsTab {
         ];
 
         // Active key based on selected category
-        let active_key = self.category_to_key(props.selected_category);
+        let active_key = self.category_to_key(state.selected_category);
 
         // Create the base element (tabbed panel)
         let base_element = TabbedPanel.view(
@@ -369,12 +388,13 @@ impl SettingsTab {
         } else {
             // Category selection mode
             match key.code {
-                KeyCode::Left => {
-                    Effect::Action(Action::SettingsAction(SettingsAction::NavigateCategoryLeft))
-                }
-                KeyCode::Right => Effect::Action(Action::SettingsAction(
-                    SettingsAction::NavigateCategoryRight,
-                )),
+                // NOTE: `SettingsTabMsg::Key` (and thus `handle_key`) is never
+                // actually dispatched today - real Settings key routing lives in
+                // `keys.rs::handle_settings_tab_keys`, which has access to
+                // `state.system.config` to build `NavigateCategoryLeft/Right`.
+                // This arm exists only to keep this dead path's `match`
+                // exhaustive; it intentionally does not fabricate a `Config`.
+                KeyCode::Left | KeyCode::Right => Effect::None,
                 KeyCode::Down | KeyCode::Enter => {
                     // Enter browse mode
                     if !state.doc_nav.focusables.is_empty() {
@@ -385,6 +405,23 @@ impl SettingsTab {
                 _ => Effect::None,
             }
         }
+    }
+
+    /// Rebuild `doc_nav`'s focus metadata for `state.selected_category`,
+    /// discarding any prior focus/scroll position from the previous category.
+    ///
+    /// Ported from the old `reducers/settings.rs::navigate_category`, which had
+    /// to look `SettingsTabState` up in the global component store from
+    /// outside; now that category selection is component-local, `update()`
+    /// already owns `state` directly.
+    fn rebuild_doc_nav_for_category(state: &mut SettingsTabState, config: Config) {
+        use crate::tui::document::FocusContext;
+
+        let doc = SettingsDocument::new(state.selected_category, config);
+        state.doc_nav = DocumentNavState::default();
+        state
+            .doc_nav
+            .sync_focusables(&doc, &FocusContext::default());
     }
 
     /// Convert category to tab key
@@ -566,11 +603,11 @@ mod tests {
     fn test_settings_tab_init() {
         let props = SettingsTabProps {
             config: Arc::new(Config::default()),
-            selected_category: SettingsCategory::Logging,
             focused: false,
         };
         let state = SettingsTab::init(&props);
 
+        assert_eq!(state.selected_category, SettingsCategory::Logging);
         assert_eq!(state.doc_nav.focus_index, None);
         assert_eq!(state.doc_nav.scroll_offset, 0);
     }
@@ -580,7 +617,6 @@ mod tests {
         let settings_tab = SettingsTab;
         let props = SettingsTabProps {
             config: Arc::new(Config::default()),
-            selected_category: SettingsCategory::Logging,
             focused: false,
         };
         let state = SettingsTabState::default();
@@ -647,24 +683,160 @@ mod tests {
         assert!(matches!(effect, Effect::None));
     }
 
-    #[test]
-    fn test_set_category_resets_state() {
-        let mut component = SettingsTab;
-        let mut state = SettingsTabState::default();
+    // --- SettingsTabMsg::NavigateCategoryLeft/Right (category cycling) ------
+    //
+    // Ported from reducer.rs's test_settings_navigate_category_left/right_from_*
+    // and reducers/settings.rs's navigate_category tests, now that category
+    // selection and its doc_nav rebuild both live in this component's `update()`
+    // instead of being split across global state and a global reducer.
 
-        // Set some state
-        state.doc_nav.focus_index = Some(2);
-        state.doc_nav.scroll_offset = 10;
+    #[test]
+    fn navigate_category_left_from_logging_wraps_to_data() {
+        let mut component = SettingsTab;
+        let mut state = SettingsTabState {
+            selected_category: SettingsCategory::Logging,
+            ..Default::default()
+        };
 
         let effect = component.update(
-            SettingsTabMsg::SetCategory(SettingsCategory::Display),
+            SettingsTabMsg::NavigateCategoryLeft(Config::default()),
             &mut state,
         );
 
-        // State should be reset
+        assert_eq!(state.selected_category, SettingsCategory::Data);
+        assert!(matches!(effect, Effect::None));
+    }
+
+    #[test]
+    fn navigate_category_left_from_display_goes_to_logging() {
+        let mut component = SettingsTab;
+        let mut state = SettingsTabState {
+            selected_category: SettingsCategory::Display,
+            ..Default::default()
+        };
+
+        let effect = component.update(
+            SettingsTabMsg::NavigateCategoryLeft(Config::default()),
+            &mut state,
+        );
+
+        assert_eq!(state.selected_category, SettingsCategory::Logging);
+        assert!(matches!(effect, Effect::None));
+    }
+
+    #[test]
+    fn navigate_category_left_from_data_goes_to_display() {
+        let mut component = SettingsTab;
+        let mut state = SettingsTabState {
+            selected_category: SettingsCategory::Data,
+            ..Default::default()
+        };
+
+        let effect = component.update(
+            SettingsTabMsg::NavigateCategoryLeft(Config::default()),
+            &mut state,
+        );
+
+        assert_eq!(state.selected_category, SettingsCategory::Display);
+        assert!(matches!(effect, Effect::None));
+    }
+
+    #[test]
+    fn navigate_category_right_from_logging_goes_to_display() {
+        let mut component = SettingsTab;
+        let mut state = SettingsTabState {
+            selected_category: SettingsCategory::Logging,
+            ..Default::default()
+        };
+
+        let effect = component.update(
+            SettingsTabMsg::NavigateCategoryRight(Config::default()),
+            &mut state,
+        );
+
+        assert_eq!(state.selected_category, SettingsCategory::Display);
+        assert!(matches!(effect, Effect::None));
+    }
+
+    #[test]
+    fn navigate_category_right_from_display_goes_to_data() {
+        let mut component = SettingsTab;
+        let mut state = SettingsTabState {
+            selected_category: SettingsCategory::Display,
+            ..Default::default()
+        };
+
+        let effect = component.update(
+            SettingsTabMsg::NavigateCategoryRight(Config::default()),
+            &mut state,
+        );
+
+        assert_eq!(state.selected_category, SettingsCategory::Data);
+        assert!(matches!(effect, Effect::None));
+    }
+
+    #[test]
+    fn navigate_category_right_from_data_wraps_to_logging() {
+        let mut component = SettingsTab;
+        let mut state = SettingsTabState {
+            selected_category: SettingsCategory::Data,
+            ..Default::default()
+        };
+
+        let effect = component.update(
+            SettingsTabMsg::NavigateCategoryRight(Config::default()),
+            &mut state,
+        );
+
+        assert_eq!(state.selected_category, SettingsCategory::Logging);
+        assert!(matches!(effect, Effect::None));
+    }
+
+    /// Builds a `SettingsTabState` with a `doc_nav` that is deliberately "stale"
+    /// (as if left over from a previously focused category), so the rebuild
+    /// test below can confirm navigation actually replaces it rather than
+    /// merely leaving it untouched.
+    fn stale_settings_tab_state(selected_category: SettingsCategory) -> SettingsTabState {
+        SettingsTabState {
+            selected_category,
+            doc_nav: DocumentNavState {
+                focus_index: Some(3),
+                scroll_offset: 7,
+                viewport_height: 20,
+                focusables: vec![FocusableElement::at(99, 1, FocusableId::link("stale"))],
+                ..Default::default()
+            },
+            modal: None,
+        }
+    }
+
+    #[test]
+    fn navigate_category_rebuilds_doc_nav_focus_metadata_discarding_stale_state() {
+        use crate::tui::document::{Document, FocusContext};
+
+        let mut component = SettingsTab;
+        let mut state = stale_settings_tab_state(SettingsCategory::Logging);
+
+        component.update(
+            SettingsTabMsg::NavigateCategoryRight(Config::default()),
+            &mut state,
+        );
+
+        assert_eq!(state.selected_category, SettingsCategory::Display);
+        // Stale focus/scroll position must be cleared, not carried over into
+        // the new category.
         assert_eq!(state.doc_nav.focus_index, None);
         assert_eq!(state.doc_nav.scroll_offset, 0);
-        assert!(matches!(effect, Effect::None));
+        assert_eq!(state.doc_nav.viewport_height, 0);
+
+        let expected_doc = SettingsDocument::new(SettingsCategory::Display, Config::default());
+        assert_eq!(
+            state.doc_nav.focusables,
+            expected_doc.focusables(&FocusContext::default())
+        );
+        // Sanity check: Display category actually has focusable settings, so
+        // this test would fail loudly (rather than vacuously) if rebuilding broke.
+        assert!(!state.doc_nav.focusables.is_empty());
     }
 
     #[test]
@@ -706,10 +878,11 @@ mod tests {
         let mut settings_tab = SettingsTab;
         let props = SettingsTabProps {
             config: Arc::new(Config::default()),
-            selected_category: SettingsCategory::Data,
             focused: true,
         };
         let mut state = SettingsTab::init(&props);
+        state.selected_category = SettingsCategory::Data;
+        SettingsTab::rebuild_doc_nav_for_category(&mut state, props.config.as_ref().clone());
         state.doc_nav.focus_index = Some(0);
 
         // Sanity check: the "western_teams_first" row is declared as a
@@ -746,7 +919,6 @@ mod tests {
         let mut settings_tab = SettingsTab;
         let props = SettingsTabProps {
             config: Arc::new(Config::default()),
-            selected_category: SettingsCategory::Logging,
             focused: true,
         };
         let mut state = SettingsTab::init(&props);
@@ -767,7 +939,6 @@ mod tests {
         let mut settings_tab = SettingsTab;
         let props = SettingsTabProps {
             config: Arc::new(Config::default()),
-            selected_category: SettingsCategory::Logging,
             focused: true,
         };
         let mut state = SettingsTab::init(&props);

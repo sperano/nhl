@@ -249,7 +249,6 @@ impl App {
             // Arc-wrap here so every downstream `.clone()` (props, widgets,
             // documents) is a cheap pointer bump instead of a deep Config clone.
             config: Arc::new(state.system.config.clone()),
-            selected_category: state.ui.settings.selected_category,
             focused: state.navigation.focus_in_content,
         };
 

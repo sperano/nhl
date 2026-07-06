@@ -5,7 +5,7 @@
 use crossterm::event::{KeyCode, KeyEvent};
 use tracing::{debug, trace};
 
-use super::action::{Action, SettingsAction};
+use super::action::Action;
 use super::component_store::ComponentStateStore;
 #[cfg(feature = "development")]
 use super::components::demo_tab::DemoTabMsg;
@@ -303,13 +303,26 @@ fn handle_settings_tab_keys(
     }
 
     // No modal open - handle normal navigation
-    // Left/Right always navigate categories
+    // Left/Right always navigate categories. Category selection is
+    // component-local (SettingsTabState::selected_category), so the message
+    // carries the Config that `update()` needs to rebuild doc_nav for the new
+    // category - the same pattern ActivateSetting below already uses.
     match key.code {
-        KeyCode::Left => return Some(Action::SettingsAction(SettingsAction::NavigateCategoryLeft)),
+        KeyCode::Left => {
+            return Some(Action::ComponentMessage {
+                path: SETTINGS_TAB_PATH.to_string(),
+                message: Box::new(SettingsTabMsg::NavigateCategoryLeft(
+                    state.system.config.clone(),
+                )),
+            })
+        }
         KeyCode::Right => {
-            return Some(Action::SettingsAction(
-                SettingsAction::NavigateCategoryRight,
-            ))
+            return Some(Action::ComponentMessage {
+                path: SETTINGS_TAB_PATH.to_string(),
+                message: Box::new(SettingsTabMsg::NavigateCategoryRight(
+                    state.system.config.clone(),
+                )),
+            })
         }
         _ => {}
     }
@@ -581,6 +594,7 @@ mod tests {
                     ..Default::default()
                 },
                 modal: None,
+                ..Default::default()
             },
         );
         store
@@ -603,6 +617,7 @@ mod tests {
             SettingsTabState {
                 doc_nav: DocumentNavState::default(),
                 modal: Some(dummy_modal_state()),
+                ..Default::default()
             },
         );
         store
@@ -654,6 +669,7 @@ mod tests {
                     ..Default::default()
                 },
                 modal: None,
+                ..Default::default()
             },
         );
         store
@@ -1217,10 +1233,7 @@ mod tests {
                 store: empty_store(),
                 key: key(KeyCode::Left),
                 check: Box::new(|a| {
-                    matches!(
-                        a,
-                        Some(Action::SettingsAction(SettingsAction::NavigateCategoryLeft))
-                    )
+                    is_component_message_prefix(a, SETTINGS_TAB_PATH, "NavigateCategoryLeft(")
                 }),
             },
             KeyCase {
@@ -1229,10 +1242,7 @@ mod tests {
                 store: empty_store(),
                 key: key(KeyCode::Right),
                 check: Box::new(|a| {
-                    matches!(
-                        a,
-                        Some(Action::SettingsAction(SettingsAction::NavigateCategoryRight))
-                    )
+                    is_component_message_prefix(a, SETTINGS_TAB_PATH, "NavigateCategoryRight(")
                 }),
             },
             KeyCase {
@@ -1241,10 +1251,7 @@ mod tests {
                 store: store_with_settings_focus(Some(0)),
                 key: key(KeyCode::Left),
                 check: Box::new(|a| {
-                    matches!(
-                        a,
-                        Some(Action::SettingsAction(SettingsAction::NavigateCategoryLeft))
-                    )
+                    is_component_message_prefix(a, SETTINGS_TAB_PATH, "NavigateCategoryLeft(")
                 }),
             },
             KeyCase {
