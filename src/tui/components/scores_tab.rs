@@ -359,6 +359,7 @@ mod tests {
     #[test]
     fn test_activate_game_pushes_boxscore_document() {
         use crate::tui::component::Component;
+        use crate::tui::document::{FocusableElement, FocusableId};
         use crate::tui::types::StackedDocument;
 
         let mut scores_tab = ScoresTab;
@@ -372,7 +373,11 @@ mod tests {
             home_score: 2,
             game_date: "10/04".to_string(),
         };
-        state.doc_nav.link_targets = vec![Some(LinkTarget::Push(doc.clone()))];
+        state.doc_nav.focusables =
+            vec![
+                FocusableElement::at(0, 1, FocusableId::game_link(2024020001))
+                    .with_link_target(LinkTarget::Push(doc.clone())),
+            ];
         state.doc_nav.focus_index = Some(0);
 
         let effect = scores_tab.update(ScoresTabMsg::ActivateGame, &mut state);

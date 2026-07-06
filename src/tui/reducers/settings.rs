@@ -106,7 +106,7 @@ fn navigate_category(
     new_category: SettingsCategory,
 ) -> (AppState, Effect) {
     use crate::tui::components::{SettingsDocument, SettingsTabState};
-    use crate::tui::document::Document;
+    use crate::tui::document::FocusContext;
 
     let mut new_state = state;
     new_state.ui.settings.selected_category = new_category;
@@ -114,10 +114,9 @@ fn navigate_category(
     if let Some(settings_state) = component_states.get_mut::<SettingsTabState>(SETTINGS_TAB_PATH) {
         let doc = SettingsDocument::new(new_category, new_state.system.config.clone());
         settings_state.doc_nav = Default::default();
-        settings_state.doc_nav.focusable_positions = doc.focusable_positions();
-        settings_state.doc_nav.focusable_ids = doc.focusable_ids();
-        settings_state.doc_nav.focusable_row_positions = doc.focusable_row_positions();
-        settings_state.doc_nav.link_targets = doc.focusable_link_targets();
+        settings_state
+            .doc_nav
+            .sync_focusables(&doc, &FocusContext::default());
     }
 
     (new_state, Effect::None)
@@ -163,12 +162,14 @@ mod tests {
     /// confirm that `navigate_category` actually replaces it rather than merely
     /// leaving it untouched.
     fn stale_settings_tab_state() -> SettingsTabState {
+        use crate::tui::document::{FocusableElement, FocusableId};
+
         SettingsTabState {
             doc_nav: DocumentNavState {
                 focus_index: Some(3),
                 scroll_offset: 7,
                 viewport_height: 20,
-                focusable_positions: vec![99],
+                focusables: vec![FocusableElement::at(99, 1, FocusableId::link("stale"))],
                 ..Default::default()
             },
             modal: None,
@@ -201,6 +202,7 @@ mod tests {
         let (new_state, _effect) =
             navigate_category(state, &mut component_states, SettingsCategory::Display);
 
+        use crate::tui::document::FocusContext;
         let expected_doc =
             SettingsDocument::new(SettingsCategory::Display, new_state.system.config.clone());
         let settings_state = component_states
@@ -212,24 +214,12 @@ mod tests {
         assert_eq!(settings_state.doc_nav.scroll_offset, 0);
         assert_eq!(settings_state.doc_nav.viewport_height, 0);
         assert_eq!(
-            settings_state.doc_nav.focusable_positions,
-            expected_doc.focusable_positions()
-        );
-        assert_eq!(
-            settings_state.doc_nav.focusable_ids,
-            expected_doc.focusable_ids()
-        );
-        assert_eq!(
-            settings_state.doc_nav.focusable_row_positions,
-            expected_doc.focusable_row_positions()
-        );
-        assert_eq!(
-            settings_state.doc_nav.link_targets,
-            expected_doc.focusable_link_targets()
+            settings_state.doc_nav.focusables,
+            expected_doc.focusables(&FocusContext::default())
         );
         // Sanity check: Display category actually has focusable settings, so this
         // test would fail loudly (rather than vacuously) if rebuilding broke.
-        assert!(!settings_state.doc_nav.focusable_positions.is_empty());
+        assert!(!settings_state.doc_nav.focusables.is_empty());
     }
 
     #[test]
@@ -267,7 +257,7 @@ mod tests {
             .get::<SettingsTabState>(SETTINGS_TAB_PATH)
             .unwrap();
         assert_eq!(settings_state.doc_nav.focus_index, None);
-        assert!(!settings_state.doc_nav.focusable_positions.is_empty());
+        assert!(!settings_state.doc_nav.focusables.is_empty());
     }
 
     #[test]
@@ -292,7 +282,7 @@ mod tests {
             .get::<SettingsTabState>(SETTINGS_TAB_PATH)
             .unwrap();
         assert_eq!(settings_state.doc_nav.focus_index, None);
-        assert!(!settings_state.doc_nav.focusable_positions.is_empty());
+        assert!(!settings_state.doc_nav.focusables.is_empty());
     }
 
     // --- SettingsAction::ToggleBoolean ---------------------------------------

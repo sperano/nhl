@@ -86,15 +86,11 @@ impl Component for DemoTab {
     type Message = DemoTabMsg;
 
     fn init(props: &Self::Props) -> Self::State {
-        use crate::tui::document::Document;
         // Build initial state with focusable metadata from the document
         let standings = props.standings.as_ref().clone();
         let doc = DemoDocument::new(standings);
         crate::tui::document_nav::DocumentNavState {
-            focusable_positions: doc.focusable_positions(),
-            focusable_ids: doc.focusable_ids(),
-            focusable_row_positions: doc.focusable_row_positions(),
-            link_targets: doc.focusable_link_targets(),
+            focusables: doc.focusables(&FocusContext::default()),
             ..Default::default()
         }
     }
@@ -501,6 +497,7 @@ mod tests {
     #[test]
     fn test_activate_link_team() {
         use crate::tui::component::Component;
+        use crate::tui::document::{FocusableElement, FocusableId};
         use crate::tui::document_nav::DocumentNavState;
 
         let mut demo_tab = DemoTab;
@@ -509,19 +506,27 @@ mod tests {
         // Set up state with a focused team link
         // The first 4 focusable elements are team links (BOS, TOR, NYR, MTL)
         state.focus_index = Some(0); // BOS link
-        state.link_targets = vec![
-            Some(LinkTarget::Push(StackedDocument::TeamDetail {
-                abbrev: "BOS".to_string(),
-            })),
-            Some(LinkTarget::Push(StackedDocument::TeamDetail {
-                abbrev: "TOR".to_string(),
-            })),
-            Some(LinkTarget::Push(StackedDocument::TeamDetail {
-                abbrev: "NYR".to_string(),
-            })),
-            Some(LinkTarget::Push(StackedDocument::TeamDetail {
-                abbrev: "MTL".to_string(),
-            })),
+        state.focusables = vec![
+            FocusableElement::at(0, 1, FocusableId::team_link("BOS")).with_link_target(
+                LinkTarget::Push(StackedDocument::TeamDetail {
+                    abbrev: "BOS".to_string(),
+                }),
+            ),
+            FocusableElement::at(1, 1, FocusableId::team_link("TOR")).with_link_target(
+                LinkTarget::Push(StackedDocument::TeamDetail {
+                    abbrev: "TOR".to_string(),
+                }),
+            ),
+            FocusableElement::at(2, 1, FocusableId::team_link("NYR")).with_link_target(
+                LinkTarget::Push(StackedDocument::TeamDetail {
+                    abbrev: "NYR".to_string(),
+                }),
+            ),
+            FocusableElement::at(3, 1, FocusableId::team_link("MTL")).with_link_target(
+                LinkTarget::Push(StackedDocument::TeamDetail {
+                    abbrev: "MTL".to_string(),
+                }),
+            ),
         ];
 
         let effect = demo_tab.update(DemoTabMsg::ActivateLink, &mut state);
@@ -538,6 +543,7 @@ mod tests {
     #[test]
     fn test_activate_link_player() {
         use crate::tui::component::Component;
+        use crate::tui::document::{FocusableElement, FocusableId};
         use crate::tui::document_nav::DocumentNavState;
 
         let mut demo_tab = DemoTab;
@@ -545,11 +551,15 @@ mod tests {
 
         // Set up state with a focused player link
         state.focus_index = Some(0);
-        state.link_targets = vec![Some(LinkTarget::Push(StackedDocument::PlayerDetail {
-            player_id: 8477492,
-            sweater_number: None,
-            last_name: "Player 8477492".to_string(),
-        }))];
+        state.focusables = vec![
+            FocusableElement::at(0, 1, FocusableId::player_link(8477492)).with_link_target(
+                LinkTarget::Push(StackedDocument::PlayerDetail {
+                    player_id: 8477492,
+                    sweater_number: None,
+                    last_name: "Player 8477492".to_string(),
+                }),
+            ),
+        ];
 
         let effect = demo_tab.update(DemoTabMsg::ActivateLink, &mut state);
 
@@ -568,6 +578,7 @@ mod tests {
     #[test]
     fn test_activate_link_no_focus() {
         use crate::tui::component::Component;
+        use crate::tui::document::{FocusableElement, FocusableId};
         use crate::tui::document_nav::DocumentNavState;
 
         let mut demo_tab = DemoTab;
@@ -575,9 +586,10 @@ mod tests {
 
         // No focus index set
         state.focus_index = None;
-        state.link_targets = vec![Some(LinkTarget::Push(StackedDocument::TeamDetail {
-            abbrev: "BOS".to_string(),
-        }))];
+        state.focusables = vec![FocusableElement::at(0, 1, FocusableId::team_link("BOS"))
+            .with_link_target(LinkTarget::Push(StackedDocument::TeamDetail {
+                abbrev: "BOS".to_string(),
+            }))];
 
         let effect = demo_tab.update(DemoTabMsg::ActivateLink, &mut state);
 

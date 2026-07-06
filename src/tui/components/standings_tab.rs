@@ -29,7 +29,7 @@ use crate::tui::tab_component::{handle_common_message, CommonTabMessage, TabMess
 pub struct StandingsTabState {
     pub view: GroupBy,
     // Document navigation state (embedded, has_item_focus derived from focus_index)
-    // Contains focusable_ids, link_targets, positions, etc.
+    // Contains the focusable elements (id, position, height, link target, etc.)
     pub doc_nav: DocumentNavState,
 }
 
@@ -117,7 +117,7 @@ impl Component for StandingsTab {
 
     fn init(props: &Self::Props) -> Self::State {
         use crate::tui::components::WildcardStandingsDocument;
-        use crate::tui::document::Document;
+        use crate::tui::document::FocusContext;
 
         let mut state = StandingsTabState::default();
         // Component state is created lazily on first render, which can happen AFTER
@@ -130,10 +130,9 @@ impl Component for StandingsTab {
         if let Some(standings) = props.standings.as_ref().as_ref() {
             let doc =
                 WildcardStandingsDocument::new(Arc::new(standings.clone()), props.config.clone());
-            state.doc_nav.focusable_positions = doc.focusable_positions();
-            state.doc_nav.focusable_ids = doc.focusable_ids();
-            state.doc_nav.focusable_row_positions = doc.focusable_row_positions();
-            state.doc_nav.link_targets = doc.focusable_link_targets();
+            state
+                .doc_nav
+                .sync_focusables(&doc, &FocusContext::default());
         }
         state
     }
@@ -403,13 +402,16 @@ mod tests {
         let mut state = StandingsTab::init(&props);
 
         assert!(
-            !state.doc_nav.focusable_positions.is_empty(),
+            !state.doc_nav.focusables.is_empty(),
             "init with standings data must produce focusable metadata"
         );
-        assert_eq!(
-            state.doc_nav.focusable_ids.len(),
-            state.doc_nav.link_targets.len(),
-            "link_targets must be populated alongside ids"
+        assert!(
+            state
+                .doc_nav
+                .focusables
+                .iter()
+                .any(|f| f.link_target.is_some()),
+            "at least one focusable team row must carry a link target"
         );
         // The actual user-visible symptom: entering browse mode must focus a team.
         state.focus_first_item();
@@ -427,7 +429,7 @@ mod tests {
         };
 
         let state = StandingsTab::init(&props);
-        assert!(state.doc_nav.focusable_positions.is_empty());
+        assert!(state.doc_nav.focusables.is_empty());
     }
 
     #[test]
@@ -836,7 +838,7 @@ mod tests {
     fn test_activate_team_pushes_team_detail_document() {
         use crate::tui::action::Action;
         use crate::tui::component::{Component, Effect};
-        use crate::tui::document::LinkTarget;
+        use crate::tui::document::{FocusableElement, FocusableId, LinkTarget};
         use crate::tui::types::StackedDocument;
 
         let mut standings_tab = StandingsTab;
@@ -846,16 +848,22 @@ mod tests {
         };
 
         // Set link targets for teams (what table cells now use)
-        state.doc_nav.link_targets = vec![
-            Some(LinkTarget::Push(StackedDocument::TeamDetail {
-                abbrev: "TOR".to_string(),
-            })),
-            Some(LinkTarget::Push(StackedDocument::TeamDetail {
-                abbrev: "BOS".to_string(),
-            })),
-            Some(LinkTarget::Push(StackedDocument::TeamDetail {
-                abbrev: "MTL".to_string(),
-            })),
+        state.doc_nav.focusables = vec![
+            FocusableElement::at(0, 1, FocusableId::team_link("TOR")).with_link_target(
+                LinkTarget::Push(StackedDocument::TeamDetail {
+                    abbrev: "TOR".to_string(),
+                }),
+            ),
+            FocusableElement::at(1, 1, FocusableId::team_link("BOS")).with_link_target(
+                LinkTarget::Push(StackedDocument::TeamDetail {
+                    abbrev: "BOS".to_string(),
+                }),
+            ),
+            FocusableElement::at(2, 1, FocusableId::team_link("MTL")).with_link_target(
+                LinkTarget::Push(StackedDocument::TeamDetail {
+                    abbrev: "MTL".to_string(),
+                }),
+            ),
         ];
 
         // Set focus to second team (BOS)
@@ -875,7 +883,7 @@ mod tests {
     #[test]
     fn test_activate_team_without_focus_does_nothing() {
         use crate::tui::component::{Component, Effect};
-        use crate::tui::document::LinkTarget;
+        use crate::tui::document::{FocusableElement, FocusableId, LinkTarget};
         use crate::tui::types::StackedDocument;
 
         let mut standings_tab = StandingsTab;
@@ -885,9 +893,10 @@ mod tests {
         };
 
         // Set link targets for teams
-        state.doc_nav.link_targets = vec![Some(LinkTarget::Push(StackedDocument::TeamDetail {
-            abbrev: "TOR".to_string(),
-        }))];
+        state.doc_nav.focusables = vec![FocusableElement::at(0, 1, FocusableId::team_link("TOR"))
+            .with_link_target(LinkTarget::Push(StackedDocument::TeamDetail {
+                abbrev: "TOR".to_string(),
+            }))];
 
         // No focus set
         state.doc_nav.focus_index = None;

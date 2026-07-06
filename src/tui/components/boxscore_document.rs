@@ -626,7 +626,7 @@ mod tests {
         let boxscore = create_test_boxscore();
         let doc = BoxscoreDocumentContent::new(2024020001, boxscore, TeamView::Away);
 
-        let positions = doc.focusable_positions();
+        let positions = doc.focusables(&FocusContext::default());
 
         // Should have focusable positions for all players
         // Away: 2 forwards + 1 defense + 1 goalie = 4

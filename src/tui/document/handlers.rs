@@ -8,7 +8,7 @@ use crate::tui::component::Effect;
 use crate::tui::document_nav::DocumentNavState;
 use crate::tui::state::DataState;
 
-use super::{Document, StackedDocumentHandler};
+use super::StackedDocumentHandler;
 
 /// Handler for Boxscore documents
 pub(super) struct BoxscoreDocumentHandler {
@@ -34,21 +34,7 @@ impl StackedDocumentHandler for BoxscoreDocumentHandler {
             let doc = BoxscoreDocumentContent::new(self.game_id, boxscore.clone(), TeamView::Away);
             // Build with width so layout (side-by-side vs stacked) is correct
             let focus = FocusContext::default().with_width(width);
-            let elements = doc.build(&focus);
-
-            // Extract metadata from built elements
-            let mut focusable = Vec::new();
-            let mut y_offset = 0u16;
-            for elem in &elements {
-                elem.collect_focusable(&mut focusable, y_offset);
-                y_offset += elem.height();
-            }
-
-            nav.focusable_positions = focusable.iter().map(|f| f.y).collect();
-            nav.focusable_heights = focusable.iter().map(|f| f.height).collect();
-            nav.focusable_ids = focusable.iter().map(|f| f.id.clone()).collect();
-            nav.link_targets = focusable.iter().map(|f| f.link_target.clone()).collect();
-            nav.focusable_row_positions = focusable.iter().map(|f| f.row_position).collect();
+            nav.sync_focusables(&doc, &focus);
         }
     }
 }
@@ -72,6 +58,7 @@ impl StackedDocumentHandler for TeamDetailDocumentHandler {
         _width: u16,
     ) {
         use crate::tui::components::team_detail_document::TeamDetailDocumentContent;
+        use crate::tui::document::FocusContext;
 
         let roster = data.team_roster_stats.get(&self.abbrev);
         let standing = data.standings.as_ref().as_ref().and_then(|standings| {
@@ -82,10 +69,7 @@ impl StackedDocumentHandler for TeamDetailDocumentHandler {
         });
 
         let doc = TeamDetailDocumentContent::new(self.abbrev.clone(), standing, roster.cloned());
-        nav.focusable_positions = doc.focusable_positions();
-        nav.focusable_heights = doc.focusable_heights();
-        nav.focusable_ids = doc.focusable_ids();
-        nav.link_targets = doc.focusable_link_targets();
+        nav.sync_focusables(&doc, &FocusContext::default());
     }
 }
 
@@ -110,13 +94,11 @@ impl StackedDocumentHandler for PlayerDetailDocumentHandler {
         _width: u16,
     ) {
         use crate::tui::components::player_detail_document::PlayerDetailDocumentContent;
+        use crate::tui::document::FocusContext;
 
         let player_data = data.player_data.get(&self.player_id).cloned();
         let doc = PlayerDetailDocumentContent::new(player_data, self.player_id);
-        nav.focusable_positions = doc.focusable_positions();
-        nav.focusable_heights = doc.focusable_heights();
-        nav.focusable_ids = doc.focusable_ids();
-        nav.link_targets = doc.focusable_link_targets();
+        nav.sync_focusables(&doc, &FocusContext::default());
     }
 }
 
@@ -124,6 +106,7 @@ impl StackedDocumentHandler for PlayerDetailDocumentHandler {
 mod tests {
     use super::*;
     use crate::tui::action::Action;
+    use crate::tui::document::{FocusableElement, FocusableId};
     use crate::tui::types::StackedDocument;
     use crossterm::event::{KeyCode, KeyEvent};
     use nhl_api::{
@@ -682,11 +665,11 @@ mod tests {
 
         handler.populate_focusable_metadata(&mut nav, &data, TEST_WIDTH);
 
-        assert_eq!(nav.focusable_positions.len(), 8);
-        assert_eq!(nav.focusable_heights.len(), 8);
-        assert_eq!(nav.focusable_ids.len(), 8);
-        assert_eq!(nav.link_targets.len(), 8);
-        assert_eq!(nav.focusable_row_positions.len(), 8);
+        assert_eq!(nav.focusables.len(), 8);
+        assert!(
+            nav.focusables.iter().all(|f| f.link_target.is_some()),
+            "every boxscore row is a player link"
+        );
     }
 
     #[test]
@@ -697,14 +680,15 @@ mod tests {
         // being cleared to empty.
         let handler = BoxscoreDocumentHandler { game_id: 1 };
         let data = DataState::default();
+        let stale = vec![FocusableElement::at(1, 1, FocusableId::link("stale"))];
         let mut nav = DocumentNavState {
-            focusable_positions: vec![1, 2, 3],
+            focusables: stale.clone(),
             ..Default::default()
         };
 
         handler.populate_focusable_metadata(&mut nav, &data, TEST_WIDTH);
 
-        assert_eq!(nav.focusable_positions, vec![1, 2, 3]);
+        assert_eq!(nav.focusables, stale);
     }
 
     // ========================================================================
@@ -857,10 +841,11 @@ mod tests {
 
         handler.populate_focusable_metadata(&mut nav, &data, TEST_WIDTH);
 
-        assert_eq!(nav.focusable_positions.len(), 5);
-        assert_eq!(nav.focusable_heights.len(), 5);
-        assert_eq!(nav.focusable_ids.len(), 5);
-        assert_eq!(nav.link_targets.len(), 5);
+        assert_eq!(nav.focusables.len(), 5);
+        assert!(
+            nav.focusables.iter().all(|f| f.link_target.is_some()),
+            "every roster row is a player link"
+        );
     }
 
     #[test]
@@ -876,7 +861,7 @@ mod tests {
         handler.populate_focusable_metadata(&mut nav, &data, TEST_WIDTH);
 
         // Roster-derived focusable count is unaffected by the missing standing.
-        assert_eq!(nav.focusable_positions.len(), 5);
+        assert_eq!(nav.focusables.len(), 5);
     }
 
     #[test]
@@ -889,13 +874,13 @@ mod tests {
         };
         let data = DataState::default();
         let mut nav = DocumentNavState {
-            focusable_positions: vec![1, 2, 3],
+            focusables: vec![FocusableElement::at(1, 1, FocusableId::link("stale"))],
             ..Default::default()
         };
 
         handler.populate_focusable_metadata(&mut nav, &data, TEST_WIDTH);
 
-        assert!(nav.focusable_positions.is_empty());
+        assert!(nav.focusables.is_empty());
     }
 
     // ========================================================================
@@ -1016,10 +1001,11 @@ mod tests {
         // `player_detail_activate_focus_index_mismatch_is_fixed` for why this
         // divergence between the filtered array and the focusable list used to
         // matter (and no longer can).
-        assert_eq!(nav.focusable_positions.len(), 2);
-        assert_eq!(nav.focusable_heights.len(), 2);
-        assert_eq!(nav.focusable_ids.len(), 2);
-        assert_eq!(nav.link_targets.len(), 2);
+        assert_eq!(nav.focusables.len(), 2);
+        assert!(
+            nav.focusables.iter().all(|f| f.link_target.is_some()),
+            "every linkable season row carries a team link"
+        );
     }
 
     #[test]
@@ -1039,7 +1025,7 @@ mod tests {
         // the focus system assigns it focus_index 0 (the first and only
         // focusable element).
         //
-        // Now that `activate()` reads `nav.link_targets[nav.focus_index]`
+        // Now that `activate()` reads `nav.focusables[nav.focus_index].link_target`
         // directly -- populated by walking the same focusable cells the user
         // navigates -- the two index spaces can't diverge: pressing Enter on
         // the visibly-focused row pushes its real destination.
@@ -1054,7 +1040,7 @@ mod tests {
         handler.populate_focusable_metadata(&mut nav, &data, TEST_WIDTH);
         // Only one focusable row exists (the Oilers season), so real keyboard
         // navigation can only ever produce focus_index 0 here.
-        assert_eq!(nav.focusable_positions.len(), 1);
+        assert_eq!(nav.focusables.len(), 1);
 
         nav.focus_index = Some(0);
         match handler.activate(&nav, &data) {
@@ -1072,13 +1058,13 @@ mod tests {
         let handler = PlayerDetailDocumentHandler { player_id: 999 };
         let data = DataState::default();
         let mut nav = DocumentNavState {
-            focusable_positions: vec![1, 2, 3],
+            focusables: vec![FocusableElement::at(1, 1, FocusableId::link("stale"))],
             ..Default::default()
         };
 
         handler.populate_focusable_metadata(&mut nav, &data, TEST_WIDTH);
 
-        assert!(nav.focusable_positions.is_empty());
+        assert!(nav.focusables.is_empty());
     }
 
     // ========================================================================

@@ -84,7 +84,7 @@ pub trait TabState {
     /// Default implementation sets focus to first element if available.
     fn focus_first_item(&mut self) {
         let nav = self.doc_nav_mut();
-        if !nav.focusable_positions.is_empty() && nav.focus_index.is_none() {
+        if !nav.focusables.is_empty() && nav.focus_index.is_none() {
             nav.focus_index = Some(0);
         }
     }
@@ -224,6 +224,18 @@ pub use component_message_impl;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tui::document::{FocusableElement, FocusableId};
+
+    /// Three arbitrarily-positioned focusable elements, enough for the
+    /// navigation/focus-first-item tests below (which only care about count
+    /// and position, not IDs or link targets).
+    fn three_focusables() -> Vec<FocusableElement> {
+        [0, 5, 10]
+            .into_iter()
+            .enumerate()
+            .map(|(i, y)| FocusableElement::at(y, 1, FocusableId::link(format!("f{i}"))))
+            .collect()
+    }
 
     // Test state implementing TabState
     #[derive(Default, Clone)]
@@ -293,7 +305,7 @@ mod tests {
     #[test]
     fn test_tab_state_focus_first_item() {
         let mut state = TestTabState::default();
-        state.doc_nav.focusable_positions = vec![0, 5, 10];
+        state.doc_nav.focusables = three_focusables();
 
         state.focus_first_item();
 
@@ -303,7 +315,7 @@ mod tests {
     #[test]
     fn test_tab_state_focus_first_item_no_focusables() {
         let mut state = TestTabState::default();
-        // No focusable_positions
+        // No focusables
 
         state.focus_first_item();
 
@@ -313,7 +325,7 @@ mod tests {
     #[test]
     fn test_handle_common_message_doc_nav() {
         let mut state = TestTabState::default();
-        state.doc_nav.focusable_positions = vec![0, 5, 10];
+        state.doc_nav.focusables = three_focusables();
         state.doc_nav.focus_index = Some(0);
 
         let msg = TestTabMsg::DocNav(DocumentNavMsg::FocusNext);

@@ -15,7 +15,7 @@ use crate::tui::component::{Component, Effect, Element, ElementWidget};
 use crate::tui::components::{SettingsDocument, TabItem, TabbedPanel, TabbedPanelProps};
 use crate::tui::document::DocumentView;
 #[cfg(test)]
-use crate::tui::document::FocusableId;
+use crate::tui::document::{FocusableElement, FocusableId};
 use crate::tui::document_nav::{DocumentNavMsg, DocumentNavState};
 use crate::tui::settings_helpers::ModalOption;
 use crate::tui::tab_component::{handle_common_message, CommonTabMessage, TabMessage, TabState};
@@ -120,15 +120,14 @@ impl Component for SettingsTab {
 
     fn init(props: &Self::Props) -> Self::State {
         use crate::tui::components::SettingsDocument;
-        use crate::tui::document::Document;
+        use crate::tui::document::FocusContext;
 
         // Create document and populate focusable metadata
         let doc = SettingsDocument::new(props.selected_category, props.config.clone());
         let mut state = SettingsTabState::default();
-        state.doc_nav.focusable_positions = doc.focusable_positions();
-        state.doc_nav.focusable_ids = doc.focusable_ids();
-        state.doc_nav.focusable_row_positions = doc.focusable_row_positions();
-        state.doc_nav.link_targets = doc.focusable_link_targets();
+        state
+            .doc_nav
+            .sync_focusables(&doc, &FocusContext::default());
         state
     }
 
@@ -193,9 +192,9 @@ impl Component for SettingsTab {
 
                         let position_y = state
                             .doc_nav()
-                            .focusable_positions
+                            .focusables
                             .get(focus_idx)
-                            .copied()
+                            .map(|f| f.y)
                             .unwrap_or(0);
                         let position_x = 10;
 
@@ -370,7 +369,7 @@ impl SettingsTab {
                 )),
                 KeyCode::Down | KeyCode::Enter => {
                     // Enter browse mode
-                    if !state.doc_nav.focusable_positions.is_empty() {
+                    if !state.doc_nav.focusables.is_empty() {
                         state.doc_nav.focus_index = Some(0);
                     }
                     Effect::None
@@ -504,9 +503,13 @@ impl ElementWidget for SettingsTabWidget {
 /// list, so this can't drift from actual navigation behavior.
 #[cfg(test)]
 fn get_focusable_ids_for_category(category: SettingsCategory) -> Vec<FocusableId> {
-    use crate::tui::document::Document;
+    use crate::tui::document::{Document, FocusContext};
 
-    SettingsDocument::new(category, Arc::new(Config::default())).focusable_ids()
+    SettingsDocument::new(category, Arc::new(Config::default()))
+        .focusables(&FocusContext::default())
+        .into_iter()
+        .map(|f| f.id)
+        .collect()
 }
 
 #[cfg(test)]
@@ -609,7 +612,11 @@ mod tests {
         let mut state = SettingsTabState::default();
 
         // Set up some focusable elements
-        state.doc_nav.focusable_positions = vec![0, 2, 4];
+        state.doc_nav.focusables = vec![
+            FocusableElement::at(0, 1, FocusableId::link("a")),
+            FocusableElement::at(2, 1, FocusableId::link("b")),
+            FocusableElement::at(4, 1, FocusableId::link("c")),
+        ];
         state.doc_nav.focus_index = Some(0);
 
         let effect = component.update(
@@ -699,8 +706,14 @@ mod tests {
 
         // Sanity check: the "western_teams_first" row is declared as a
         // ToggleSetting link by settings_document.rs.
+        let link_targets: Vec<_> = state
+            .doc_nav
+            .focusables
+            .iter()
+            .map(|f| f.link_target.clone())
+            .collect();
         assert_eq!(
-            state.doc_nav.link_targets,
+            link_targets,
             vec![Some(LinkTarget::ToggleSetting(
                 "western_teams_first".to_string()
             ))]

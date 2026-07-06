@@ -379,7 +379,11 @@ mod tests {
             0,
         );
 
-        let targets = doc.focusable_link_targets();
+        let targets: Vec<_> = doc
+            .focusables(&FocusContext::default())
+            .into_iter()
+            .map(|f| f.link_target)
+            .collect();
         assert_eq!(targets.len(), 1);
         match &targets[0] {
             Some(LinkTarget::Push(StackedDocument::Boxscore {

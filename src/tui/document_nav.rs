@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use crate::tui::component::Effect;
-use crate::tui::document::{FocusableId, LinkTarget, RowPosition};
+use crate::tui::document::{Document, FocusContext, FocusableElement, LinkTarget};
 
 /// Minimum viewport height - if smaller than this, autoscroll may behave oddly
 const MIN_VIEWPORT_HEIGHT: u16 = 5;
@@ -33,20 +33,30 @@ pub struct DocumentNavState {
     pub focus_index: Option<usize>,
     pub scroll_offset: u16,
     pub viewport_height: u16,
-    pub focusable_positions: Vec<u16>,
-    pub focusable_heights: Vec<u16>,
-    pub focusable_ids: Vec<FocusableId>,
-    pub focusable_row_positions: Vec<Option<RowPosition>>,
-    pub link_targets: Vec<Option<LinkTarget>>,
+    /// All focusable elements in document order, carrying position, height,
+    /// ID, row membership, and link target together. Replaces five
+    /// index-aligned Vecs that used to be synced by hand at every call
+    /// site -- a site that forgets a field is no longer representable.
+    pub focusables: Vec<FocusableElement>,
     /// Active tab selections for Tabs elements (tabs_id -> active_index)
     pub doc_tab_selections: HashMap<String, usize>,
 }
 
 impl DocumentNavState {
+    /// Rebuild `focusables` from `doc`, built with `ctx`.
+    ///
+    /// This is the single sync path: every call site that needs to refresh
+    /// navigation metadata (after data loads, a view/category changes, or
+    /// the layout width changes) goes through this one function instead of
+    /// hand-copying individual fields.
+    pub fn sync_focusables(&mut self, doc: &dyn Document, ctx: &FocusContext) {
+        self.focusables = doc.focusables(ctx);
+    }
+
     /// Get the link target at the current focus, if any
     pub fn focused_link_target(&self) -> Option<&LinkTarget> {
         let focus_idx = self.focus_index?;
-        self.link_targets.get(focus_idx)?.as_ref()
+        self.focusables.get(focus_idx)?.link_target.as_ref()
     }
 
     /// Get the active tab index for a tabs element
@@ -101,7 +111,7 @@ impl DocumentNavState {
 
     /// Focus the first focusable item
     pub fn focus_first_item(&mut self) {
-        if !self.focusable_positions.is_empty() {
+        if !self.focusables.is_empty() {
             self.focus_index = Some(0);
         }
     }
@@ -189,7 +199,7 @@ pub fn handle_message(state: &mut DocumentNavState, msg: &DocumentNavMsg) -> Eff
 /// Move focus to next element, wrapping from last to first
 /// Returns true if wrapped around
 pub fn focus_next(state: &mut DocumentNavState) -> bool {
-    let focusable_count = state.focusable_positions.len();
+    let focusable_count = state.focusables.len();
     if focusable_count == 0 {
         return false;
     }
@@ -214,7 +224,7 @@ pub fn focus_next(state: &mut DocumentNavState) -> bool {
 /// Move focus to previous element, wrapping from first to last
 /// Returns true if wrapped around
 pub fn focus_prev(state: &mut DocumentNavState) -> bool {
-    let focusable_count = state.focusable_positions.len();
+    let focusable_count = state.focusables.len();
     if focusable_count == 0 {
         return false;
     }
@@ -240,17 +250,17 @@ pub fn focus_prev(state: &mut DocumentNavState) -> bool {
 /// Find sibling element in the same row (left or right)
 pub fn find_row_sibling(state: &DocumentNavState, direction: RowDirection) -> Option<usize> {
     let focus_idx = state.focus_index?;
-    let row_positions = &state.focusable_row_positions;
-    let current_row = row_positions.get(focus_idx)?.as_ref()?;
+    let current_row = state.focusables.get(focus_idx)?.row_position?;
 
     // Find element in same row at same idx_within_child but different child_idx
     let target_child_idx = match direction {
         RowDirection::Left => {
             if current_row.child_idx == 0 {
                 // Wrap to rightmost child
-                row_positions
+                state
+                    .focusables
                     .iter()
-                    .filter_map(|r| r.as_ref())
+                    .filter_map(|f| f.row_position)
                     .filter(|r| r.row_y == current_row.row_y)
                     .map(|r| r.child_idx)
                     .max()?
@@ -259,9 +269,10 @@ pub fn find_row_sibling(state: &DocumentNavState, direction: RowDirection) -> Op
             }
         }
         RowDirection::Right => {
-            let max_child_idx = row_positions
+            let max_child_idx = state
+                .focusables
                 .iter()
-                .filter_map(|r| r.as_ref())
+                .filter_map(|f| f.row_position)
                 .filter(|r| r.row_y == current_row.row_y)
                 .map(|r| r.child_idx)
                 .max()?;
@@ -277,11 +288,12 @@ pub fn find_row_sibling(state: &DocumentNavState, direction: RowDirection) -> Op
 
     // Find element with matching row_y and target child_idx
     // Try exact idx_within_child match first, then fall back to closest
-    let candidates: Vec<_> = row_positions
+    let candidates: Vec<_> = state
+        .focusables
         .iter()
         .enumerate()
-        .filter_map(|(idx, r)| {
-            r.as_ref().and_then(|row| {
+        .filter_map(|(idx, f)| {
+            f.row_position.and_then(|row| {
                 if row.row_y == current_row.row_y && row.child_idx == target_child_idx {
                     Some((idx, row.idx_within_child))
                 } else {
@@ -359,13 +371,11 @@ pub fn autoscroll_to_focus(state: &mut DocumentNavState) {
         None => return,
     };
 
-    let focused_y = match state.focusable_positions.get(focus_idx) {
-        Some(&y) => y,
-        None => return,
+    let Some(focused) = state.focusables.get(focus_idx) else {
+        return;
     };
-
-    // Get element height (default to 1 for backwards compatibility)
-    let focused_height = state.focusable_heights.get(focus_idx).copied().unwrap_or(1);
+    let focused_y = focused.y;
+    let focused_height = focused.height;
 
     let viewport_height = state.viewport_height.max(MIN_VIEWPORT_HEIGHT);
     let scroll_offset = state.scroll_offset;
@@ -398,6 +408,20 @@ pub fn autoscroll_to_focus(state: &mut DocumentNavState) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tui::document::FocusableId;
+
+    /// Build a `focusables` Vec from `(y, height)` pairs, with synthetic
+    /// index-based IDs and no row positions -- enough for the navigation
+    /// math tests below, which only look at position/height/count.
+    fn uniform_focusables(entries: &[(u16, u16)]) -> Vec<FocusableElement> {
+        entries
+            .iter()
+            .enumerate()
+            .map(|(i, &(y, height))| {
+                FocusableElement::at(y, height, FocusableId::link(format!("f{i}")))
+            })
+            .collect()
+    }
 
     #[test]
     fn test_focus_next_wraps_around() {
@@ -405,9 +429,7 @@ mod tests {
             focus_index: Some(2),
             scroll_offset: 0,
             viewport_height: 20,
-            focusable_positions: vec![0, 5, 10],
-            focusable_heights: vec![1, 1, 1],
-            focusable_row_positions: vec![None, None, None],
+            focusables: uniform_focusables(&[(0, 1), (5, 1), (10, 1)]),
             ..Default::default()
         };
 
@@ -423,9 +445,7 @@ mod tests {
             focus_index: Some(0),
             scroll_offset: 0,
             viewport_height: 20,
-            focusable_positions: vec![0, 5, 10],
-            focusable_heights: vec![1, 1, 1],
-            focusable_row_positions: vec![None, None, None],
+            focusables: uniform_focusables(&[(0, 1), (5, 1), (10, 1)]),
             ..Default::default()
         };
 
@@ -440,9 +460,7 @@ mod tests {
             focus_index: Some(0),
             scroll_offset: 5,
             viewport_height: 20,
-            focusable_positions: vec![0, 5, 10],
-            focusable_heights: vec![1, 1, 1],
-            focusable_row_positions: vec![None, None, None],
+            focusables: uniform_focusables(&[(0, 1), (5, 1), (10, 1)]),
             ..Default::default()
         };
 
@@ -458,9 +476,7 @@ mod tests {
             focus_index: None,
             scroll_offset: 0,
             viewport_height: 20,
-            focusable_positions: vec![0, 5, 10],
-            focusable_heights: vec![1, 1, 1],
-            focusable_row_positions: vec![None, None, None],
+            focusables: uniform_focusables(&[(0, 1), (5, 1), (10, 1)]),
             ..Default::default()
         };
 
@@ -551,9 +567,16 @@ mod tests {
             focus_index: Some(5),
             scroll_offset: 0,
             viewport_height: 10,
-            focusable_positions: vec![0, 2, 4, 6, 8, 20, 22], // Element 5 is at y=20
-            focusable_heights: vec![1, 1, 1, 1, 1, 1, 1],
-            focusable_row_positions: vec![None; 7],
+            // Element 5 is at y=20
+            focusables: uniform_focusables(&[
+                (0, 1),
+                (2, 1),
+                (4, 1),
+                (6, 1),
+                (8, 1),
+                (20, 1),
+                (22, 1),
+            ]),
             ..Default::default()
         };
 
@@ -570,9 +593,16 @@ mod tests {
             focus_index: Some(0),
             scroll_offset: 10,
             viewport_height: 10,
-            focusable_positions: vec![0, 2, 4, 6, 8, 20, 22], // Element 0 is at y=0
-            focusable_heights: vec![1, 1, 1, 1, 1, 1, 1],
-            focusable_row_positions: vec![None; 7],
+            // Element 0 is at y=0
+            focusables: uniform_focusables(&[
+                (0, 1),
+                (2, 1),
+                (4, 1),
+                (6, 1),
+                (8, 1),
+                (20, 1),
+                (22, 1),
+            ]),
             ..Default::default()
         };
 
@@ -588,9 +618,8 @@ mod tests {
             focus_index: Some(2),
             scroll_offset: 0,
             viewport_height: 10,
-            focusable_positions: vec![0, 2, 5, 8, 15], // Element 2 is at y=5
-            focusable_heights: vec![1, 1, 1, 1, 1],
-            focusable_row_positions: vec![None; 5],
+            // Element 2 is at y=5
+            focusables: uniform_focusables(&[(0, 1), (2, 1), (5, 1), (8, 1), (15, 1)]),
             ..Default::default()
         };
 
@@ -607,9 +636,8 @@ mod tests {
             focus_index: Some(3),
             scroll_offset: 0,
             viewport_height: 10,
-            focusable_positions: vec![0, 2, 5, 8, 15], // Element 3 is at y=8
-            focusable_heights: vec![1, 1, 1, 1, 1],
-            focusable_row_positions: vec![None; 5],
+            // Element 3 is at y=8
+            focusables: uniform_focusables(&[(0, 1), (2, 1), (5, 1), (8, 1), (15, 1)]),
             ..Default::default()
         };
 
@@ -625,9 +653,8 @@ mod tests {
             focus_index: Some(4),
             scroll_offset: 0,
             viewport_height: 10,
-            focusable_positions: vec![0, 2, 5, 8, 10], // Element 4 is at y=10
-            focusable_heights: vec![1, 1, 1, 1, 1],
-            focusable_row_positions: vec![None; 5],
+            // Element 4 is at y=10
+            focusables: uniform_focusables(&[(0, 1), (2, 1), (5, 1), (8, 1), (10, 1)]),
             ..Default::default()
         };
 
@@ -648,10 +675,18 @@ mod tests {
             focus_index: Some(6), // Third row, first game
             scroll_offset: 0,
             viewport_height: 20,
-            // Row 1 at y=0, Row 2 at y=7, Row 3 at y=14 (3 games per row)
-            focusable_positions: vec![0, 0, 0, 7, 7, 7, 14, 14, 14],
-            focusable_heights: vec![7, 7, 7, 7, 7, 7, 7, 7, 7], // GameBox height = 7
-            focusable_row_positions: vec![None; 9],
+            // Row 1 at y=0, Row 2 at y=7, Row 3 at y=14 (3 games per row), GameBox height = 7
+            focusables: uniform_focusables(&[
+                (0, 7),
+                (0, 7),
+                (0, 7),
+                (7, 7),
+                (7, 7),
+                (7, 7),
+                (14, 7),
+                (14, 7),
+                (14, 7),
+            ]),
             ..Default::default()
         };
 
@@ -671,9 +706,7 @@ mod tests {
             focus_index: Some(0),
             scroll_offset: 0,
             viewport_height: 20,
-            focusable_positions: vec![0, 7, 14],
-            focusable_heights: vec![7, 7, 7],
-            focusable_row_positions: vec![None; 3],
+            focusables: uniform_focusables(&[(0, 7), (7, 7), (14, 7)]),
             ..Default::default()
         };
 
@@ -691,9 +724,7 @@ mod tests {
             focus_index: Some(2), // Element at y=14
             scroll_offset: 0,
             viewport_height: 18, // viewport ends at y=18, but element bottom is at y=21
-            focusable_positions: vec![0, 7, 14],
-            focusable_heights: vec![7, 7, 7],
-            focusable_row_positions: vec![None; 3],
+            focusables: uniform_focusables(&[(0, 7), (7, 7), (14, 7)]),
             ..Default::default()
         };
 
@@ -702,5 +733,109 @@ mod tests {
         // With viewport_height=18 and padding=3:
         // new_offset = 21 + 3 - 18 = 6
         assert_eq!(state.scroll_offset, 6);
+    }
+
+    #[test]
+    fn test_find_row_sibling_moves_right_within_row() {
+        use crate::tui::document::RowPosition;
+
+        // Two rows of 3 columns each, all sharing row_y per row.
+        let focusables = vec![
+            FocusableElement::at(0, 1, FocusableId::link("r0c0")).with_row_position(RowPosition {
+                row_y: 0,
+                child_idx: 0,
+                idx_within_child: 0,
+            }),
+            FocusableElement::at(0, 1, FocusableId::link("r0c1")).with_row_position(RowPosition {
+                row_y: 0,
+                child_idx: 1,
+                idx_within_child: 0,
+            }),
+            FocusableElement::at(0, 1, FocusableId::link("r0c2")).with_row_position(RowPosition {
+                row_y: 0,
+                child_idx: 2,
+                idx_within_child: 0,
+            }),
+        ];
+        let state = DocumentNavState {
+            focus_index: Some(0),
+            focusables,
+            ..Default::default()
+        };
+
+        assert_eq!(find_row_sibling(&state, RowDirection::Right), Some(1));
+    }
+
+    #[test]
+    fn test_find_row_sibling_wraps_left_to_rightmost_column() {
+        use crate::tui::document::RowPosition;
+
+        let focusables = vec![
+            FocusableElement::at(0, 1, FocusableId::link("r0c0")).with_row_position(RowPosition {
+                row_y: 0,
+                child_idx: 0,
+                idx_within_child: 0,
+            }),
+            FocusableElement::at(0, 1, FocusableId::link("r0c1")).with_row_position(RowPosition {
+                row_y: 0,
+                child_idx: 1,
+                idx_within_child: 0,
+            }),
+        ];
+        let state = DocumentNavState {
+            focus_index: Some(0),
+            focusables,
+            ..Default::default()
+        };
+
+        assert_eq!(find_row_sibling(&state, RowDirection::Left), Some(1));
+    }
+
+    #[test]
+    fn test_find_row_sibling_none_when_no_row_position() {
+        let state = DocumentNavState {
+            focus_index: Some(0),
+            focusables: uniform_focusables(&[(0, 1)]),
+            ..Default::default()
+        };
+
+        assert_eq!(find_row_sibling(&state, RowDirection::Right), None);
+    }
+
+    #[test]
+    fn test_sync_focusables_rebuilds_from_document() {
+        use crate::tui::document::{Document, DocumentElement, FocusContext};
+
+        struct FakeDoc;
+        impl Document for FakeDoc {
+            fn build(&self, _focus: &FocusContext) -> Vec<DocumentElement> {
+                vec![DocumentElement::link(
+                    "a",
+                    "A",
+                    LinkTarget::Anchor("a".to_string()),
+                )]
+            }
+            fn title(&self) -> String {
+                "fake".to_string()
+            }
+            fn id(&self) -> String {
+                "fake".to_string()
+            }
+        }
+
+        // Start with stale metadata that must be fully replaced, not merged.
+        let mut state = DocumentNavState {
+            focusables: uniform_focusables(&[(0, 1), (5, 1)]),
+            ..Default::default()
+        };
+
+        state.sync_focusables(&FakeDoc, &FocusContext::default());
+
+        assert_eq!(state.focusables.len(), 1);
+        assert_eq!(state.focusables[0].id, FocusableId::link("a"));
+        assert_eq!(
+            state.focusables[0].link_target,
+            Some(LinkTarget::Anchor("a".to_string()))
+        );
     }
 }

@@ -230,7 +230,11 @@ mod tests {
         // "log_file" is display-only (not editable via the UI), so it must
         // not be reachable through keyboard navigation.
         let doc = SettingsDocument::new(SettingsCategory::Logging, Arc::new(Config::default()));
-        let ids = doc.focusable_ids();
+        let ids: Vec<_> = doc
+            .focusables(&FocusContext::default())
+            .into_iter()
+            .map(|f| f.id)
+            .collect();
 
         assert_eq!(ids, vec![FocusableId::link("log_level")]);
     }
@@ -240,7 +244,11 @@ mod tests {
         // "refresh_interval" and "time_format" are display-only (not editable
         // via the UI), so only "western_teams_first" should be focusable.
         let doc = SettingsDocument::new(SettingsCategory::Data, Arc::new(Config::default()));
-        let ids = doc.focusable_ids();
+        let ids: Vec<_> = doc
+            .focusables(&FocusContext::default())
+            .into_iter()
+            .map(|f| f.id)
+            .collect();
 
         assert_eq!(ids, vec![FocusableId::link("western_teams_first")]);
     }

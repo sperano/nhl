@@ -260,7 +260,11 @@ mod tests {
         let config = Arc::new(Config::default());
         let doc = LeagueStandingsDocument::new(standings, config);
 
-        let positions = doc.focusable_positions();
+        let positions: Vec<u16> = doc
+            .focusables(&FocusContext::default())
+            .iter()
+            .map(|f| f.y)
+            .collect();
 
         // Should have 32 focusable positions (one per team row)
         assert_eq!(positions.len(), 32);
@@ -333,7 +337,11 @@ mod tests {
         let config = Arc::new(Config::default());
         let doc = ConferenceStandingsDocument::new(standings, config);
 
-        let positions = doc.focusable_positions();
+        let positions: Vec<u16> = doc
+            .focusables(&FocusContext::default())
+            .iter()
+            .map(|f| f.y)
+            .collect();
 
         // Should have 32 focusable positions (16 per conference)
         assert_eq!(positions.len(), 32);
@@ -373,7 +381,11 @@ mod tests {
         let config = Arc::new(Config::default());
         let doc = ConferenceStandingsDocument::new(standings, config);
 
-        let row_positions = doc.focusable_row_positions();
+        let row_positions: Vec<_> = doc
+            .focusables(&FocusContext::default())
+            .iter()
+            .map(|f| f.row_position)
+            .collect();
 
         // Should have 32 row positions
         assert_eq!(row_positions.len(), 32);
@@ -502,7 +514,7 @@ mod tests {
         let config = Arc::new(Config::default());
         let doc = DivisionStandingsDocument::new(standings, config);
 
-        let positions = doc.focusable_positions();
+        let positions = doc.focusables(&FocusContext::default());
 
         // Should have 32 focusable positions (32 teams across 4 divisions)
         assert_eq!(positions.len(), 32);
@@ -514,7 +526,11 @@ mod tests {
         let config = Arc::new(Config::default());
         let doc = DivisionStandingsDocument::new(standings, config);
 
-        let row_positions = doc.focusable_row_positions();
+        let row_positions: Vec<_> = doc
+            .focusables(&FocusContext::default())
+            .iter()
+            .map(|f| f.row_position)
+            .collect();
 
         // Should have 32 row positions
         assert_eq!(row_positions.len(), 32);

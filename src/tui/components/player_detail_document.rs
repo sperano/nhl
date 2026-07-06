@@ -480,7 +480,7 @@ mod tests {
         let player = create_test_player(8479318, Position::Center);
         let doc = PlayerDetailDocumentContent::new(Some(player), 8479318);
 
-        let positions = doc.focusable_positions();
+        let positions = doc.focusables(&FocusContext::default());
 
         // Should have 2 focusable positions (one per season with TableCell)
         assert_eq!(positions.len(), 2);
@@ -491,7 +491,11 @@ mod tests {
         let player = create_test_player(8479318, Position::Center);
         let doc = PlayerDetailDocumentContent::new(Some(player), 8479318);
 
-        let ids = doc.focusable_ids();
+        let ids: Vec<_> = doc
+            .focusables(&FocusContext::default())
+            .into_iter()
+            .map(|f| f.id)
+            .collect();
 
         // Should have 2 focusable IDs (one per season with TableCell)
         // TableCell IDs enable row highlighting via focused_table_row()

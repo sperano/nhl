@@ -109,7 +109,7 @@ fn format_link_id(id: &str) -> String {
 }
 
 /// A focusable element within a document
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FocusableElement {
     /// Unique ID for this focusable element
     pub id: FocusableId,
@@ -172,6 +172,37 @@ impl FocusableElement {
             link_target: target,
             row_position: None,
         }
+    }
+
+    /// Test-only builder: a minimal focusable element with just position,
+    /// height, and ID set (a synthetic 1-wide `rect`, no row position or link
+    /// target). Chain `.with_link_target(..)` / `.with_row_position(..)` to
+    /// add those, so `DocumentNavState.focusables` fixtures stay one-liners
+    /// instead of hand-populating five parallel Vecs.
+    #[cfg(test)]
+    pub fn at(y: u16, height: u16, id: FocusableId) -> Self {
+        Self {
+            id,
+            y,
+            height,
+            rect: Rect::new(0, y, 1, height),
+            link_target: None,
+            row_position: None,
+        }
+    }
+
+    /// Attach a link target (test builder, see [`Self::at`]).
+    #[cfg(test)]
+    pub fn with_link_target(mut self, target: LinkTarget) -> Self {
+        self.link_target = Some(target);
+        self
+    }
+
+    /// Attach a row position (test builder, see [`Self::at`]).
+    #[cfg(test)]
+    pub fn with_row_position(mut self, row_position: RowPosition) -> Self {
+        self.row_position = Some(row_position);
+        self
     }
 }
 

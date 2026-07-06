@@ -177,47 +177,24 @@ pub trait Document: Send + Sync {
             .sum()
     }
 
-    /// Get y-positions of all focusable elements in this document
+    /// Build the document once and collect its focusable elements in one pass.
     ///
-    /// This is useful for storing positions in state so reducers can
-    /// perform accurate autoscrolling without access to the document itself.
-    fn focusable_positions(&self) -> Vec<u16> {
-        let elements = self.build(&FocusContext::default());
-        FocusManager::from_elements(&elements).y_positions()
-    }
-
-    /// Get heights of all focusable elements in this document
-    ///
-    /// This is useful for autoscrolling - tall elements (like GameBox)
-    /// need the viewport to scroll enough to show the entire element,
-    /// not just the top.
-    fn focusable_heights(&self) -> Vec<u16> {
-        let elements = self.build(&FocusContext::default());
-        FocusManager::from_elements(&elements).heights()
-    }
-
-    /// Get row positions for all focusable elements in this document
-    ///
-    /// Returns RowPosition for elements in Rows, None for others.
-    fn focusable_row_positions(&self) -> Vec<Option<RowPosition>> {
-        let elements = self.build(&FocusContext::default());
-        FocusManager::from_elements(&elements).row_positions()
-    }
-
-    /// Get IDs of all focusable elements in this document
-    ///
-    /// Returns IDs in document order (top to bottom, left to right for rows).
-    fn focusable_ids(&self) -> Vec<FocusableId> {
-        let elements = self.build(&FocusContext::default());
-        FocusManager::from_elements(&elements).ids()
-    }
-
-    /// Get link targets of all focusable elements in this document
-    ///
-    /// Returns link targets in document order. None for elements without links.
-    fn focusable_link_targets(&self) -> Vec<Option<LinkTarget>> {
-        let elements = self.build(&FocusContext::default());
-        FocusManager::from_elements(&elements).link_targets()
+    /// This is the single source of "what's focusable in this document,
+    /// with what metadata" -- every field (position, height, ID, row
+    /// membership, link target) is collected together from one `build()`
+    /// call, so a sync site can no longer update some fields and forget
+    /// others. Prefer this over `build()` + manual `FocusManager` wiring
+    /// whenever you need focus metadata but not the full render/viewport
+    /// machinery of `DocumentView`.
+    fn focusables(&self, ctx: &FocusContext) -> Vec<FocusableElement> {
+        let elements = self.build(ctx);
+        let mut focusable = Vec::new();
+        let mut y_offset = 0u16;
+        for elem in &elements {
+            elem.collect_focusable(&mut focusable, y_offset);
+            y_offset += elem.height();
+        }
+        focusable
     }
 
     /// Render the document to a buffer at full height

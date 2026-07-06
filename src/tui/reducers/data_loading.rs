@@ -7,8 +7,6 @@ use crate::tui::component::Effect;
 #[cfg(feature = "development")]
 use crate::tui::constants::DEMO_TAB_PATH;
 use crate::tui::constants::{SCORES_TAB_PATH, STANDINGS_TAB_PATH};
-#[cfg(feature = "development")]
-use crate::tui::document::Document;
 use crate::tui::reducers::standings::rebuild_standings_focusable_metadata;
 use crate::tui::state::{AppState, LoadingKey};
 
@@ -74,15 +72,13 @@ fn handle_standings_loaded(
             #[cfg(feature = "development")]
             {
                 use crate::tui::components::demo_tab::DemoDocument;
+                use crate::tui::document::FocusContext;
                 use crate::tui::document_nav::DocumentNavState;
                 if let Some(demo_state) =
                     component_states.get_mut::<DocumentNavState>(DEMO_TAB_PATH)
                 {
                     let demo_doc = DemoDocument::new(Some(standings.clone()));
-                    demo_state.focusable_positions = demo_doc.focusable_positions();
-                    demo_state.focusable_ids = demo_doc.focusable_ids();
-                    demo_state.focusable_row_positions = demo_doc.focusable_row_positions();
-                    demo_state.link_targets = demo_doc.focusable_link_targets();
+                    demo_state.sync_focusables(&demo_doc, &FocusContext::default());
                 }
             }
 
@@ -101,15 +97,13 @@ fn handle_standings_loaded(
             #[cfg(feature = "development")]
             {
                 use crate::tui::components::demo_tab::DemoDocument;
+                use crate::tui::document::FocusContext;
                 use crate::tui::document_nav::DocumentNavState;
                 if let Some(demo_state) =
                     component_states.get_mut::<DocumentNavState>(DEMO_TAB_PATH)
                 {
                     let demo_doc = DemoDocument::new(None);
-                    demo_state.focusable_positions = demo_doc.focusable_positions();
-                    demo_state.focusable_ids = demo_doc.focusable_ids();
-                    demo_state.focusable_row_positions = demo_doc.focusable_row_positions();
-                    demo_state.link_targets = demo_doc.focusable_link_targets();
+                    demo_state.sync_focusables(&demo_doc, &FocusContext::default());
                 }
             }
 
@@ -118,10 +112,7 @@ fn handle_standings_loaded(
             if let Some(standings_state) =
                 component_states.get_mut::<StandingsTabState>(STANDINGS_TAB_PATH)
             {
-                standings_state.doc_nav.focusable_positions = Vec::new();
-                standings_state.doc_nav.focusable_ids = Vec::new();
-                standings_state.doc_nav.focusable_row_positions = Vec::new();
-                standings_state.doc_nav.link_targets = Vec::new();
+                standings_state.doc_nav.focusables.clear();
             }
         }
     }
@@ -146,7 +137,7 @@ fn handle_schedule_loaded(
             // Rebuild scores tab focusable metadata from the document
             use crate::tui::components::score_boxes_document::ScoreBoxesDocument;
             use crate::tui::components::scores_tab::ScoresTabState;
-            use crate::tui::document::Document;
+            use crate::tui::document::FocusContext;
 
             if let Some(scores_state) = component_states.get_mut::<ScoresTabState>(SCORES_TAB_PATH)
             {
@@ -164,14 +155,13 @@ fn handle_schedule_loaded(
                     0,
                 );
 
-                // Use document methods to get focusable metadata
-                scores_state.doc_nav.focusable_positions = doc.focusable_positions();
-                scores_state.doc_nav.focusable_heights = doc.focusable_heights();
-                scores_state.doc_nav.focusable_ids = doc.focusable_ids();
-                scores_state.doc_nav.focusable_row_positions = doc.focusable_row_positions();
-                // link_targets is load-bearing for ActivateGame (Enter on a focused box
-                // pushes the target's boxscore document) - it must be synced here too.
-                scores_state.doc_nav.link_targets = doc.focusable_link_targets();
+                // Single sync call fills position/height/id/row-position/link-target
+                // together -- link_target is load-bearing for ActivateGame (Enter on
+                // a focused box pushes the target's boxscore document), so a sync
+                // site can no longer forget it.
+                scores_state
+                    .doc_nav
+                    .sync_focusables(&doc, &FocusContext::default());
             }
 
             // Return fetch effects for started games
@@ -415,19 +405,16 @@ mod tests {
 
         let scores = store.get::<ScoresTabState>(SCORES_TAB_PATH).unwrap();
         let nav = &scores.doc_nav;
-        assert_eq!(
-            nav.link_targets.len(),
-            nav.focusable_ids.len(),
-            "link_targets must be synced alongside the other focusable metadata"
-        );
+        assert!(!nav.focusables.is_empty(), "expected at least one game box");
+        let first_link_target = nav.focusables.first().and_then(|f| f.link_target.as_ref());
         assert!(
             matches!(
-                nav.link_targets.first(),
-                Some(Some(LinkTarget::Push(StackedDocument::Boxscore { game_id, .. })))
+                first_link_target,
+                Some(LinkTarget::Push(StackedDocument::Boxscore { game_id, .. }))
                     if *game_id == expected_game_id
             ),
             "first game box must carry a Push(Boxscore) target, got {:?}",
-            nav.link_targets.first()
+            first_link_target
         );
     }
 }

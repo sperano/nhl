@@ -465,7 +465,7 @@ mod tests {
         let doc =
             TeamDetailDocumentContent::new("TST".to_string(), Some(standing), Some(club_stats));
 
-        let positions = doc.focusable_positions();
+        let positions = doc.focusables(&FocusContext::default());
 
         // Should have 3 focusable positions: 2 skaters + 1 goalie
         assert_eq!(positions.len(), 3);
@@ -479,7 +479,7 @@ mod tests {
         let doc =
             TeamDetailDocumentContent::new("TST".to_string(), Some(standing), Some(club_stats));
 
-        let ids = doc.focusable_ids();
+        let ids = doc.focusables(&FocusContext::default());
 
         // Should have 3 focusable IDs: 2 skaters + 1 goalie
         assert_eq!(ids.len(), 3);

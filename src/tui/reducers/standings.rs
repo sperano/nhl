@@ -7,7 +7,7 @@ use crate::tui::components::{
     WildcardStandingsDocument,
 };
 use crate::tui::constants::STANDINGS_TAB_PATH;
-use crate::tui::document::Document;
+use crate::tui::document::{Document, FocusContext};
 use crate::tui::state::AppState;
 
 /// Rebuild focusable metadata for document-based views
@@ -26,66 +26,38 @@ pub fn rebuild_standings_focusable_metadata(
             .map(|s| s.view)
             .unwrap_or(GroupBy::Wildcard);
 
-        // Build document for current view and extract metadata
-        let (positions, ids, row_positions, link_targets) = match view {
-            GroupBy::Conference => {
-                let doc = ConferenceStandingsDocument::new(
-                    Arc::new(standings.clone()),
-                    state.system.config.clone(),
-                );
-                (
-                    doc.focusable_positions(),
-                    doc.focusable_ids(),
-                    doc.focusable_row_positions(),
-                    doc.focusable_link_targets(),
-                )
-            }
-            GroupBy::Division => {
-                let doc = DivisionStandingsDocument::new(
-                    Arc::new(standings.clone()),
-                    state.system.config.clone(),
-                );
-                (
-                    doc.focusable_positions(),
-                    doc.focusable_ids(),
-                    doc.focusable_row_positions(),
-                    doc.focusable_link_targets(),
-                )
-            }
-            GroupBy::League => {
-                let doc = LeagueStandingsDocument::new(
-                    Arc::new(standings.clone()),
-                    state.system.config.clone(),
-                );
-                (
-                    doc.focusable_positions(),
-                    doc.focusable_ids(),
-                    doc.focusable_row_positions(),
-                    doc.focusable_link_targets(),
-                )
-            }
-            GroupBy::Wildcard => {
-                let doc = WildcardStandingsDocument::new(
-                    Arc::new(standings.clone()),
-                    state.system.config.clone(),
-                );
-                (
-                    doc.focusable_positions(),
-                    doc.focusable_ids(),
-                    doc.focusable_row_positions(),
-                    doc.focusable_link_targets(),
-                )
-            }
+        // Build the document for the current view and collect its focusable
+        // elements in one pass -- the match only picks which document type,
+        // the extraction itself is the same single call in every arm.
+        let ctx = FocusContext::default();
+        let focusables = match view {
+            GroupBy::Conference => ConferenceStandingsDocument::new(
+                Arc::new(standings.clone()),
+                state.system.config.clone(),
+            )
+            .focusables(&ctx),
+            GroupBy::Division => DivisionStandingsDocument::new(
+                Arc::new(standings.clone()),
+                state.system.config.clone(),
+            )
+            .focusables(&ctx),
+            GroupBy::League => LeagueStandingsDocument::new(
+                Arc::new(standings.clone()),
+                state.system.config.clone(),
+            )
+            .focusables(&ctx),
+            GroupBy::Wildcard => WildcardStandingsDocument::new(
+                Arc::new(standings.clone()),
+                state.system.config.clone(),
+            )
+            .focusables(&ctx),
         };
 
         // Update component state with new metadata
         if let Some(standings_state) =
             component_states.get_mut::<StandingsTabState>(STANDINGS_TAB_PATH)
         {
-            standings_state.doc_nav.focusable_positions = positions;
-            standings_state.doc_nav.focusable_ids = ids;
-            standings_state.doc_nav.focusable_row_positions = row_positions;
-            standings_state.doc_nav.link_targets = link_targets;
+            standings_state.doc_nav.focusables = focusables;
         }
     }
 }
@@ -95,47 +67,25 @@ mod tests {
     use super::*;
     use crate::config::Config;
     use crate::tui::component_store::ComponentStateStore;
-    use crate::tui::document::{FocusableId, LinkTarget, RowPosition};
+    use crate::tui::document::{FocusableElement, FocusableId};
     use crate::tui::testing::create_test_standings;
     use nhl_api::Standing;
 
-    /// Metadata extracted from a document, used to compare the reducer's
-    /// output against an independently-built document of the same view.
-    struct ExpectedMetadata {
-        positions: Vec<u16>,
-        ids: Vec<FocusableId>,
-        row_positions: Vec<Option<RowPosition>>,
-        link_targets: Vec<Option<LinkTarget>>,
-    }
-
-    /// Build the expected focusable metadata directly from a document,
+    /// Build the expected focusable elements directly from a document,
     /// bypassing the reducer, so tests can assert the reducer picked the
     /// correct document type for each `GroupBy` view.
-    fn expected_metadata_for_view(view: GroupBy, standings: &[Standing]) -> ExpectedMetadata {
+    fn expected_metadata_for_view(view: GroupBy, standings: &[Standing]) -> Vec<FocusableElement> {
         let standings = Arc::new(standings.to_vec());
         let config = Config::default();
-
-        macro_rules! metadata_from {
-            ($doc:expr) => {{
-                let doc = $doc;
-                ExpectedMetadata {
-                    positions: doc.focusable_positions(),
-                    ids: doc.focusable_ids(),
-                    row_positions: doc.focusable_row_positions(),
-                    link_targets: doc.focusable_link_targets(),
-                }
-            }};
-        }
+        let ctx = FocusContext::default();
 
         match view {
             GroupBy::Conference => {
-                metadata_from!(ConferenceStandingsDocument::new(standings, config))
+                ConferenceStandingsDocument::new(standings, config).focusables(&ctx)
             }
-            GroupBy::Division => {
-                metadata_from!(DivisionStandingsDocument::new(standings, config))
-            }
-            GroupBy::League => metadata_from!(LeagueStandingsDocument::new(standings, config)),
-            GroupBy::Wildcard => metadata_from!(WildcardStandingsDocument::new(standings, config)),
+            GroupBy::Division => DivisionStandingsDocument::new(standings, config).focusables(&ctx),
+            GroupBy::League => LeagueStandingsDocument::new(standings, config).focusables(&ctx),
+            GroupBy::Wildcard => WildcardStandingsDocument::new(standings, config).focusables(&ctx),
         }
     }
 
@@ -153,11 +103,11 @@ mod tests {
 
         // Seed the standings tab state with sentinel values to detect
         // any unwanted mutation.
+        let sentinel_focusables = vec![FocusableElement::at(7, 1, FocusableId::link("sentinel"))];
         let sentinel = StandingsTabState {
             view: GroupBy::League,
             doc_nav: crate::tui::document_nav::DocumentNavState {
-                focusable_positions: vec![7],
-                focusable_ids: vec![FocusableId::Link("sentinel".to_string())],
+                focusables: sentinel_focusables.clone(),
                 ..Default::default()
             },
         };
@@ -168,11 +118,7 @@ mod tests {
         let standings_state = component_states
             .get::<StandingsTabState>(STANDINGS_TAB_PATH)
             .expect("component state should still be present");
-        assert_eq!(standings_state.doc_nav.focusable_positions, vec![7]);
-        assert_eq!(
-            standings_state.doc_nav.focusable_ids,
-            vec![FocusableId::Link("sentinel".to_string())]
-        );
+        assert_eq!(standings_state.doc_nav.focusables, sentinel_focusables);
     }
 
     #[test]
@@ -232,27 +178,18 @@ mod tests {
                 .unwrap_or_else(|| panic!("missing component state for view {view:?}"));
             let expected = expected_metadata_for_view(view, &standings);
 
+            // Comparing the full `Vec<FocusableElement>` (rather than just
+            // positions/ids as before) also covers heights, row positions,
+            // and link targets in one assertion.
             assert_eq!(
-                standings_state.doc_nav.focusable_positions, expected.positions,
-                "focusable_positions mismatch for view {view:?}"
-            );
-            assert_eq!(
-                standings_state.doc_nav.focusable_ids, expected.ids,
-                "focusable_ids mismatch for view {view:?}"
-            );
-            assert_eq!(
-                standings_state.doc_nav.focusable_row_positions, expected.row_positions,
-                "focusable_row_positions mismatch for view {view:?}"
-            );
-            assert_eq!(
-                standings_state.doc_nav.link_targets, expected.link_targets,
-                "focusable_link_targets mismatch for view {view:?}"
+                standings_state.doc_nav.focusables, expected,
+                "focusable metadata mismatch for view {view:?}"
             );
             // Sanity check: a real 32-team standings list should produce
             // at least one focusable element in every view.
             assert!(
-                !standings_state.doc_nav.focusable_ids.is_empty(),
-                "expected at least one focusable id for view {view:?}"
+                !standings_state.doc_nav.focusables.is_empty(),
+                "expected at least one focusable element for view {view:?}"
             );
         }
     }
@@ -294,10 +231,7 @@ mod tests {
         let standings_state = component_states
             .get::<StandingsTabState>(STANDINGS_TAB_PATH)
             .unwrap();
-        assert!(standings_state.doc_nav.focusable_positions.is_empty());
-        assert!(standings_state.doc_nav.focusable_ids.is_empty());
-        assert!(standings_state.doc_nav.focusable_row_positions.is_empty());
-        assert!(standings_state.doc_nav.link_targets.is_empty());
+        assert!(standings_state.doc_nav.focusables.is_empty());
     }
 
     #[test]
@@ -313,23 +247,23 @@ mod tests {
         );
 
         rebuild_standings_focusable_metadata(&state, &mut component_states);
-        let first_ids = component_states
+        let first = component_states
             .get::<StandingsTabState>(STANDINGS_TAB_PATH)
             .unwrap()
             .doc_nav
-            .focusable_ids
+            .focusables
             .clone();
 
         // Calling again should produce identical metadata, not append/duplicate it.
         rebuild_standings_focusable_metadata(&state, &mut component_states);
-        let second_ids = component_states
+        let second = component_states
             .get::<StandingsTabState>(STANDINGS_TAB_PATH)
             .unwrap()
             .doc_nav
-            .focusable_ids
+            .focusables
             .clone();
 
-        assert_eq!(first_ids, second_ids);
+        assert_eq!(first, second);
     }
 
     #[test]
@@ -349,12 +283,14 @@ mod tests {
             },
         );
         rebuild_standings_focusable_metadata(&state, &mut component_states);
-        let conference_positions = component_states
+        let conference_positions: Vec<u16> = component_states
             .get::<StandingsTabState>(STANDINGS_TAB_PATH)
             .unwrap()
             .doc_nav
-            .focusable_positions
-            .clone();
+            .focusables
+            .iter()
+            .map(|f| f.y)
+            .collect();
 
         // Switch view and rebuild again.
         component_states
@@ -362,15 +298,16 @@ mod tests {
             .unwrap()
             .view = GroupBy::League;
         rebuild_standings_focusable_metadata(&state, &mut component_states);
-        let league_positions = component_states
+        let league_focusables = component_states
             .get::<StandingsTabState>(STANDINGS_TAB_PATH)
             .unwrap()
             .doc_nav
-            .focusable_positions
+            .focusables
             .clone();
+        let league_positions: Vec<u16> = league_focusables.iter().map(|f| f.y).collect();
 
         let expected_league = expected_metadata_for_view(GroupBy::League, &standings);
-        assert_eq!(league_positions, expected_league.positions);
+        assert_eq!(league_focusables, expected_league);
         // Conference view uses a two-column layout, so its focusable
         // positions should differ from the single-column League layout.
         assert_ne!(conference_positions, league_positions);
