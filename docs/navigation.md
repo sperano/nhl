@@ -134,27 +134,33 @@ inner focus anywhere - see "Cross-Tab Focus Isolation" below.
 When content is focused and the key is `Up`, `key_to_action` checks nested
 modes *before* falling through to the tab-specific handlers:
 
-- **Scores box-selection active** (`has_scores_item_focus`): handled directly
-  here as `ScoresTabMsg::DocNav(DocumentNavMsg::FocusPrev)`. This check is
-  `key.code == KeyCode::Up` with no modifier check, so it fires the same way
-  whether or not Shift is held - i.e. in Scores box-selection, `Shift+Up`
-  still produces `FocusPrev`, not a scroll (unlike Standings/Settings/Demo
-  browse modes, where `Shift+Up` scrolls). This is why
-  `handle_scores_tab_keys`'s box-selection arm has no `Up` case of its own -
-  it's unreachable from there.
-- **Demo tab** (development only), **Settings tab**, or **Standings tab with
-  item focus**: this step does nothing and lets the tab-specific handler
-  process `Up` itself (both plain and `Shift+Up`).
+- **Demo tab** (development only), **Settings tab**, **Standings tab with
+  item focus**, or **Scores tab with item focus (box-selection)**: this step
+  does nothing and lets the tab-specific handler process `Up` itself (both
+  plain and `Shift+Up`).
 - **Otherwise**: `Action::ExitContentFocus` - `Up` returns to the tab bar.
 
-The `has_scores_item_focus` check here is gated on the current tab being
-Scores, so it can only fire while the Scores tab is actually active.
+The `has_scores_item_focus`/`has_standings_item_focus` checks here are gated
+on the current tab actually being Scores/Standings, so they can only fire
+while that tab is active.
+
+Scores box-selection used to be special-cased directly in this step
+(`key.code == KeyCode::Up` with no modifier check, so `Shift+Up` produced
+`FocusPrev` instead of scrolling like every other browse mode). That
+divergence was removed: Scores box-selection now joins the fall-through list
+like the other three modes, and `handle_scores_tab_keys` handles `Up` itself
+via the canonical mapping (plain `Up` -> `FocusPrev`, `Shift+Up` ->
+`ScrollUp(1)`), matching Standings/Settings/Demo.
 
 ## The Canonical Document-Navigation Mapping (`key_to_nav_msg`)
 
-`nav_handler::key_to_nav_msg` is the shared mapping used, with documented
-exceptions, by Standings browse mode, the Settings tab, the Demo tab, and
-stacked documents (`document::handle_stacked_document_key`):
+`nav_handler::key_to_nav_msg` is the shared mapping used, with one remaining
+documented exception (Settings `Left`/`Right`, claimed for category
+navigation), by Standings browse mode, the Settings tab, the Demo tab, Scores
+box-selection mode, and stacked documents
+(`document::handle_stacked_document_key`). As of the F6 convergence, this is
+the only surviving divergence from the canonical mapping across all of these
+callers - see the per-tab sections below.
 
 | Key | Without Shift | With Shift |
 |-----|----------------|------------|
@@ -190,22 +196,35 @@ Two modes, distinguished by `has_scores_item_focus`:
 | `Up` | `Action::ExitContentFocus` (via the step-6 special case, since there's no nested mode) |
 | anything else | no-op |
 
-**Box-selection mode** (item focus active):
+**Box-selection mode** (item focus active): `Enter` activates the focused
+game (`ScoresTabMsg::ActivateGame`); every other key goes through the
+canonical `key_to_nav_msg` mapping exactly, wrapped in `ScoresTabMsg::DocNav`
+- full parity with Standings browse mode.
 
 | Key | Result |
 |-----|--------|
-| `Up` | `ScoresTabMsg::DocNav(FocusPrev)` - handled by the step-6 special case, not by this function |
+| `Up` | `ScoresTabMsg::DocNav(FocusPrev)` - reached via the step-6 fallthrough into this function, same as Standings/Settings/Demo |
+| `Shift+Up` | `ScoresTabMsg::DocNav(ScrollUp(1))` |
 | `Down` | `ScoresTabMsg::DocNav(FocusNext)` |
+| `Shift+Down` | `ScoresTabMsg::DocNav(ScrollDown(1))` |
 | `Left` | `ScoresTabMsg::DocNav(FocusLeft)` |
+| `Shift+Left` | `ScoresTabMsg::DocNav(ScrollUp(1))` (not left - scrolling wins) |
 | `Right` | `ScoresTabMsg::DocNav(FocusRight)` |
+| `Shift+Right` | `ScoresTabMsg::DocNav(ScrollDown(1))` (not right - scrolling wins) |
+| `Tab` | `ScoresTabMsg::DocNav(FocusNext)` |
+| `Shift+Tab` / `BackTab` | `ScoresTabMsg::DocNav(FocusPrev)` |
+| `PageUp` / `PageDown` | `ScoresTabMsg::DocNav(PageUp/PageDown)` |
+| `Home` / `End` | `ScoresTabMsg::DocNav(ScrollToTop/ScrollToBottom)` |
 | `Enter` | `ScoresTabMsg::ActivateGame` - reads the destination straight off the focused element (`doc_nav.focused_link_target()`), pushing the boxscore document it carries; no focused link target is a no-op |
 | `Esc` | `ScoresTabMsg::ExitBoxSelection` (ESC priority 3) |
 | anything else | no-op |
 
-Deliberate divergence from the canonical mapping: Scores box-selection has
-**no** `Tab`/`BackTab`, `PageUp`/`PageDown`, `Home`/`End`, or `Shift`-scroll
-support. Only `Up`/`Down`/`Left`/`Right`/`Enter` are wired; everything else
-falls through to `None`.
+Before the F6 convergence, Scores box-selection had no `Tab`/`BackTab`,
+`PageUp`/`PageDown`, `Home`/`End`, or `Shift`-scroll support (only
+`Up`/`Down`/`Left`/`Right`/`Enter` were wired), and `Up` was special-cased in
+`key_to_action` step 6 to ignore Shift entirely (so `Shift+Up` produced
+`FocusPrev` there instead of scrolling). Both divergences were removed: this
+mode now matches the canonical mapping with no exceptions.
 
 ### Standings tab
 
@@ -251,17 +270,19 @@ A13/A14 refactor along with a corresponding characterization test).
 | `Left` | `SettingsAction::NavigateCategoryLeft` - **always**, even with item focus active |
 | `Right` | `SettingsAction::NavigateCategoryRight` - always |
 | `Enter` | `SettingsTabMsg::ActivateSetting(config)`, carrying the current `state.system.config` |
-| `BackTab` | no-op - explicitly guarded out (see below) |
+| `BackTab` | `SettingsTabMsg::DocNav(FocusPrev)` - via `key_to_nav_msg`, same as Standings/Demo |
 | everything else | delegated to `key_to_nav_msg`, wrapped in `SettingsTabMsg::DocNav` |
 
-Two deliberate divergences from the canonical mapping:
+One remaining deliberate divergence from the canonical mapping:
 
 - **`Left`/`Right` are claimed for category navigation**, not row/scroll
   navigation - Settings is the only tab where these keys don't reach
   `key_to_nav_msg` at all.
-- **`BackTab` is explicitly a no-op.** Unlike Standings and Demo, Settings
-  never maps `BackTab` to `FocusPrev` - it's guarded out before delegating to
-  `key_to_nav_msg`, which would otherwise treat it as `FocusPrev`.
+
+Before the F6 convergence, `BackTab` was explicitly guarded out to a no-op
+here (unlike Standings and Demo, which always mapped it to `FocusPrev`). That
+guard was removed; `BackTab` now falls through to `key_to_nav_msg` like every
+other unclaimed key in this function.
 
 Settings also has a divergence in the *global* Up handling (step 6, not in
 this function): the step-6 special case treats Settings as a nested mode
@@ -272,16 +293,32 @@ to the tab bar - only `Esc` can.
 
 ### Demo tab (`handle_demo_tab_keys`, `--features development` only)
 
+`Enter` activates the focused link (`DemoTabMsg::ActivateLink`); every other
+key goes through the canonical `key_to_nav_msg` mapping exactly, wrapped in
+`DemoTabMsg::DocNav` - full parity with Standings browse mode.
+
 | Key | Result |
 |-----|--------|
 | `Enter` | `DemoTabMsg::ActivateLink` |
-| `Left` | `DemoTabMsg::DocNav(FocusLeft)` - **always row-navigates**, even with Shift held |
-| `Right` | `DemoTabMsg::DocNav(FocusRight)` - always row-navigates, even with Shift held |
+| `Left` | `DemoTabMsg::DocNav(FocusLeft)` |
+| `Shift+Left` | `DemoTabMsg::DocNav(ScrollUp(1))` (not left - scrolling wins) |
+| `Right` | `DemoTabMsg::DocNav(FocusRight)` |
+| `Shift+Right` | `DemoTabMsg::DocNav(ScrollDown(1))` (not right - scrolling wins) |
 | everything else | delegated to `key_to_nav_msg`, wrapped in `DemoTabMsg::DocNav` |
 
-Deliberate divergence: unlike Standings browse mode, the Demo tab has **no**
-`Shift+Left`/`Shift+Right` scroll - those combinations always row-navigate.
-`Shift+Up`/`Shift+Down` do scroll, matching the canonical mapping.
+Before the F6 convergence, `Left`/`Right` **always row-navigated** in the
+Demo tab, even with Shift held - there was no `Shift+Left`/`Shift+Right`
+scroll, unlike Standings browse mode. That override was removed; the Demo
+tab now matches the canonical mapping with no exceptions.
+
+`src/tui/components/demo_tab.rs` used to also define its own
+`DemoTab::handle_key` (matched from a `DemoTabMsg::Key` variant) with the
+same Left/Right-always-row-navigates quirk baked in, but nothing in the
+codebase ever constructed `DemoTabMsg::Key` - all real Demo tab key routing
+goes through `handle_demo_tab_keys` in `keys.rs` above. That dead variant,
+its dead match arm, and the unreachable `handle_key` method (along with the
+`DEMO_TAB_COUNT` constant and `KeyCode`/`KeyEvent` imports that existed only
+to support it) have been deleted.
 
 `Esc` in the Demo tab is ESC priority 4.6 (`DemoTabMsg::ExitFocus`). The
 higher-priority checks (settings modal, scores box-selection, standings and

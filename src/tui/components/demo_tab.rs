@@ -9,7 +9,6 @@
 
 use std::sync::Arc;
 
-use crossterm::event::{KeyCode, KeyEvent};
 use nhl_api::Standing;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -39,9 +38,6 @@ pub struct DemoTabProps {
 /// Messages that can be sent to the Demo tab
 #[derive(Clone, Debug)]
 pub enum DemoTabMsg {
-    /// Key event when this tab is focused
-    Key(KeyEvent),
-
     /// Navigate up request (ESC in browse mode, returns to tab bar otherwise)
     /// Returns Effect::Handled if consumed, Effect::None if should bubble up
     NavigateUp,
@@ -103,8 +99,6 @@ impl Component for DemoTab {
 
         // Handle tab-specific messages
         match msg {
-            DemoTabMsg::Key(key) => self.handle_key(key, state),
-
             DemoTabMsg::ActivateLink => match state.focused_link_target() {
                 Some(LinkTarget::Push(doc)) => Effect::Action(Action::PushDocument(doc.clone())),
                 _ => Effect::None,
@@ -142,57 +136,8 @@ impl Component for DemoTab {
     }
 }
 
-/// Number of tabs in the demo document
-const DEMO_TAB_COUNT: usize = 2;
 /// ID for the tabs element in the demo document
 const DEMO_TABS_ID: &str = "demo_tabs";
-
-impl DemoTab {
-    /// Handle key events when this tab is focused
-    fn handle_key(
-        &mut self,
-        key: KeyEvent,
-        state: &mut crate::tui::document_nav::DocumentNavState,
-    ) -> Effect {
-        // DemoTab is always in "browse mode" when content is focused
-        // Arrow keys navigate focusable elements, Enter activates links
-        match key.code {
-            KeyCode::Up => {
-                crate::tui::document_nav::handle_message(state, &DocumentNavMsg::FocusPrev)
-            }
-            KeyCode::Down => {
-                crate::tui::document_nav::handle_message(state, &DocumentNavMsg::FocusNext)
-            }
-            KeyCode::Left => {
-                // Switch to previous tab
-                if state.prev_tab(DEMO_TABS_ID, DEMO_TAB_COUNT) {
-                    // Clear focus when switching tabs - new tab has different content
-                    state.clear_item_focus();
-                }
-                Effect::None
-            }
-            KeyCode::Right => {
-                // Switch to next tab
-                if state.next_tab(DEMO_TABS_ID, DEMO_TAB_COUNT) {
-                    // Clear focus when switching tabs - new tab has different content
-                    state.clear_item_focus();
-                }
-                Effect::None
-            }
-            KeyCode::Tab => {
-                crate::tui::document_nav::handle_message(state, &DocumentNavMsg::FocusNext)
-            }
-            KeyCode::BackTab => {
-                crate::tui::document_nav::handle_message(state, &DocumentNavMsg::FocusPrev)
-            }
-            KeyCode::Enter => {
-                // Activate the focused link
-                self.update(DemoTabMsg::ActivateLink, state)
-            }
-            _ => Effect::None,
-        }
-    }
-}
 
 /// Widget for rendering the Demo tab
 struct DemoTabWidget {
@@ -309,7 +254,7 @@ impl Document for DemoDocument {
             .spacer(1)
             // Embedded tabs demonstrating tabs-within-documents
             .tabs_with_focus(
-                "demo_tabs",
+                DEMO_TABS_ID,
                 vec![
                     ("standings", "Standings", standings_content),
                     ("players", "Players", players_content),

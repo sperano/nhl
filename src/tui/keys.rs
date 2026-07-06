@@ -163,44 +163,38 @@ fn handle_tab_bar_navigation(key_code: KeyCode) -> Option<Action> {
 }
 
 /// Handle Scores tab navigation (box selection mode vs date mode)
+///
+/// Box-selection mode matches the canonical `key_to_nav_msg` mapping exactly
+/// (Tab/BackTab focus cycling, PageUp/PageDown, Home/End, Shift+arrow
+/// scrolling all apply here); only `Enter` is special-cased, since it
+/// activates the focused game rather than emitting a `DocumentNavMsg`.
+/// Date-navigation mode (no item focus) is untouched - its `Left`/`Right` are
+/// date semantics, not document navigation.
 fn handle_scores_tab_keys(
     state: &AppState,
-    key_code: KeyCode,
+    key: KeyEvent,
     component_states: &ComponentStateStore,
 ) -> Option<Action> {
-    use crate::tui::document_nav::DocumentNavMsg;
-
     if has_scores_item_focus(state, component_states) {
-        // Box selection mode - use document navigation. Note: Up is handled by
-        // key_to_action's own special-case before this function is ever reached
-        // (see step 6 there), so there is no Up arm here.
-        match key_code {
-            KeyCode::Down => Some(Action::ComponentMessage {
+        // Box selection mode.
+        if key.code == KeyCode::Enter {
+            // Delegate to ScoresTabMsg::ActivateGame, which already owns the
+            // focus_index -> game_id lookup (via focusable_ids), instead of
+            // duplicating that lookup here against state.data.schedule.
+            return Some(Action::ComponentMessage {
                 path: SCORES_TAB_PATH.to_string(),
-                message: Box::new(ScoresTabMsg::DocNav(DocumentNavMsg::FocusNext)),
-            }),
-            KeyCode::Left => Some(Action::ComponentMessage {
-                path: SCORES_TAB_PATH.to_string(),
-                message: Box::new(ScoresTabMsg::DocNav(DocumentNavMsg::FocusLeft)),
-            }),
-            KeyCode::Right => Some(Action::ComponentMessage {
-                path: SCORES_TAB_PATH.to_string(),
-                message: Box::new(ScoresTabMsg::DocNav(DocumentNavMsg::FocusRight)),
-            }),
-            KeyCode::Enter => {
-                // Delegate to ScoresTabMsg::ActivateGame, which already owns the
-                // focus_index -> game_id lookup (via focusable_ids), instead of
-                // duplicating that lookup here against state.data.schedule.
-                Some(Action::ComponentMessage {
-                    path: SCORES_TAB_PATH.to_string(),
-                    message: Box::new(ScoresTabMsg::ActivateGame),
-                })
-            }
-            _ => None,
+                message: Box::new(ScoresTabMsg::ActivateGame),
+            });
         }
+
+        let nav_msg = key_to_nav_msg(key)?;
+        Some(Action::ComponentMessage {
+            path: SCORES_TAB_PATH.to_string(),
+            message: Box::new(ScoresTabMsg::DocNav(nav_msg)),
+        })
     } else {
         // Date navigation mode - arrows navigate dates
-        match key_code {
+        match key.code {
             KeyCode::Left => Some(Action::ComponentMessage {
                 path: SCORES_TAB_PATH.to_string(),
                 message: Box::new(ScoresTabMsg::NavigateLeft),
@@ -336,14 +330,6 @@ fn handle_settings_tab_keys(
         });
     }
 
-    // Unlike Standings/Demo, the Settings tab does not map BackTab to anything
-    // (Left/Right are already claimed above for category navigation, and BackTab
-    // was never wired to focus navigation here). Guard it out before delegating
-    // to the canonical mapping, which would otherwise treat it as FocusPrev.
-    if key.code == KeyCode::BackTab {
-        return None;
-    }
-
     // Handle document navigation within the current category via the canonical
     // mapping (Tab/arrows/Shift+arrows/Page/Home/End match this context exactly).
     let nav_msg = key_to_nav_msg(key)?;
@@ -358,7 +344,6 @@ fn handle_settings_tab_keys(
 #[cfg(feature = "development")]
 fn handle_demo_tab_keys(key: KeyEvent, _state: &AppState) -> Option<Action> {
     use crate::tui::components::demo_tab::DemoTabMsg;
-    use crate::tui::document_nav::DocumentNavMsg;
 
     // Enter activates the focused link; not a nav message.
     if key.code == KeyCode::Enter {
@@ -369,15 +354,8 @@ fn handle_demo_tab_keys(key: KeyEvent, _state: &AppState) -> Option<Action> {
         });
     }
 
-    // Unlike the canonical mapping, Left/Right row-navigate unconditionally in
-    // the Demo tab, even with Shift held (there is no Shift+Left/Right scroll
-    // here, unlike Standings browse mode). Everything else matches the
-    // canonical mapping exactly, so delegate to it.
-    let nav_msg = match key.code {
-        KeyCode::Left => DocumentNavMsg::FocusLeft,
-        KeyCode::Right => DocumentNavMsg::FocusRight,
-        _ => key_to_nav_msg(key)?,
-    };
+    // Matches the canonical mapping exactly, including Shift+Left/Right scroll.
+    let nav_msg = key_to_nav_msg(key)?;
 
     Some(Action::ComponentMessage {
         path: DEMO_TAB_PATH.to_string(),
@@ -450,14 +428,6 @@ pub fn key_to_action(
     // 6. Handle Up key with special logic (returns to tab bar unless in nested mode)
     if key.code == KeyCode::Up {
         // Check if we're in a nested mode first
-        if has_scores_item_focus(state, component_states) {
-            // In box selection - Up uses document navigation
-            use crate::tui::document_nav::DocumentNavMsg;
-            return Some(Action::ComponentMessage {
-                path: SCORES_TAB_PATH.to_string(),
-                message: Box::new(ScoresTabMsg::DocNav(DocumentNavMsg::FocusPrev)),
-            });
-        }
         #[cfg(feature = "development")]
         let in_demo_tab = current_tab == Tab::Demo;
         #[cfg(not(feature = "development"))]
@@ -470,6 +440,8 @@ pub fn key_to_action(
         } else if current_tab == Tab::Standings && has_standings_item_focus(state, component_states)
         {
             // Standings browse mode - Up handled by handle_standings_league_keys (both plain and Shift)
+        } else if current_tab == Tab::Scores && has_scores_item_focus(state, component_states) {
+            // Scores box-selection - Up handled by handle_scores_tab_keys (both plain and Shift)
         } else {
             // Not in nested mode - Up returns to tab bar
             debug!("KEY: Up pressed in content - returning to tab bar");
@@ -485,7 +457,7 @@ pub fn key_to_action(
 
     // 7. Delegate to tab-specific handlers
     match current_tab {
-        Tab::Scores => handle_scores_tab_keys(state, key.code, component_states),
+        Tab::Scores => handle_scores_tab_keys(state, key, component_states),
         Tab::Standings => {
             // All standings views use document navigation in browse mode
             if has_standings_item_focus(state, component_states) {
@@ -1022,11 +994,21 @@ mod tests {
                 check: Box::new(|a| is_component_message(a, SCORES_TAB_PATH, "DocNav(FocusNext)")),
             },
             KeyCase {
-                description: "Up in box-selection mode focuses the previous game (handled by key_to_action's own Up special-case)",
+                description: "Up in box-selection mode focuses the previous game (reached via the \
+                    step-6 Up fallthrough into handle_scores_tab_keys, same as Standings/Settings/Demo - \
+                    no longer handled directly by key_to_action's own Up special-case, see F6 convergence)",
                 state: state_for(Tab::Scores, true),
                 store: store_with_scores_focus(Some(0)),
                 key: key(KeyCode::Up),
                 check: Box::new(|a| is_component_message(a, SCORES_TAB_PATH, "DocNav(FocusPrev)")),
+            },
+            KeyCase {
+                description: "Shift+Up in box-selection mode scrolls up (F6 convergence: was FocusPrev \
+                    before key_to_action's Up special-case ignored Shift for scores box-selection)",
+                state: state_for(Tab::Scores, true),
+                store: store_with_scores_focus(Some(0)),
+                key: shift_key(KeyCode::Up),
+                check: Box::new(|a| is_component_message(a, SCORES_TAB_PATH, "DocNav(ScrollUp(1))")),
             },
             KeyCase {
                 description: "Left in box-selection mode focuses left",
@@ -1041,6 +1023,77 @@ mod tests {
                 store: store_with_scores_focus(Some(0)),
                 key: key(KeyCode::Right),
                 check: Box::new(|a| is_component_message(a, SCORES_TAB_PATH, "DocNav(FocusRight)")),
+            },
+            KeyCase {
+                description: "Shift+Down in box-selection mode scrolls down (F6 convergence: newly live)",
+                state: state_for(Tab::Scores, true),
+                store: store_with_scores_focus(Some(0)),
+                key: shift_key(KeyCode::Down),
+                check: Box::new(|a| is_component_message(a, SCORES_TAB_PATH, "DocNav(ScrollDown(1))")),
+            },
+            KeyCase {
+                description: "Shift+Left in box-selection mode scrolls up, not left (F6 convergence: \
+                    newly live, matches canonical mapping where scrolling wins over row navigation)",
+                state: state_for(Tab::Scores, true),
+                store: store_with_scores_focus(Some(0)),
+                key: shift_key(KeyCode::Left),
+                check: Box::new(|a| is_component_message(a, SCORES_TAB_PATH, "DocNav(ScrollUp(1))")),
+            },
+            KeyCase {
+                description: "Shift+Right in box-selection mode scrolls down (F6 convergence: newly live)",
+                state: state_for(Tab::Scores, true),
+                store: store_with_scores_focus(Some(0)),
+                key: shift_key(KeyCode::Right),
+                check: Box::new(|a| is_component_message(a, SCORES_TAB_PATH, "DocNav(ScrollDown(1))")),
+            },
+            KeyCase {
+                description: "Tab in box-selection mode focuses the next game (F6 convergence: newly live)",
+                state: state_for(Tab::Scores, true),
+                store: store_with_scores_focus(Some(0)),
+                key: key(KeyCode::Tab),
+                check: Box::new(|a| is_component_message(a, SCORES_TAB_PATH, "DocNav(FocusNext)")),
+            },
+            KeyCase {
+                description: "Shift+Tab in box-selection mode focuses the previous game (F6 convergence: newly live)",
+                state: state_for(Tab::Scores, true),
+                store: store_with_scores_focus(Some(0)),
+                key: shift_key(KeyCode::Tab),
+                check: Box::new(|a| is_component_message(a, SCORES_TAB_PATH, "DocNav(FocusPrev)")),
+            },
+            KeyCase {
+                description: "BackTab in box-selection mode focuses the previous game (F6 convergence: newly live)",
+                state: state_for(Tab::Scores, true),
+                store: store_with_scores_focus(Some(0)),
+                key: key(KeyCode::BackTab),
+                check: Box::new(|a| is_component_message(a, SCORES_TAB_PATH, "DocNav(FocusPrev)")),
+            },
+            KeyCase {
+                description: "PageUp in box-selection mode pages up (F6 convergence: newly live)",
+                state: state_for(Tab::Scores, true),
+                store: store_with_scores_focus(Some(0)),
+                key: key(KeyCode::PageUp),
+                check: Box::new(|a| is_component_message(a, SCORES_TAB_PATH, "DocNav(PageUp)")),
+            },
+            KeyCase {
+                description: "PageDown in box-selection mode pages down (F6 convergence: newly live)",
+                state: state_for(Tab::Scores, true),
+                store: store_with_scores_focus(Some(0)),
+                key: key(KeyCode::PageDown),
+                check: Box::new(|a| is_component_message(a, SCORES_TAB_PATH, "DocNav(PageDown)")),
+            },
+            KeyCase {
+                description: "Home in box-selection mode scrolls to the top (F6 convergence: newly live)",
+                state: state_for(Tab::Scores, true),
+                store: store_with_scores_focus(Some(0)),
+                key: key(KeyCode::Home),
+                check: Box::new(|a| is_component_message(a, SCORES_TAB_PATH, "DocNav(ScrollToTop)")),
+            },
+            KeyCase {
+                description: "End in box-selection mode scrolls to the bottom (F6 convergence: newly live)",
+                state: state_for(Tab::Scores, true),
+                store: store_with_scores_focus(Some(0)),
+                key: key(KeyCode::End),
+                check: Box::new(|a| is_component_message(a, SCORES_TAB_PATH, "DocNav(ScrollToBottom)")),
             },
             KeyCase {
                 description: "Enter in box-selection mode delegates to ScoresTabMsg::ActivateGame, \
@@ -1269,6 +1322,14 @@ mod tests {
                 check: Box::new(|a| is_component_message(a, SETTINGS_TAB_PATH, "DocNav(FocusPrev)")),
             },
             KeyCase {
+                description: "BackTab in Settings focuses the previous setting (F6 convergence: was an \
+                    explicit no-op guard before key_to_nav_msg delegation, matching Standings/Demo now)",
+                state: state_for(Tab::Settings, true),
+                store: empty_store(),
+                key: key(KeyCode::BackTab),
+                check: Box::new(|a| is_component_message(a, SETTINGS_TAB_PATH, "DocNav(FocusPrev)")),
+            },
+            KeyCase {
                 description: "Down in Settings focuses the next setting",
                 state: state_for(Tab::Settings, true),
                 store: empty_store(),
@@ -1467,6 +1528,23 @@ mod tests {
                 check: Box::new(|a| is_component_message(a, DEMO_TAB_PATH, "DocNav(FocusRight)")),
             },
             KeyCase {
+                description: "Shift+Left in the Demo tab scrolls up, not left (F6 convergence: was an \
+                    unconditional row-navigation override before key_to_nav_msg delegation, matching \
+                    Standings browse mode now - scrolling wins over row navigation)",
+                state: state_for(Tab::Demo, true),
+                store: empty_store(),
+                key: shift_key(KeyCode::Left),
+                check: Box::new(|a| is_component_message(a, DEMO_TAB_PATH, "DocNav(ScrollUp(1))")),
+            },
+            KeyCase {
+                description: "Shift+Right in the Demo tab scrolls down (F6 convergence: was an \
+                    unconditional row-navigation override before key_to_nav_msg delegation)",
+                state: state_for(Tab::Demo, true),
+                store: empty_store(),
+                key: shift_key(KeyCode::Right),
+                check: Box::new(|a| is_component_message(a, DEMO_TAB_PATH, "DocNav(ScrollDown(1))")),
+            },
+            KeyCase {
                 description: "Up in the Demo tab focuses the previous element (reached via the Up-key fallthrough)",
                 state: state_for(Tab::Demo, true),
                 store: empty_store(),
@@ -1575,4 +1653,10 @@ mod tests {
     // box-selection `KeyCode::Up` arm - both unreachable from `key_to_action`.
     // Those arms were deleted as part of the A13/A14 keys.rs refactor, so the
     // tests documenting them were removed too.
+    //
+    // Update (F6 convergence): step 6's Up special-case no longer intercepts
+    // scores box-selection directly, so `Up` (plain and Shift) now reaches
+    // `handle_scores_tab_keys` again - but via the canonical `key_to_nav_msg`
+    // delegation, not a reinstated explicit `KeyCode::Up` match arm. See the
+    // "Up in box-selection mode" cases in `base_cases()` above.
 }
