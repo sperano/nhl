@@ -101,9 +101,6 @@ pub struct DataState {
 
     // Loading states
     pub loading: HashSet<LoadingKey>,
-
-    // Errors
-    pub errors: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

@@ -46,7 +46,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_error_action_stores_error_in_state() {
+    async fn test_error_action_surfaces_status_bar_error() {
         let mut runtime = create_test_runtime();
 
         // Simulate error loading standings
@@ -54,12 +54,19 @@ mod tests {
             nhl_api::NHLApiError::Other("Network error".to_string()),
         ))));
 
-        // Error should be stored in state
-        assert!(runtime.state().data.errors.contains_key("standings"));
+        // The failure must surface as a status-bar message - the only channel
+        // the UI actually renders (see AppState.data.errors, which was write-only
+        // dead weight and has since been removed).
+        assert!(runtime.state().system.status_is_error);
         assert_eq!(
-            runtime.state().data.errors.get("standings").unwrap(),
-            "Failed to load standings: Network error"
+            runtime.state().system.status_message,
+            Some("Failed to load standings: Network error".to_string())
         );
+
+        // A subsequent successful load must clear the error.
+        runtime.dispatch(Action::StandingsLoaded(Ok(vec![])));
+
+        assert!(!runtime.state().system.status_is_error);
     }
 
     #[tokio::test]

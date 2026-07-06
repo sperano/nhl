@@ -1,4 +1,4 @@
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::config::Config;
 use crate::tui::action::{Action, SettingsAction};
@@ -35,7 +35,7 @@ pub fn reduce_settings(
         SettingsAction::ToggleBoolean(key) => {
             debug!("SETTINGS: Toggling boolean setting: {}", key);
             let mut new_state = state;
-            match key.as_str() {
+            let effect = match key.as_str() {
                 "use_unicode" => {
                     new_state.system.config.display.use_unicode =
                         !new_state.system.config.display.use_unicode;
@@ -43,49 +43,49 @@ pub fn reduce_settings(
                         crate::formatting::BoxChars::from_use_unicode(
                             new_state.system.config.display.use_unicode,
                         );
+                    save_config_effect(new_state.system.config.clone())
                 }
                 "western_teams_first" => {
                     new_state.system.config.display_standings_western_first =
                         !new_state.system.config.display_standings_western_first;
                     // Rebuild standings focusable metadata so team selection uses the new order
-                    let config = new_state.system.config.clone();
-                    let save_effect = save_config_effect(config);
+                    let save_effect = save_config_effect(new_state.system.config.clone());
                     let rebuild_effect = Effect::Action(Action::RebuildStandingsFocusable);
-                    return (new_state, Effect::Batch(vec![save_effect, rebuild_effect]));
+                    Effect::Batch(vec![save_effect, rebuild_effect])
                 }
                 _ => {
-                    debug!("SETTINGS: Unknown boolean setting: {}", key);
+                    // Since F3, activation flows through typed `LinkTarget::ToggleSetting(key)`
+                    // values that originate only from `settings_document.rs`, so an unrecognized
+                    // key here is a programming error, not user input. No-op rather than save.
+                    warn!(
+                        "SETTINGS: ToggleBoolean received unrecognized key {:?}; ignoring",
+                        key
+                    );
+                    Effect::None
                 }
-            }
-            let config = new_state.system.config.clone();
-            let effect = save_config_effect(config);
+            };
             (new_state, effect)
         }
 
         SettingsAction::UpdateSetting { key, value } => {
             debug!("SETTINGS: Updating setting: {} = {}", key, value);
             let mut new_state = state;
-            match key.as_str() {
+            let effect = match key.as_str() {
                 "log_level" => {
                     new_state.system.config.log_level = value;
+                    save_config_effect(new_state.system.config.clone())
                 }
-                "theme" => {
-                    if value == "none" {
-                        new_state.system.config.display.theme_name = None;
-                        new_state.system.config.display.theme = None;
-                    } else {
-                        use crate::config::THEMES;
-                        let theme = THEMES.get(value.as_str()).map(|t| (*t).clone());
-                        new_state.system.config.display.theme_name = Some(value);
-                        new_state.system.config.display.theme = theme;
-                    }
-                }
+                "theme" => update_theme_setting(&mut new_state, value),
                 _ => {
-                    debug!("SETTINGS: Unknown setting key: {}", key);
+                    // Same reasoning as ToggleBoolean above: an unrecognized key is a
+                    // programming error, not user input. No-op rather than save.
+                    warn!(
+                        "SETTINGS: UpdateSetting received unrecognized key {:?}; ignoring",
+                        key
+                    );
+                    Effect::None
                 }
-            }
-            let config = new_state.system.config.clone();
-            let effect = save_config_effect(config);
+            };
             (new_state, effect)
         }
 
@@ -120,6 +120,41 @@ fn navigate_category(
     }
 
     (new_state, Effect::None)
+}
+
+/// Apply a `theme` setting update, saving on success.
+///
+/// Rejects unrecognized theme values instead of applying them: the modal that
+/// drives this action (see `settings_helpers::get_setting_modal_options`) only
+/// ever offers `"none"` or a known theme id, so an unrecognized value here
+/// would only occur via a hand-edited config or a future bug. Applying it
+/// anyway would leave `theme_name` naming a theme that doesn't resolve to an
+/// actual `theme` — and persist that inconsistency to disk.
+fn update_theme_setting(state: &mut AppState, value: String) -> Effect {
+    if value == "none" {
+        state.system.config.display.theme_name = None;
+        state.system.config.display.theme = None;
+        return save_config_effect(state.system.config.clone());
+    }
+
+    use crate::config::THEMES;
+    match THEMES.get(value.as_str()) {
+        Some(theme) => {
+            state.system.config.display.theme_name = Some(value);
+            state.system.config.display.theme = Some((*theme).clone());
+            save_config_effect(state.system.config.clone())
+        }
+        None => {
+            warn!(
+                "SETTINGS: Unknown theme value {:?}; keeping previous theme",
+                value
+            );
+            state
+                .system
+                .set_status_error_message(format!("Unknown theme: {}", value));
+            Effect::None
+        }
+    }
 }
 
 fn save_config_effect(config: Config) -> Effect {
@@ -331,7 +366,10 @@ mod tests {
     }
 
     #[test]
-    fn toggle_boolean_unknown_key_leaves_config_unchanged_but_still_saves() {
+    fn toggle_boolean_unknown_key_leaves_config_unchanged_and_does_not_save() {
+        // Unrecognized keys are a programming error (activation is typed at the
+        // source via `LinkTarget::ToggleSetting`), so this must be a no-op:
+        // no config mutation and no disk write.
         let state = AppState::default();
         let original_config = state.system.config.clone();
         let mut component_states = ComponentStateStore::new();
@@ -343,8 +381,7 @@ mod tests {
         );
 
         assert!(config_debug_eq(&new_state.system.config, &original_config));
-        // Falls through to the shared save path even though nothing changed.
-        assert!(matches!(effect, Effect::Async(_)));
+        assert!(matches!(effect, Effect::None));
     }
 
     // --- SettingsAction::UpdateSetting ---------------------------------------
@@ -412,15 +449,18 @@ mod tests {
     }
 
     #[test]
-    fn update_setting_theme_unknown_value_sets_name_but_resolves_no_theme() {
-        // Latent inconsistency: an unrecognized theme name is still stored in
-        // `theme_name`, even though `theme` resolves to None. This leaves the
-        // config in a state where `theme_name` no longer corresponds to any
-        // actual applied theme.
-        let state = AppState::default();
+    fn update_setting_theme_unknown_value_rejected_keeps_previous_theme_and_reports_error() {
+        // An unrecognized theme value must not be applied: it would leave
+        // `theme_name` naming a theme that `theme` doesn't resolve to, and that
+        // inconsistency would get persisted to disk. The previous theme stays
+        // in place, a no-op effect is returned (no save), and the user sees an
+        // error status message.
+        let mut state = AppState::default();
+        state.system.config.display.theme_name = Some("blue".to_string());
+        state.system.config.display.theme = THEMES.get("blue").map(|t| (*t).clone());
         let mut component_states = ComponentStateStore::new();
 
-        let (new_state, _effect) = reduce_settings(
+        let (new_state, effect) = reduce_settings(
             state,
             SettingsAction::UpdateSetting {
                 key: "theme".to_string(),
@@ -431,13 +471,25 @@ mod tests {
 
         assert_eq!(
             new_state.system.config.display.theme_name,
-            Some("not_a_real_theme".to_string())
+            Some("blue".to_string())
         );
-        assert!(new_state.system.config.display.theme.is_none());
+        assert_eq!(
+            format!("{:?}", new_state.system.config.display.theme),
+            format!("{:?}", THEMES.get("blue").map(|t| (*t).clone()))
+        );
+        assert_eq!(
+            new_state.system.status_message,
+            Some("Unknown theme: not_a_real_theme".to_string())
+        );
+        assert!(new_state.system.status_is_error);
+        assert!(matches!(effect, Effect::None));
     }
 
     #[test]
-    fn update_setting_unknown_key_leaves_config_unchanged_but_still_saves() {
+    fn update_setting_unknown_key_leaves_config_unchanged_and_does_not_save() {
+        // Unrecognized keys are a programming error (activation is typed at the
+        // source via `LinkTarget::EditSetting`), so this must be a no-op: no
+        // config mutation and no disk write.
         let state = AppState::default();
         let original_config = state.system.config.clone();
         let mut component_states = ComponentStateStore::new();
@@ -452,7 +504,7 @@ mod tests {
         );
 
         assert!(config_debug_eq(&new_state.system.config, &original_config));
-        assert!(matches!(effect, Effect::Async(_)));
+        assert!(matches!(effect, Effect::None));
     }
 
     // --- SettingsAction::UpdateConfig ----------------------------------------

@@ -87,7 +87,6 @@ pub enum Action {
 
     // System actions
     Quit,
-    Error(String),
     SetStatusMessage {
         message: String,
         is_error: bool,
@@ -138,7 +137,6 @@ impl Clone for Action {
                 message: message.clone_box(),
             },
             Self::Quit => Self::Quit,
-            Self::Error(msg) => Self::Error(msg.clone()),
             Self::SetStatusMessage { message, is_error } => Self::SetStatusMessage {
                 message: message.clone(),
                 is_error: *is_error,
@@ -151,8 +149,12 @@ impl Clone for Action {
 
 impl Action {
     /// Returns true if this action should trigger a re-render
+    ///
+    /// Every action currently warrants a re-render; this stays a method
+    /// (rather than being deleted outright) so future actions with no visible
+    /// effect have an obvious place to opt out.
     pub fn should_render(&self) -> bool {
-        !matches!(self, Self::Error(_))
+        true
     }
 }
 
@@ -171,12 +173,5 @@ mod tests {
         assert!(Action::PopDocument.should_render());
         assert!(Action::FocusNext.should_render());
         assert!(Action::FocusPrevious.should_render());
-    }
-
-    #[test]
-    fn test_should_render_returns_false_for_error_actions() {
-        assert!(!Action::Error("test error".to_string()).should_render());
-        assert!(!Action::Error("another error".to_string()).should_render());
-        assert!(!Action::Error(String::new()).should_render());
     }
 }

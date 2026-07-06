@@ -190,7 +190,7 @@ pub fn reduce(
             (new_state, effect)
         }
 
-        Action::Quit | Action::Error(_) => (state, Effect::None),
+        Action::Quit => (state, Effect::None),
 
         _ => (state, Effect::None),
     }
@@ -336,21 +336,6 @@ mod tests {
     fn test_quit_action_does_nothing_to_state() {
         let state = AppState::default();
         let action = Action::Quit;
-
-        let (new_state, effect) = test_reduce(state.clone(), action);
-
-        // State should remain unchanged
-        assert_eq!(
-            new_state.navigation.current_tab,
-            state.navigation.current_tab
-        );
-        assert!(matches!(effect, Effect::None));
-    }
-
-    #[test]
-    fn test_error_action_does_nothing_to_state() {
-        let state = AppState::default();
-        let action = Action::Error("test error".to_string());
 
         let (new_state, effect) = test_reduce(state.clone(), action);
 

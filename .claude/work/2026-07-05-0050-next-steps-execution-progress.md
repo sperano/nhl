@@ -178,8 +178,39 @@ boxscore convention (leave nav untouched; spinner renders regardless — disclos
 New 9-test parity suite (factory returns None unloaded; render/input parity per variant).
 674 dev / 657 default green; acceptance greps clean (3 production construction sites, all in
 factory.rs).
-- AWAITING: user TTY check of the document stack (F4 rewired widget rendering), then F1
-  (single nav engine — requires user at TTY per plan), then F5.
+- User TTY check passed.
+
+## Phase F1 — DONE (committed ae20435)
+Duplicate navigation engine deleted, net −1,359 lines. Pre-deletion semantic diff proved every
+Engine-A nav method had zero production callers (incl. the backward-wrap bottom-anchor the plan
+suspected needed porting — unreachable). DocumentView → render shim; Viewport → offset/range
+math; FocusManager → from_elements/focus_by_index/get_current_id; focus_helpers.rs deleted.
+No constants/formulas changed. ~71 dead-engine tests deleted, 2 no-op guards ported. User TTY
+feel-check passed before commit.
+
+## Phase F5 — DONE (committed 9c9af4d)
+FocusContext Default+with_id builders; chrome-height math moved to TabState::chrome_lines()
+(effective heights pinned unchanged by regression test); orphan sweep deleted
+DocumentElementWidget (whole file — dead scaffolding), dead FocusableId/FocusableElement
+helpers, collect_focusable_ids; docs updated to collapsed architecture (grep-verified).
+Orchestrator fixed one leftover: unused test import in focus.rs (clippy without --tests
+missed it; caught by cargo test warning).
+
+## FRAMEWORK SIMPLIFICATION PLAN: COMPLETE (F3→F2→F4→F1→F5, commits a50298b..9c9af4d)
+Final state: ONE link vocabulary (LinkTarget::Push(StackedDocument), typed; string grammar
+deleted), ONE metadata representation (focusables: Vec<FocusableElement> + sync_focusables,
+12 hand-sync sites eliminated), ONE construction path (document/factory.rs, render+input+widget
+provably share the document, parity-tested), ONE navigation engine (document_nav.rs). Suite:
+599 dev / 583 default tests green across matrix. The two checkpoint bugs (both
+forgot-a-field sync bugs) are now structurally unrepresentable.
+
+## Flagged for future work (from F5 report)
+- docs/component-patterns.md has the same class of staleness (old five-Vec example,
+  DocumentView-with-nav description) — not in F5's file list, needs a small pass.
+- FocusableId::Link full removal = design decision (typed settings-key model), not mechanical.
+- FocusableId::team_link/player_link/display_name appear caller-less (team/player links go
+  through table_cell in practice) — verify then delete in a future orphan pass.
+- F6 (converge per-tab key quirks on canonical mapping) — parked, needs product decision.
 
 ## Verify command (after each phase)
 ```
