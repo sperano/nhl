@@ -137,6 +137,27 @@ from the prior session's.
   agents. Possibly a user-side editor/linter autosave. Header restored. Watching.
 - CLAUDE.md checksum verified unchanged; no unauthorized commits; no staged files.
 
+## Framework simplification plan (2026-07-05-1400) — Phase F3 DONE
+Typed link activation landed (agent run, verified independently by orchestrator):
+- `LinkTarget` = `Push(StackedDocument) | EditSetting | ToggleSetting | Anchor`; deleted
+  `DocumentLink`/`DocumentType`/`LinkParams` (zero production constructors confirmed) and the
+  entire `"team:*"`/`"edit:*"`/`"toggle:*"`/`"open_boxscore_*"` string grammar + parsers.
+- `activate()` is now one default trait method reading `focused_link_target()`; deleted all
+  three per-type impls incl. `get_player_info_at_index` index math. Pinned latent-bug test
+  renamed `..._is_fixed`, asserts correct push.
+- `CellValue::PlayerLink` extended with sweater_number/last_name so player rows carry their
+  full destination at build time (table.rs — outside the plan's file list, necessary, disclosed).
+- ScoresTab `ActivateGame` reads the typed target; discovered `open_boxscore_*` was already
+  dead (never read). `Action::SelectGame` kept for the "Enter with nothing focused" path.
+- Settings: hardcoded toggle-vs-modal key list replaced by EditSetting/ToggleSetting match;
+  agent had to pull forward a sliver of F2 (settings never populated `link_targets` — now
+  load-bearing, populated in SettingsTab::init + navigate_category).
+- 19 files, +794/−694 (net +100; deletions land in F1/F2/F4 per plan). Tests 668→661 dev
+  (rewrote activate tests through populate+activate; consolidated dupes), 644 default, all
+  green; acceptance greps all empty; fmt/clippy clean across matrix. Tamper check clean.
+- AWAITING: user TTY spot-check (scores→boxscore→player→team, standings→team, settings
+  edit/toggle) + commit, then F2.
+
 ## Verify command (after each phase)
 ```
 cargo build --features development && cargo test --features development && \

@@ -23,7 +23,6 @@ use crate::tui::action::Action;
 use crate::tui::component::Effect;
 use crate::tui::document_nav::{DocumentNavMsg, DocumentNavState};
 use crate::tui::tab_component::{handle_common_message, CommonTabMessage, TabMessage, TabState};
-use crate::tui::types::StackedDocument;
 
 /// Component state for StandingsTab - managed by the component itself
 #[derive(Clone, Debug)]
@@ -116,8 +115,27 @@ impl Component for StandingsTab {
     type State = StandingsTabState;
     type Message = StandingsTabMsg;
 
-    fn init(_props: &Self::Props) -> Self::State {
-        StandingsTabState::default()
+    fn init(props: &Self::Props) -> Self::State {
+        use crate::tui::components::WildcardStandingsDocument;
+        use crate::tui::document::Document;
+
+        let mut state = StandingsTabState::default();
+        // Component state is created lazily on first render, which can happen AFTER
+        // StandingsLoaded already ran rebuild_standings_focusable_metadata against a
+        // store that had no standings state yet. Populate metadata for the default
+        // view from the data in props, or Down in view-selection mode finds no
+        // focusables and browse mode can never be entered.
+        // state.view is GroupBy::Wildcard here (StandingsTabState::default()), so the
+        // wildcard document is the right one to build.
+        if let Some(standings) = props.standings.as_ref().as_ref() {
+            let doc =
+                WildcardStandingsDocument::new(Arc::new(standings.clone()), props.config.clone());
+            state.doc_nav.focusable_positions = doc.focusable_positions();
+            state.doc_nav.focusable_ids = doc.focusable_ids();
+            state.doc_nav.focusable_row_positions = doc.focusable_row_positions();
+            state.doc_nav.link_targets = doc.focusable_link_targets();
+        }
+        state
     }
 
     fn update(&mut self, msg: Self::Message, state: &mut Self::State) -> Effect {
@@ -161,20 +179,12 @@ impl Component for StandingsTab {
                 Effect::None
             }
 
-            StandingsTabMsg::ActivateTeam => {
-                // Get the team abbreviation from the focused element's link target
-                if let Some(crate::tui::document::LinkTarget::Action(action)) =
-                    state.doc_nav().focused_link_target()
-                {
-                    // Parse "team:TOR" format
-                    if let Some(abbrev) = action.strip_prefix("team:") {
-                        return Effect::Action(Action::PushDocument(StackedDocument::TeamDetail {
-                            abbrev: abbrev.to_string(),
-                        }));
-                    }
+            StandingsTabMsg::ActivateTeam => match state.doc_nav().focused_link_target() {
+                Some(crate::tui::document::LinkTarget::Push(doc)) => {
+                    Effect::Action(Action::PushDocument(doc.clone()))
                 }
-                Effect::None
-            }
+                _ => Effect::None,
+            },
 
             // Common messages already handled above
             StandingsTabMsg::DocNav(_)
@@ -374,6 +384,51 @@ mod tests {
     use ratatui::{buffer::Buffer, layout::Rect};
     const RENDER_WIDTH: u16 = 120;
     const RENDER_HEIGHT: u16 = 40;
+
+    /// Regression test: component state is created lazily on first render, which
+    /// can be AFTER StandingsLoaded already ran its metadata rebuild against a
+    /// store with no standings state. init() must therefore populate focusable
+    /// metadata itself when data is available, or EnterBrowseMode (Down in
+    /// view-selection mode) finds no focusables and silently does nothing.
+    #[test]
+    fn test_init_populates_focusable_metadata_when_standings_present() {
+        let props = StandingsTabProps {
+            standings: Arc::new(Some(create_test_standings())),
+            document_stack: Vec::new(),
+            focused: true,
+            config: Arc::new(Config::default()),
+            animation_frame: 0,
+        };
+
+        let mut state = StandingsTab::init(&props);
+
+        assert!(
+            !state.doc_nav.focusable_positions.is_empty(),
+            "init with standings data must produce focusable metadata"
+        );
+        assert_eq!(
+            state.doc_nav.focusable_ids.len(),
+            state.doc_nav.link_targets.len(),
+            "link_targets must be populated alongside ids"
+        );
+        // The actual user-visible symptom: entering browse mode must focus a team.
+        state.focus_first_item();
+        assert_eq!(state.doc_nav.focus_index, Some(0));
+    }
+
+    #[test]
+    fn test_init_with_no_standings_leaves_metadata_empty() {
+        let props = StandingsTabProps {
+            standings: Arc::new(None),
+            document_stack: Vec::new(),
+            focused: true,
+            config: Arc::new(Config::default()),
+            animation_frame: 0,
+        };
+
+        let state = StandingsTab::init(&props);
+        assert!(state.doc_nav.focusable_positions.is_empty());
+    }
 
     #[test]
     fn test_standings_tab_renders_with_no_standings() {
@@ -792,9 +847,15 @@ mod tests {
 
         // Set link targets for teams (what table cells now use)
         state.doc_nav.link_targets = vec![
-            Some(LinkTarget::Action("team:TOR".to_string())),
-            Some(LinkTarget::Action("team:BOS".to_string())),
-            Some(LinkTarget::Action("team:MTL".to_string())),
+            Some(LinkTarget::Push(StackedDocument::TeamDetail {
+                abbrev: "TOR".to_string(),
+            })),
+            Some(LinkTarget::Push(StackedDocument::TeamDetail {
+                abbrev: "BOS".to_string(),
+            })),
+            Some(LinkTarget::Push(StackedDocument::TeamDetail {
+                abbrev: "MTL".to_string(),
+            })),
         ];
 
         // Set focus to second team (BOS)
@@ -815,6 +876,7 @@ mod tests {
     fn test_activate_team_without_focus_does_nothing() {
         use crate::tui::component::{Component, Effect};
         use crate::tui::document::LinkTarget;
+        use crate::tui::types::StackedDocument;
 
         let mut standings_tab = StandingsTab;
         let mut state = StandingsTabState {
@@ -823,7 +885,9 @@ mod tests {
         };
 
         // Set link targets for teams
-        state.doc_nav.link_targets = vec![Some(LinkTarget::Action("team:TOR".to_string()))];
+        state.doc_nav.link_targets = vec![Some(LinkTarget::Push(StackedDocument::TeamDetail {
+            abbrev: "TOR".to_string(),
+        }))];
 
         // No focus set
         state.doc_nav.focus_index = None;

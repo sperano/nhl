@@ -9,7 +9,7 @@ use crate::component_message_impl;
 use crate::config::RenderContext;
 use crate::tui::action::Action;
 use crate::tui::component::{Component, Effect, Element, ElementWidget};
-use crate::tui::document::DocumentView;
+use crate::tui::document::{DocumentView, LinkTarget};
 use crate::tui::document_nav::{DocumentNavMsg, DocumentNavState};
 use crate::tui::tab_component::{handle_common_message, CommonTabMessage, TabMessage, TabState};
 
@@ -164,29 +164,14 @@ impl Component for ScoresTab {
                 Effect::None
             }
 
-            // Game activation
-            ScoresTabMsg::ActivateGame => {
-                if let Some(focus_idx) = state.doc_nav().focus_index {
-                    if let Some(crate::tui::document::FocusableId::GameLink(game_id)) =
-                        state.doc_nav().focusable_ids.get(focus_idx)
-                    {
-                        return Effect::Action(Action::SelectGame(*game_id));
-                    }
-                    // Fallback for Link IDs (legacy format)
-                    if let Some(crate::tui::document::FocusableId::Link(link_id)) =
-                        state.doc_nav().focusable_ids.get(focus_idx)
-                    {
-                        // Parse "game_12345" -> 12345
-                        if let Some(game_id) = link_id
-                            .strip_prefix("game_")
-                            .and_then(|s| s.parse::<i64>().ok())
-                        {
-                            return Effect::Action(Action::SelectGame(game_id));
-                        }
-                    }
-                }
-                Effect::None
-            }
+            // Game activation: the focused score box carries its own
+            // `LinkTarget::Push(Boxscore { .. })`, attached when the document
+            // was built (see `ScoreBoxesDocument::build_link_target`), so
+            // there's no need to re-derive the game's abbrevs/scores here.
+            ScoresTabMsg::ActivateGame => match state.doc_nav().focused_link_target() {
+                Some(LinkTarget::Push(doc)) => Effect::Action(Action::PushDocument(doc.clone())),
+                _ => Effect::None,
+            },
 
             // Common messages already handled above
             ScoresTabMsg::DocNav(_)
@@ -370,5 +355,43 @@ mod tests {
             _ => panic!("Expected container element"),
         }
     }
-    //
+
+    #[test]
+    fn test_activate_game_pushes_boxscore_document() {
+        use crate::tui::component::Component;
+        use crate::tui::types::StackedDocument;
+
+        let mut scores_tab = ScoresTab;
+        let mut state = ScoresTabState::default();
+
+        let doc = StackedDocument::Boxscore {
+            game_id: 2024020001,
+            away_abbrev: "TOR".to_string(),
+            home_abbrev: "MTL".to_string(),
+            away_score: 3,
+            home_score: 2,
+            game_date: "10/04".to_string(),
+        };
+        state.doc_nav.link_targets = vec![Some(LinkTarget::Push(doc.clone()))];
+        state.doc_nav.focus_index = Some(0);
+
+        let effect = scores_tab.update(ScoresTabMsg::ActivateGame, &mut state);
+
+        match effect {
+            Effect::Action(Action::PushDocument(pushed)) => assert_eq!(pushed, doc),
+            _ => panic!("Expected PushDocument action, got {:?}", effect),
+        }
+    }
+
+    #[test]
+    fn test_activate_game_without_focus_does_nothing() {
+        use crate::tui::component::Component;
+
+        let mut scores_tab = ScoresTab;
+        let mut state = ScoresTabState::default();
+
+        let effect = scores_tab.update(ScoresTabMsg::ActivateGame, &mut state);
+
+        assert!(matches!(effect, Effect::None));
+    }
 }

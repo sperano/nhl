@@ -45,7 +45,7 @@ impl SettingsDocument {
                     self.config.log_level,
                     width = LABEL_WIDTH
                 ),
-                LinkTarget::Action("edit:log_level".to_string()),
+                LinkTarget::EditSetting("log_level".to_string()),
                 focus,
             )
             .spacer(1)
@@ -80,7 +80,7 @@ impl SettingsDocument {
             .link_with_focus(
                 "theme",
                 format!("{:width$}   {}", "Theme:", theme_name, width = LABEL_WIDTH),
-                LinkTarget::Action("edit:theme".to_string()),
+                LinkTarget::EditSetting("theme".to_string()),
                 focus,
             )
             .spacer(1)
@@ -92,7 +92,7 @@ impl SettingsDocument {
                     self.config.display.use_unicode,
                     width = LABEL_WIDTH
                 ),
-                LinkTarget::Action("toggle:use_unicode".to_string()),
+                LinkTarget::ToggleSetting("use_unicode".to_string()),
                 focus,
             )
             .spacer(1)
@@ -131,7 +131,7 @@ impl SettingsDocument {
                     self.config.display_standings_western_first,
                     width = LABEL_WIDTH
                 ),
-                LinkTarget::Action("toggle:western_teams_first".to_string()),
+                LinkTarget::ToggleSetting("western_teams_first".to_string()),
                 focus,
             )
             .spacer(1)

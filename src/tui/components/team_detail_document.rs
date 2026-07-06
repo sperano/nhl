@@ -178,6 +178,9 @@ fn skater_columns() -> Vec<ColumnDef<ClubSkaterStats>> {
             CellValue::PlayerLink {
                 display: format!("{} {}", s.first_name.default, s.last_name.default),
                 player_id: s.player_id,
+                // ClubSkaterStats doesn't carry a sweater number.
+                sweater_number: None,
+                last_name: s.last_name.default.clone(),
             }
         }),
         ColumnDef::new("Pos", 3, Alignment::Left, |s: &ClubSkaterStats| {
@@ -211,6 +214,9 @@ fn goalie_columns() -> Vec<ColumnDef<ClubGoalieStats>> {
             CellValue::PlayerLink {
                 display: format!("{} {}", g.first_name.default, g.last_name.default),
                 player_id: g.player_id,
+                // ClubGoalieStats doesn't carry a sweater number.
+                sweater_number: None,
+                last_name: g.last_name.default.clone(),
             }
         }),
         ColumnDef::new("GP", 4, Alignment::Right, |g: &ClubGoalieStats| {

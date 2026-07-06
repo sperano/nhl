@@ -169,6 +169,9 @@ fn handle_schedule_loaded(
                 scores_state.doc_nav.focusable_heights = doc.focusable_heights();
                 scores_state.doc_nav.focusable_ids = doc.focusable_ids();
                 scores_state.doc_nav.focusable_row_positions = doc.focusable_row_positions();
+                // link_targets is load-bearing for ActivateGame (Enter on a focused box
+                // pushes the target's boxscore document) - it must be synced here too.
+                scores_state.doc_nav.link_targets = doc.focusable_link_targets();
             }
 
             // Return fetch effects for started games
@@ -388,5 +391,43 @@ mod tests {
         // 3. Loading key is removed
         //
         // This is verified by the code review showing lines 88-92 extract period_scores
+    }
+
+    /// Regression test: the scores metadata sync must populate link_targets.
+    /// ActivateGame reads focused_link_target() to push the boxscore document;
+    /// when this site skipped link_targets, Enter on a focused game silently
+    /// did nothing.
+    #[test]
+    fn test_schedule_loaded_populates_scores_link_targets() {
+        use crate::fixtures::create_mock_schedule;
+        use crate::tui::component_store::ComponentStateStore;
+        use crate::tui::components::scores_tab::ScoresTabState;
+        use crate::tui::document::LinkTarget;
+        use crate::tui::types::StackedDocument;
+
+        let mut store = ComponentStateStore::new();
+        store.insert(SCORES_TAB_PATH.to_string(), ScoresTabState::default());
+
+        let schedule = create_mock_schedule(None);
+        let expected_game_id = schedule.games[0].id;
+        let (_state, _effect) =
+            handle_schedule_loaded(AppState::default(), Ok(schedule), &mut store);
+
+        let scores = store.get::<ScoresTabState>(SCORES_TAB_PATH).unwrap();
+        let nav = &scores.doc_nav;
+        assert_eq!(
+            nav.link_targets.len(),
+            nav.focusable_ids.len(),
+            "link_targets must be synced alongside the other focusable metadata"
+        );
+        assert!(
+            matches!(
+                nav.link_targets.first(),
+                Some(Some(LinkTarget::Push(StackedDocument::Boxscore { game_id, .. })))
+                    if *game_id == expected_game_id
+            ),
+            "first game box must carry a Push(Boxscore) target, got {:?}",
+            nav.link_targets.first()
+        );
     }
 }

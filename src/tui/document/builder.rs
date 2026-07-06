@@ -223,7 +223,9 @@ impl DocumentBuilder {
     /// let doc = DocumentBuilder::new()
     ///     .heading(1, "Teams")
     ///     .for_each(teams.iter(), |b, team| {
-    ///         b.link(&team.name, LinkTarget::Document(DocumentLink::team(&team.abbrev)))
+    ///         b.link(&team.name, LinkTarget::Push(StackedDocument::TeamDetail {
+    ///             abbrev: team.abbrev.clone(),
+    ///         }))
     ///     })
     ///     .build();
     /// ```
@@ -339,7 +341,7 @@ impl DocumentBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tui::document::link::DocumentLink;
+    use crate::tui::types::StackedDocument;
 
     #[test]
     fn test_builder_new() {
@@ -380,7 +382,9 @@ mod tests {
 
     #[test]
     fn test_builder_link() {
-        let target = LinkTarget::Document(DocumentLink::team("BOS"));
+        let target = LinkTarget::Push(StackedDocument::TeamDetail {
+            abbrev: "BOS".to_string(),
+        });
         let elements = DocumentBuilder::new().link("Boston Bruins", target).build();
 
         assert_eq!(elements.len(), 1);
@@ -388,7 +392,7 @@ mod tests {
 
     #[test]
     fn test_builder_link_with_id() {
-        let target = LinkTarget::Action("test".to_string());
+        let target = LinkTarget::Anchor("test".to_string());
         let elements = DocumentBuilder::new()
             .link_with_id("custom_id", "Click me", target)
             .build();
@@ -546,7 +550,12 @@ mod tests {
             .heading(1, "NHL Teams")
             .spacer(1)
             .for_each(teams.iter(), |b, (abbrev, name)| {
-                b.link(*name, LinkTarget::Document(DocumentLink::team(*abbrev)))
+                b.link(
+                    *name,
+                    LinkTarget::Push(StackedDocument::TeamDetail {
+                        abbrev: abbrev.to_string(),
+                    }),
+                )
             })
             .separator()
             .text("Click a team for details")

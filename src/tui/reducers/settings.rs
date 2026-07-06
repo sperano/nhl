@@ -117,6 +117,7 @@ fn navigate_category(
         settings_state.doc_nav.focusable_positions = doc.focusable_positions();
         settings_state.doc_nav.focusable_ids = doc.focusable_ids();
         settings_state.doc_nav.focusable_row_positions = doc.focusable_row_positions();
+        settings_state.doc_nav.link_targets = doc.focusable_link_targets();
     }
 
     (new_state, Effect::None)
@@ -221,6 +222,10 @@ mod tests {
         assert_eq!(
             settings_state.doc_nav.focusable_row_positions,
             expected_doc.focusable_row_positions()
+        );
+        assert_eq!(
+            settings_state.doc_nav.link_targets,
+            expected_doc.focusable_link_targets()
         );
         // Sanity check: Display category actually has focusable settings, so this
         // test would fail loudly (rather than vacuously) if rebuilding broke.

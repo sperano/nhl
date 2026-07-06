@@ -10,7 +10,7 @@ use super::state::{AppState, SystemState};
 use super::types::StackedDocument;
 
 /// Format GameDate for breadcrumb display (MM/DD)
-fn format_date_for_breadcrumb(date: &GameDate) -> String {
+pub(crate) fn format_date_for_breadcrumb(date: &GameDate) -> String {
     match date {
         GameDate::Date(naive_date) => naive_date.format("%m/%d").to_string(),
         GameDate::Now => chrono::Local::now()

@@ -424,6 +424,8 @@ mod tests {
                 CellValue::PlayerLink {
                     display: r.name.clone(),
                     player_id: r.id,
+                    sweater_number: None,
+                    last_name: String::new(),
                 }
             }),
             ColumnDef::new("G", 4, Alignment::Right, |r: &TestRow| {
@@ -612,6 +614,8 @@ mod tests {
                 CellValue::PlayerLink {
                     display: r.name.clone(),
                     player_id: r.id,
+                    sweater_number: None,
+                    last_name: String::new(),
                 }
             }),
             ColumnDef::new("Text2", 10, Alignment::Left, |_: &TestRow| {
@@ -649,6 +653,8 @@ mod tests {
                 CellValue::PlayerLink {
                     display: r.name.clone(),
                     player_id: r.id,
+                    sweater_number: None,
+                    last_name: String::new(),
                 }
             }),
             ColumnDef::new("Text1", 10, Alignment::Left, |_: &TestRow| {
@@ -687,6 +693,8 @@ mod tests {
                 CellValue::PlayerLink {
                     display: r.name.clone(),
                     player_id: r.id,
+                    sweater_number: None,
+                    last_name: String::new(),
                 }
             }),
             ColumnDef::new("Text2", 10, Alignment::Left, |_: &TestRow| {
@@ -725,6 +733,8 @@ mod tests {
                 CellValue::PlayerLink {
                     display: r.name.clone(),
                     player_id: r.id,
+                    sweater_number: None,
+                    last_name: String::new(),
                 }
             }),
             ColumnDef::new("Value", 10, Alignment::Right, |r: &TestRow| {
@@ -769,6 +779,8 @@ mod tests {
                 CellValue::PlayerLink {
                     display: r.name.clone(),
                     player_id: r.id,
+                    sweater_number: None,
+                    last_name: String::new(),
                 }
             }),
             ColumnDef::new("Team", 15, Alignment::Left, |_: &TestRow| {
@@ -802,6 +814,8 @@ mod tests {
             |r: &TestRow| CellValue::PlayerLink {
                 display: r.name.clone(),
                 player_id: r.id,
+                sweater_number: None,
+                last_name: String::new(),
             },
         )];
 
@@ -855,6 +869,8 @@ mod tests {
                 CellValue::PlayerLink {
                     display: r.name.clone(),
                     player_id: r.id,
+                    sweater_number: None,
+                    last_name: String::new(),
                 }
             }),
             ColumnDef::new("Col1", 10, Alignment::Left, |_: &TestRow| {

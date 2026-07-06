@@ -380,7 +380,8 @@ impl FocusManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tui::document::link::{DocumentLink, LinkTarget};
+    use crate::tui::document::link::LinkTarget;
+    use crate::tui::types::StackedDocument;
 
     fn create_test_elements(count: usize) -> Vec<FocusableElement> {
         (0..count)
@@ -389,7 +390,7 @@ mod tests {
                 y: i as u16 * 2,
                 height: 1,
                 rect: Rect::new(0, i as u16 * 2, 10, 1),
-                link_target: Some(LinkTarget::Action(format!("action_{}", i))),
+                link_target: Some(LinkTarget::Anchor(format!("anchor_{}", i))),
                 row_position: None,
             })
             .collect()
@@ -411,7 +412,7 @@ mod tests {
             "link1",
             0,
             10,
-            LinkTarget::Action("test".to_string()),
+            LinkTarget::Anchor("test".to_string()),
         ));
 
         assert_eq!(fm.len(), 1);
@@ -432,7 +433,7 @@ mod tests {
             "link1",
             0,
             10,
-            LinkTarget::Action("test".to_string()),
+            LinkTarget::Anchor("test".to_string()),
         ));
 
         assert!(fm.focus_next());
@@ -529,7 +530,9 @@ mod tests {
     #[test]
     fn test_activate_current() {
         let mut fm = FocusManager::new();
-        let target = LinkTarget::Document(DocumentLink::team("BOS"));
+        let target = LinkTarget::Push(StackedDocument::TeamDetail {
+            abbrev: "BOS".to_string(),
+        });
         fm.add_element(FocusableElement {
             id: FocusableId::link("team_link"),
             y: 0,
@@ -548,7 +551,7 @@ mod tests {
     #[test]
     fn test_get_current_link() {
         let mut fm = FocusManager::new();
-        let target = LinkTarget::Action("test".to_string());
+        let target = LinkTarget::Anchor("test".to_string());
         fm.add_element(FocusableElement {
             id: FocusableId::link("action_link"),
             y: 0,
@@ -649,7 +652,7 @@ mod tests {
 
     #[test]
     fn test_focusable_element_link() {
-        let target = LinkTarget::Action("test".to_string());
+        let target = LinkTarget::Anchor("test".to_string());
         let elem = FocusableElement::link("my_link", 10, 20, target.clone());
 
         assert_eq!(elem.id, FocusableId::link("my_link"));
@@ -662,7 +665,11 @@ mod tests {
 
     #[test]
     fn test_focusable_element_table_cell() {
-        let target = LinkTarget::Document(DocumentLink::player(12345));
+        let target = LinkTarget::Push(StackedDocument::PlayerDetail {
+            player_id: 12345,
+            sweater_number: None,
+            last_name: "Test".to_string(),
+        });
         let rect = Rect::new(5, 10, 15, 1);
         let elem = FocusableElement::table_cell("standings", 3, 2, rect, Some(target.clone()));
 

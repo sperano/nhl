@@ -20,7 +20,16 @@ pub enum CellValue {
     StyledText(String),
 
     /// Link to player profile (focusable)
-    PlayerLink { display: String, player_id: i64 },
+    PlayerLink {
+        display: String,
+        player_id: i64,
+        /// Player jersey number, when known (carried through to the
+        /// `LinkTarget::Push(StackedDocument::PlayerDetail { .. })` built for
+        /// this cell so activation doesn't need to re-derive it)
+        sweater_number: Option<i32>,
+        /// Player last name, carried through for the same reason
+        last_name: String,
+    },
 
     /// Link to team page (focusable)
     TeamLink {
@@ -56,7 +65,9 @@ impl CellValue {
     pub fn link_info(&self) -> String {
         match self {
             Self::Text(_) | Self::StyledText(_) => "Not a link".to_string(),
-            Self::PlayerLink { display, player_id } => {
+            Self::PlayerLink {
+                display, player_id, ..
+            } => {
                 format!("PlayerLink(display='{}', id={})", display, player_id)
             }
             Self::TeamLink {
@@ -101,6 +112,8 @@ pub enum Alignment {
 ///     |p: &Player| CellValue::PlayerLink {
 ///         display: p.name.clone(),
 ///         player_id: p.id,
+///         sweater_number: None,
+///         last_name: p.name.clone(),
 ///     }
 /// );
 ///
@@ -181,6 +194,8 @@ mod tests {
         let player_link = CellValue::PlayerLink {
             display: "Connor McDavid".to_string(),
             player_id: 8478402,
+            sweater_number: None,
+            last_name: "Test".to_string(),
         };
         assert!(player_link.is_link());
 
@@ -202,6 +217,8 @@ mod tests {
         let player_link = CellValue::PlayerLink {
             display: "Connor McDavid".to_string(),
             player_id: 8478402,
+            sweater_number: None,
+            last_name: "Test".to_string(),
         };
         assert!(player_link.receives_selection_style());
 
@@ -223,6 +240,8 @@ mod tests {
         let player_link = CellValue::PlayerLink {
             display: "Connor McDavid".to_string(),
             player_id: 8478402,
+            sweater_number: None,
+            last_name: "Test".to_string(),
         };
         assert_eq!(player_link.display_text(), "Connor McDavid");
 
@@ -244,6 +263,8 @@ mod tests {
         let player_link = CellValue::PlayerLink {
             display: "Connor McDavid".to_string(),
             player_id: 8478402,
+            sweater_number: None,
+            last_name: "Test".to_string(),
         };
         assert_eq!(
             player_link.link_info(),
@@ -309,6 +330,8 @@ mod tests {
             CellValue::PlayerLink {
                 display: p.name.clone(),
                 player_id: p.id,
+                sweater_number: None,
+                last_name: p.name.clone(),
             }
         });
 
@@ -367,14 +390,20 @@ mod tests {
         let player1 = CellValue::PlayerLink {
             display: "Player".to_string(),
             player_id: 123,
+            sweater_number: None,
+            last_name: "Test".to_string(),
         };
         let player2 = CellValue::PlayerLink {
             display: "Player".to_string(),
             player_id: 123,
+            sweater_number: None,
+            last_name: "Test".to_string(),
         };
         let player3 = CellValue::PlayerLink {
             display: "Player".to_string(),
             player_id: 456,
+            sweater_number: None,
+            last_name: "Test".to_string(),
         };
 
         assert_eq!(player1, player2);

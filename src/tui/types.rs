@@ -14,7 +14,7 @@ pub enum Tab {
 }
 
 /// Document types for drill-down views (pushed onto document stack)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum StackedDocument {
     Boxscore {
         game_id: i64,

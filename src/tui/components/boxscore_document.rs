@@ -218,6 +218,8 @@ fn game_skater_columns() -> Vec<ColumnDef<SkaterStats>> {
             CellValue::PlayerLink {
                 display: s.name.default.clone(),
                 player_id: s.player_id,
+                sweater_number: Some(s.sweater_number),
+                last_name: s.name.default.clone(),
             }
         }),
         ColumnDef::new("Pos", 3, Alignment::Center, |s: &SkaterStats| {
@@ -283,6 +285,8 @@ fn game_goalie_columns(box_chars: &crate::formatting::BoxChars) -> Vec<ColumnDef
             CellValue::PlayerLink {
                 display: g.name.default.clone(),
                 player_id: g.player_id,
+                sweater_number: Some(g.sweater_number),
+                last_name: g.name.default.clone(),
             }
         }),
         ColumnDef::new("DEC", 3, Alignment::Center, |g: &GoalieStats| {

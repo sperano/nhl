@@ -109,28 +109,10 @@ impl Component for DemoTab {
         match msg {
             DemoTabMsg::Key(key) => self.handle_key(key, state),
 
-            DemoTabMsg::ActivateLink => {
-                // Get the link target from the focused element
-                if let Some(LinkTarget::Action(action)) = state.focused_link_target() {
-                    // Parse "team:BOS" or "player:12345" format
-                    if let Some(abbrev) = action.strip_prefix("team:") {
-                        return Effect::Action(Action::PushDocument(StackedDocument::TeamDetail {
-                            abbrev: abbrev.to_string(),
-                        }));
-                    } else if let Some(player_id_str) = action.strip_prefix("player:") {
-                        if let Ok(player_id) = player_id_str.parse::<i64>() {
-                            return Effect::Action(Action::PushDocument(
-                                StackedDocument::PlayerDetail {
-                                    player_id,
-                                    sweater_number: None,
-                                    last_name: format!("Player {}", player_id),
-                                },
-                            ));
-                        }
-                    }
-                }
-                Effect::None
-            }
+            DemoTabMsg::ActivateLink => match state.focused_link_target() {
+                Some(LinkTarget::Push(doc)) => Effect::Action(Action::PushDocument(doc.clone())),
+                _ => Effect::None,
+            },
 
             DemoTabMsg::EnterFocus => {
                 // Focus first item (global focus_in_content already set by reducer)
@@ -354,28 +336,36 @@ impl Document for DemoDocument {
             .link_with_focus(
                 "link_bos",
                 "Boston Bruins",
-                LinkTarget::Action("team:BOS".to_string()),
+                LinkTarget::Push(StackedDocument::TeamDetail {
+                    abbrev: "BOS".to_string(),
+                }),
                 focus,
             )
             .spacer(1)
             .link_with_focus(
                 "link_tor",
                 "Toronto Maple Leafs",
-                LinkTarget::Action("team:TOR".to_string()),
+                LinkTarget::Push(StackedDocument::TeamDetail {
+                    abbrev: "TOR".to_string(),
+                }),
                 focus,
             )
             .spacer(1)
             .link_with_focus(
                 "link_nyr",
                 "New York Rangers",
-                LinkTarget::Action("team:NYR".to_string()),
+                LinkTarget::Push(StackedDocument::TeamDetail {
+                    abbrev: "NYR".to_string(),
+                }),
                 focus,
             )
             .spacer(1)
             .link_with_focus(
                 "link_mtl",
                 "Montreal Canadiens",
-                LinkTarget::Action("team:MTL".to_string()),
+                LinkTarget::Push(StackedDocument::TeamDetail {
+                    abbrev: "MTL".to_string(),
+                }),
                 focus,
             )
             .spacer(1)
@@ -520,10 +510,18 @@ mod tests {
         // The first 4 focusable elements are team links (BOS, TOR, NYR, MTL)
         state.focus_index = Some(0); // BOS link
         state.link_targets = vec![
-            Some(LinkTarget::Action("team:BOS".to_string())),
-            Some(LinkTarget::Action("team:TOR".to_string())),
-            Some(LinkTarget::Action("team:NYR".to_string())),
-            Some(LinkTarget::Action("team:MTL".to_string())),
+            Some(LinkTarget::Push(StackedDocument::TeamDetail {
+                abbrev: "BOS".to_string(),
+            })),
+            Some(LinkTarget::Push(StackedDocument::TeamDetail {
+                abbrev: "TOR".to_string(),
+            })),
+            Some(LinkTarget::Push(StackedDocument::TeamDetail {
+                abbrev: "NYR".to_string(),
+            })),
+            Some(LinkTarget::Push(StackedDocument::TeamDetail {
+                abbrev: "MTL".to_string(),
+            })),
         ];
 
         let effect = demo_tab.update(DemoTabMsg::ActivateLink, &mut state);
@@ -547,7 +545,11 @@ mod tests {
 
         // Set up state with a focused player link
         state.focus_index = Some(0);
-        state.link_targets = vec![Some(LinkTarget::Action("player:8477492".to_string()))];
+        state.link_targets = vec![Some(LinkTarget::Push(StackedDocument::PlayerDetail {
+            player_id: 8477492,
+            sweater_number: None,
+            last_name: "Player 8477492".to_string(),
+        }))];
 
         let effect = demo_tab.update(DemoTabMsg::ActivateLink, &mut state);
 
@@ -573,7 +575,9 @@ mod tests {
 
         // No focus index set
         state.focus_index = None;
-        state.link_targets = vec![Some(LinkTarget::Action("team:BOS".to_string()))];
+        state.link_targets = vec![Some(LinkTarget::Push(StackedDocument::TeamDetail {
+            abbrev: "BOS".to_string(),
+        }))];
 
         let effect = demo_tab.update(DemoTabMsg::ActivateLink, &mut state);
 

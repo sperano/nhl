@@ -13,7 +13,9 @@ use crate::component_message_impl;
 use crate::config::{Config, RenderContext};
 use crate::tui::component::{Component, Effect, Element, ElementWidget};
 use crate::tui::components::{SettingsDocument, TabItem, TabbedPanel, TabbedPanelProps};
-use crate::tui::document::{DocumentView, FocusableId};
+use crate::tui::document::DocumentView;
+#[cfg(test)]
+use crate::tui::document::FocusableId;
 use crate::tui::document_nav::{DocumentNavMsg, DocumentNavState};
 use crate::tui::settings_helpers::ModalOption;
 use crate::tui::tab_component::{handle_common_message, CommonTabMessage, TabMessage, TabState};
@@ -126,6 +128,7 @@ impl Component for SettingsTab {
         state.doc_nav.focusable_positions = doc.focusable_positions();
         state.doc_nav.focusable_ids = doc.focusable_ids();
         state.doc_nav.focusable_row_positions = doc.focusable_row_positions();
+        state.doc_nav.link_targets = doc.focusable_link_targets();
         state
     }
 
@@ -167,51 +170,47 @@ impl Component for SettingsTab {
                 Effect::None
             }
             SettingsTabMsg::ActivateSetting(config) => {
+                use crate::tui::document::LinkTarget;
                 use crate::tui::settings_helpers::{
                     find_initial_modal_index, get_setting_modal_options,
                 };
 
-                // Get the currently focused setting link
-                if let Some(focus_idx) = state.doc_nav().focus_index {
-                    if let Some(FocusableId::Link(link_id)) =
-                        state.doc_nav().focusable_ids.get(focus_idx)
-                    {
-                        // Parse the link ID which is the setting key (e.g., "log_level", "theme")
+                let Some(focus_idx) = state.doc_nav().focus_index else {
+                    return Effect::None;
+                };
 
-                        let effect = match link_id.as_str() {
-                            "use_unicode" | "western_teams_first" => {
-                                Effect::Action(Action::SettingsAction(
-                                    SettingsAction::ToggleBoolean(link_id.clone()),
-                                ))
-                            }
-                            "log_level" | "theme" => {
-                                let options = get_setting_modal_options(link_id);
-                                let selected_index = find_initial_modal_index(&config, link_id);
-
-                                let position_y = state
-                                    .doc_nav()
-                                    .focusable_positions
-                                    .get(focus_idx)
-                                    .copied()
-                                    .unwrap_or(0);
-                                let position_x = 10;
-
-                                state.modal = Some(ModalState {
-                                    options,
-                                    selected_index,
-                                    setting_key: link_id.clone(),
-                                    position_x,
-                                    position_y,
-                                });
-
-                                Effect::None
-                            }
-                            _ => Effect::None,
-                        };
-                        return effect;
+                // The setting's own link declares whether Enter should toggle
+                // it directly or open a selection modal (see settings_document.rs);
+                // this used to be re-derived here from a hardcoded list of key
+                // names kept in sync by hand.
+                match state.doc_nav().focused_link_target().cloned() {
+                    Some(LinkTarget::ToggleSetting(key)) => {
+                        Effect::Action(Action::SettingsAction(SettingsAction::ToggleBoolean(key)))
                     }
+                    Some(LinkTarget::EditSetting(key)) => {
+                        let options = get_setting_modal_options(&key);
+                        let selected_index = find_initial_modal_index(&config, &key);
+
+                        let position_y = state
+                            .doc_nav()
+                            .focusable_positions
+                            .get(focus_idx)
+                            .copied()
+                            .unwrap_or(0);
+                        let position_x = 10;
+
+                        state.modal = Some(ModalState {
+                            options,
+                            selected_index,
+                            setting_key: key,
+                            position_x,
+                            position_y,
+                        });
+
+                        Effect::None
+                    }
+                    _ => Effect::None,
                 }
-                Effect::None
             }
             SettingsTabMsg::Modal(modal_msg) => {
                 if let Some(modal) = &mut state.modal {
@@ -682,5 +681,83 @@ mod tests {
             ids,
             vec![FocusableId::Link("western_teams_first".to_string())]
         );
+    }
+
+    #[test]
+    fn test_activate_setting_toggle_dispatches_toggle_boolean() {
+        use crate::tui::action::{Action, SettingsAction};
+        use crate::tui::document::LinkTarget;
+
+        let mut settings_tab = SettingsTab;
+        let props = SettingsTabProps {
+            config: Arc::new(Config::default()),
+            selected_category: SettingsCategory::Data,
+            focused: true,
+        };
+        let mut state = SettingsTab::init(&props);
+        state.doc_nav.focus_index = Some(0);
+
+        // Sanity check: the "western_teams_first" row is declared as a
+        // ToggleSetting link by settings_document.rs.
+        assert_eq!(
+            state.doc_nav.link_targets,
+            vec![Some(LinkTarget::ToggleSetting(
+                "western_teams_first".to_string()
+            ))]
+        );
+
+        let effect = settings_tab.update(
+            SettingsTabMsg::ActivateSetting(props.config.as_ref().clone()),
+            &mut state,
+        );
+
+        match effect {
+            Effect::Action(Action::SettingsAction(SettingsAction::ToggleBoolean(key))) => {
+                assert_eq!(key, "western_teams_first");
+            }
+            _ => panic!("Expected ToggleBoolean action, got {:?}", effect),
+        }
+        assert!(state.modal.is_none());
+    }
+
+    #[test]
+    fn test_activate_setting_edit_opens_modal() {
+        let mut settings_tab = SettingsTab;
+        let props = SettingsTabProps {
+            config: Arc::new(Config::default()),
+            selected_category: SettingsCategory::Logging,
+            focused: true,
+        };
+        let mut state = SettingsTab::init(&props);
+        state.doc_nav.focus_index = Some(0);
+
+        let effect = settings_tab.update(
+            SettingsTabMsg::ActivateSetting(props.config.as_ref().clone()),
+            &mut state,
+        );
+
+        assert!(matches!(effect, Effect::None));
+        let modal = state.modal.expect("expected modal to open for log_level");
+        assert_eq!(modal.setting_key, "log_level");
+    }
+
+    #[test]
+    fn test_activate_setting_without_focus_does_nothing() {
+        let mut settings_tab = SettingsTab;
+        let props = SettingsTabProps {
+            config: Arc::new(Config::default()),
+            selected_category: SettingsCategory::Logging,
+            focused: true,
+        };
+        let mut state = SettingsTab::init(&props);
+        // No focus set.
+
+        let effect = settings_tab.update(
+            SettingsTabMsg::ActivateSetting(props.config.as_ref().clone()),
+            &mut state,
+        );
+
+        assert!(matches!(effect, Effect::None));
+        assert!(state.modal.is_none());
     }
 }

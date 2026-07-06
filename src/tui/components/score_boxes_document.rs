@@ -11,7 +11,11 @@ use nhl_api::{DailySchedule, GameDate, GameMatchup};
 use crate::commands::scores_format::format_period_text;
 use crate::layout_constants::SCORE_BOX_WIDTH;
 use crate::team_abbrev::abbrev_to_common_name;
-use crate::tui::document::{Document, DocumentBuilder, DocumentElement, FocusContext, FocusableId};
+use crate::tui::document::{
+    Document, DocumentBuilder, DocumentElement, FocusContext, FocusableId, LinkTarget,
+};
+use crate::tui::reducer::format_date_for_breadcrumb;
+use crate::tui::types::StackedDocument;
 use crate::tui::widgets::{loading_animation::loading_animation_text, ScoreBox, ScoreBoxStatus};
 
 /// Gap between score boxes in characters
@@ -140,6 +144,31 @@ impl ScoreBoxesDocument {
 
         ScoreBox::new(away_team, home_team, away_score, home_score, status)
     }
+
+    /// Build the activation target for a game's score box
+    ///
+    /// Resolves the same away/home abbrev and score data `create_score_box`
+    /// uses for display, so the pushed `StackedDocument::Boxscore` always
+    /// matches what's on screen.
+    fn build_link_target(&self, game: &nhl_api::ScheduleGame) -> LinkTarget {
+        let (away_score, home_score) = if let Some(info) = self.game_info.get(&game.id) {
+            (info.away_team.score, info.home_team.score)
+        } else {
+            (
+                game.away_team.score.unwrap_or(0),
+                game.home_team.score.unwrap_or(0),
+            )
+        };
+
+        LinkTarget::Push(StackedDocument::Boxscore {
+            game_id: game.id,
+            away_abbrev: game.away_team.abbrev.clone(),
+            home_abbrev: game.home_team.abbrev.clone(),
+            away_score,
+            home_score,
+            game_date: format_date_for_breadcrumb(&self.game_date),
+        })
+    }
 }
 
 impl Document for ScoreBoxesDocument {
@@ -177,9 +206,10 @@ impl Document for ScoreBoxesDocument {
 
                     // Create the ScoreBox widget
                     let score_box = self.create_score_box(game);
+                    let link_target = self.build_link_target(game);
 
                     // Use the ScoreBoxElement variant
-                    DocumentElement::score_box_element(game.id, score_box, focused)
+                    DocumentElement::score_box_element(game.id, score_box, focused, link_target)
                 })
                 .collect();
 
@@ -324,6 +354,52 @@ mod tests {
 
         // Should have 2 spacers + 2 rows = 4 elements
         assert_eq!(elements.len(), 4);
+    }
+
+    #[test]
+    fn test_game_box_link_target_pushes_matching_boxscore() {
+        use crate::tui::document::LinkTarget;
+        use crate::tui::types::StackedDocument;
+
+        let game = create_test_game(42, "TOR", "MTL");
+        let schedule = DailySchedule {
+            date: "2024-01-15".to_string(),
+            games: vec![game],
+            next_start_date: None,
+            previous_start_date: None,
+            number_of_games: 1,
+        };
+        let game_date = GameDate::from_ymd(2024, 1, 15).unwrap();
+
+        let doc = ScoreBoxesDocument::new(
+            Arc::new(Some(schedule)),
+            Arc::new(HashMap::new()),
+            2,
+            game_date,
+            0,
+        );
+
+        let targets = doc.focusable_link_targets();
+        assert_eq!(targets.len(), 1);
+        match &targets[0] {
+            Some(LinkTarget::Push(StackedDocument::Boxscore {
+                game_id,
+                away_abbrev,
+                home_abbrev,
+                away_score,
+                home_score,
+                game_date,
+            })) => {
+                assert_eq!(*game_id, 42);
+                assert_eq!(away_abbrev, "TOR");
+                assert_eq!(home_abbrev, "MTL");
+                // create_test_game fixture scores (away 2, home 3).
+                assert_eq!(*away_score, 2);
+                assert_eq!(*home_score, 3);
+                assert_eq!(game_date, "01/15");
+            }
+            other => panic!("expected Push(Boxscore), got {other:?}"),
+        }
     }
 
     #[test]

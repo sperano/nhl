@@ -13,6 +13,7 @@ use crate::big_digits::BIG_DIGIT_HEIGHT;
 use crate::config::RenderContext;
 use crate::tui::component::ElementWidget;
 use crate::tui::components::TableWidget;
+use crate::tui::types::StackedDocument;
 use crate::tui::widgets::{BigScore, BigScoreParams, ScoreBox, StandaloneWidget};
 
 use super::focus::{FocusableElement, FocusableId, RowPosition};
@@ -178,6 +179,9 @@ pub enum DocumentElement {
         score_box: ScoreBox,
         /// Whether this score box is currently focused
         focused: bool,
+        /// Destination pushed when this box is activated, attached by the
+        /// caller at build time (it has the full game data in hand)
+        link_target: LinkTarget,
     },
 
     /// Wrapper that adds left margin to any element
@@ -492,7 +496,10 @@ impl DocumentElement {
                 }
             }
             Self::ScoreBoxElement {
-                game_id, score_box, ..
+                game_id,
+                score_box,
+                link_target,
+                ..
             } => {
                 // ScoreBox is a single focusable element with typed GameLink ID
                 let height = score_box.preferred_height().unwrap_or(6);
@@ -502,7 +509,7 @@ impl DocumentElement {
                     y: y_offset,
                     height,
                     rect: Rect::new(0, y_offset, width, height),
-                    link_target: Some(LinkTarget::Action(format!("open_boxscore_{}", game_id))),
+                    link_target: Some(link_target.clone()),
                     row_position: None,
                 });
             }
@@ -796,11 +803,20 @@ impl DocumentElement {
 
                     // Create LinkTarget based on cell type (used for activation)
                     let link_target = match &cell {
-                        CellValue::PlayerLink { player_id, .. } => {
-                            Some(LinkTarget::Action(format!("player:{}", player_id)))
-                        }
+                        CellValue::PlayerLink {
+                            player_id,
+                            sweater_number,
+                            last_name,
+                            ..
+                        } => Some(LinkTarget::Push(StackedDocument::PlayerDetail {
+                            player_id: *player_id,
+                            sweater_number: *sweater_number,
+                            last_name: last_name.clone(),
+                        })),
                         CellValue::TeamLink { team_abbrev, .. } => {
-                            Some(LinkTarget::Action(format!("team:{}", team_abbrev)))
+                            Some(LinkTarget::Push(StackedDocument::TeamDetail {
+                                abbrev: team_abbrev.clone(),
+                            }))
                         }
                         _ => continue, // Skip non-link cells
                     };
@@ -886,12 +902,19 @@ impl DocumentElement {
     /// - `game_id`: The NHL API game ID (used for activation and as part of the element ID)
     /// - `score_box`: The ScoreBox widget containing score data
     /// - `focused`: Whether this score box is currently focused
-    pub fn score_box_element(game_id: i64, score_box: ScoreBox, focused: bool) -> Self {
+    /// - `link_target`: Destination pushed when this box is activated
+    pub fn score_box_element(
+        game_id: i64,
+        score_box: ScoreBox,
+        focused: bool,
+        link_target: LinkTarget,
+    ) -> Self {
         Self::ScoreBoxElement {
             id: format!("scorebox_{}", game_id),
             game_id,
             score_box,
             focused,
+            link_target,
         }
     }
 
@@ -933,9 +956,16 @@ impl DocumentElement {
                     if let Some(cell) = forwards_table.get_cell_value(row_idx, col_idx) {
                         let y = data_start_y + row_idx as u16;
                         let link_target = match &cell {
-                            CellValue::PlayerLink { player_id, .. } => {
-                                Some(LinkTarget::Action(format!("player:{}", player_id)))
-                            }
+                            CellValue::PlayerLink {
+                                player_id,
+                                sweater_number,
+                                last_name,
+                                ..
+                            } => Some(LinkTarget::Push(StackedDocument::PlayerDetail {
+                                player_id: *player_id,
+                                sweater_number: *sweater_number,
+                                last_name: last_name.clone(),
+                            })),
                             _ => continue,
                         };
                         focusable.push(FocusableElement {
@@ -963,9 +993,16 @@ impl DocumentElement {
                     if let Some(cell) = defense_table.get_cell_value(row_idx, col_idx) {
                         let y = data_start_y + row_idx as u16;
                         let link_target = match &cell {
-                            CellValue::PlayerLink { player_id, .. } => {
-                                Some(LinkTarget::Action(format!("player:{}", player_id)))
-                            }
+                            CellValue::PlayerLink {
+                                player_id,
+                                sweater_number,
+                                last_name,
+                                ..
+                            } => Some(LinkTarget::Push(StackedDocument::PlayerDetail {
+                                player_id: *player_id,
+                                sweater_number: *sweater_number,
+                                last_name: last_name.clone(),
+                            })),
                             _ => continue,
                         };
                         focusable.push(FocusableElement {
@@ -993,9 +1030,16 @@ impl DocumentElement {
                     if let Some(cell) = goalies_table.get_cell_value(row_idx, col_idx) {
                         let y = data_start_y + row_idx as u16;
                         let link_target = match &cell {
-                            CellValue::PlayerLink { player_id, .. } => {
-                                Some(LinkTarget::Action(format!("player:{}", player_id)))
-                            }
+                            CellValue::PlayerLink {
+                                player_id,
+                                sweater_number,
+                                last_name,
+                                ..
+                            } => Some(LinkTarget::Push(StackedDocument::PlayerDetail {
+                                player_id: *player_id,
+                                sweater_number: *sweater_number,
+                                last_name: last_name.clone(),
+                            })),
                             _ => continue,
                         };
                         focusable.push(FocusableElement {
@@ -1069,7 +1113,6 @@ impl DocumentElement {
 mod tests {
     use super::*;
     use crate::config::{DisplayConfig, RenderContext};
-    use crate::tui::document::link::DocumentLink;
     use ratatui::style::Color;
 
     #[test]
@@ -1099,7 +1142,7 @@ mod tests {
     #[test]
     fn test_link_element_height() {
         let elem =
-            DocumentElement::link("link1", "Click me", LinkTarget::Action("test".to_string()));
+            DocumentElement::link("link1", "Click me", LinkTarget::Anchor("test".to_string()));
         assert_eq!(elem.height(), 1);
     }
 
@@ -1130,7 +1173,9 @@ mod tests {
         let elem = DocumentElement::link(
             "my_link",
             "Click here",
-            LinkTarget::Document(DocumentLink::team("BOS")),
+            LinkTarget::Push(StackedDocument::TeamDetail {
+                abbrev: "BOS".to_string(),
+            }),
         );
 
         let mut focusable = Vec::new();
@@ -1146,9 +1191,9 @@ mod tests {
     fn test_collect_focusable_group() {
         let elem = DocumentElement::group(vec![
             DocumentElement::text("Not focusable"),
-            DocumentElement::link("link1", "First", LinkTarget::Action("a".to_string())),
+            DocumentElement::link("link1", "First", LinkTarget::Anchor("a".to_string())),
             DocumentElement::spacer(2),
-            DocumentElement::link("link2", "Second", LinkTarget::Action("b".to_string())),
+            DocumentElement::link("link2", "Second", LinkTarget::Anchor("b".to_string())),
         ]);
 
         let mut focusable = Vec::new();
@@ -1167,9 +1212,9 @@ mod tests {
             DocumentElement::group(vec![DocumentElement::link(
                 "inner1",
                 "Inner",
-                LinkTarget::Action("x".to_string()),
+                LinkTarget::Anchor("x".to_string()),
             )]),
-            DocumentElement::link("outer1", "Outer", LinkTarget::Action("y".to_string())),
+            DocumentElement::link("outer1", "Outer", LinkTarget::Anchor("y".to_string())),
         ]);
 
         let mut focusable = Vec::new();
@@ -1217,7 +1262,7 @@ mod tests {
     #[test]
     fn test_render_link() {
         let elem =
-            DocumentElement::link("test_link", "Click", LinkTarget::Action("test".to_string()));
+            DocumentElement::link("test_link", "Click", LinkTarget::Anchor("test".to_string()));
         let mut buf = Buffer::empty(Rect::new(0, 0, 20, 5));
         let config = DisplayConfig::default();
         let ctx = RenderContext::focused(&config);
@@ -1238,7 +1283,7 @@ mod tests {
         let elem = DocumentElement::focused_link(
             "test_link",
             "Click",
-            LinkTarget::Action("test".to_string()),
+            LinkTarget::Anchor("test".to_string()),
         );
         let mut buf = Buffer::empty(Rect::new(0, 0, 20, 5));
         let config = DisplayConfig::default();
@@ -1394,12 +1439,16 @@ mod tests {
 
         // Check link targets (contain team info for activation)
         match &focusable[0].link_target {
-            Some(LinkTarget::Action(action)) => assert_eq!(action, "team:BOS"),
-            _ => panic!("Expected team action"),
+            Some(LinkTarget::Push(StackedDocument::TeamDetail { abbrev })) => {
+                assert_eq!(abbrev, "BOS")
+            }
+            other => panic!("Expected Push(TeamDetail), got {other:?}"),
         }
         match &focusable[1].link_target {
-            Some(LinkTarget::Action(action)) => assert_eq!(action, "team:TOR"),
-            _ => panic!("Expected team action"),
+            Some(LinkTarget::Push(StackedDocument::TeamDetail { abbrev })) => {
+                assert_eq!(abbrev, "TOR")
+            }
+            other => panic!("Expected Push(TeamDetail), got {other:?}"),
         }
     }
 
@@ -1416,6 +1465,8 @@ mod tests {
             |row: &&str| CellValue::PlayerLink {
                 display: row.to_string(),
                 player_id: 12345,
+                sweater_number: None,
+                last_name: row.to_string(),
             },
         )];
         let data = vec!["Player1", "Player2"];
@@ -1531,8 +1582,18 @@ mod tests {
 
         // Row with Spread alignment (default)
         let row = DocumentElement::row(vec![
-            DocumentElement::score_box_element(1, score_box1.clone(), false),
-            DocumentElement::score_box_element(2, score_box2.clone(), false),
+            DocumentElement::score_box_element(
+                1,
+                score_box1.clone(),
+                false,
+                LinkTarget::Anchor("game_1".to_string()),
+            ),
+            DocumentElement::score_box_element(
+                2,
+                score_box2.clone(),
+                false,
+                LinkTarget::Anchor("game_2".to_string()),
+            ),
         ]);
 
         // With area of 60 wide: 25 + 25 = 50, leaving 10 for gap
@@ -1581,8 +1642,18 @@ mod tests {
 
         // Row with Left alignment
         let row = DocumentElement::row_left(vec![
-            DocumentElement::score_box_element(1, score_box1.clone(), false),
-            DocumentElement::score_box_element(2, score_box2.clone(), false),
+            DocumentElement::score_box_element(
+                1,
+                score_box1.clone(),
+                false,
+                LinkTarget::Anchor("game_1".to_string()),
+            ),
+            DocumentElement::score_box_element(
+                2,
+                score_box2.clone(),
+                false,
+                LinkTarget::Anchor("game_2".to_string()),
+            ),
         ]);
 
         // With area of 60 wide, Left alignment should use minimum gap (2)
@@ -1631,8 +1702,18 @@ mod tests {
         // Row with minimum gap of 5
         let row = DocumentElement::row_with_gap(
             vec![
-                DocumentElement::score_box_element(1, score_box1.clone(), false),
-                DocumentElement::score_box_element(2, score_box2.clone(), false),
+                DocumentElement::score_box_element(
+                    1,
+                    score_box1.clone(),
+                    false,
+                    LinkTarget::Anchor("game_1".to_string()),
+                ),
+                DocumentElement::score_box_element(
+                    2,
+                    score_box2.clone(),
+                    false,
+                    LinkTarget::Anchor("game_2".to_string()),
+                ),
             ],
             5,
         );

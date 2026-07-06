@@ -23,6 +23,7 @@ use ratatui::layout::Rect;
 use std::sync::Arc;
 
 use crate::config::RenderContext;
+use crate::tui::action::Action;
 use crate::tui::component::Effect;
 use crate::tui::document_nav::{handle_message, DocumentNavState};
 use crate::tui::nav_handler::key_to_nav_msg;
@@ -34,7 +35,7 @@ pub use elements::{
     DocTabDef, DocumentElement, RowAlignment, TAB_BAR_HEIGHT, TEAM_BOXSCORE_SIDE_BY_SIDE_WIDTH,
 };
 pub use focus::{FocusManager, FocusableElement, FocusableId, RowPosition};
-pub use link::{DocumentLink, DocumentType, LinkParams, LinkTarget};
+pub use link::LinkTarget;
 pub use viewport::Viewport;
 pub use widget::DocumentElementWidget;
 
@@ -249,15 +250,24 @@ pub trait Document: Send + Sync {
 /// to encapsulate their navigation and activation logic. This keeps key handling
 /// close to the document that understands its structure.
 ///
-/// Implementors provide `activate()` and `populate_focusable_metadata()`.
-/// The default `handle_key()` populates metadata on-demand before navigation,
-/// eliminating the need to sync cached metadata when data loads.
+/// Implementors provide `populate_focusable_metadata()`; `activate()` is a
+/// default method (see below). The default `handle_key()` populates metadata
+/// on-demand before navigation, eliminating the need to sync cached metadata
+/// when data loads.
 pub trait StackedDocumentHandler: Send + Sync {
     /// Activate the focused element (Enter key)
     ///
-    /// Called when the user presses Enter on a focused element.
-    /// Returns Effect::Action to push a new document, or Effect::None if nothing to activate.
-    fn activate(&self, nav: &DocumentNavState, data: &DataState) -> Effect;
+    /// Reads the focused element's [`LinkTarget`], which was attached to the
+    /// link when the document made it focusable, and pushes its destination.
+    /// Handlers never re-derive "what did the user activate" from the
+    /// underlying data -- the destination was computed in the same pass that
+    /// made the element focusable, so the two can't diverge.
+    fn activate(&self, nav: &DocumentNavState, _data: &DataState) -> Effect {
+        match nav.focused_link_target() {
+            Some(LinkTarget::Push(doc)) => Effect::Action(Action::PushDocument(doc.clone())),
+            _ => Effect::None,
+        }
+    }
 
     /// Populate focusable metadata from the document into nav state
     ///
@@ -629,7 +639,7 @@ mod tests {
                 elements.push(DocumentElement::link(
                     format!("link_{}", i),
                     format!("Link {}", i),
-                    LinkTarget::Action(format!("action_{}", i)),
+                    LinkTarget::Anchor(format!("anchor_{}", i)),
                 ));
             }
 
@@ -786,7 +796,7 @@ mod tests {
         // Focus first link
         view.focus_next();
         let target = view.activate_focused();
-        assert!(matches!(target, Some(LinkTarget::Action(_))));
+        assert!(matches!(target, Some(LinkTarget::Anchor(_))));
     }
 
     #[test]
@@ -953,13 +963,13 @@ mod tests {
                     DocumentElement::focused_link(
                         "test_link",
                         "Click Me",
-                        LinkTarget::Action("test".to_string()),
+                        LinkTarget::Anchor("test".to_string()),
                     )
                 } else {
                     DocumentElement::link(
                         "test_link",
                         "Click Me",
-                        LinkTarget::Action("test".to_string()),
+                        LinkTarget::Anchor("test".to_string()),
                     )
                 },
                 DocumentElement::text("After"),
