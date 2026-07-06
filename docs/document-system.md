@@ -9,10 +9,9 @@ The document system (`src/tui/document/`) provides scrollable, focusable content
 │                     Document Trait                          │
 │  - build(focus) -> Vec<DocumentElement>                     │
 │  - calculate_height() -> u16            (default, via build)│
-│  - focusable_positions() -> Vec<u16>    (default, via build)│
-│  - focusable_ids() -> Vec<FocusableId>  (default, via build)│
-│  - focusable_row_positions() -> Vec<Option<RowPosition>>    │
-│  - focusable_link_targets() -> Vec<Option<LinkTarget>>      │
+│  - focusables(ctx) -> Vec<FocusableElement> (default, via   │
+│    build) -- one pass, one call, the single source of       │
+│    focus metadata (position/height/id/row/link target)      │
 │  - render_full(width, ctx, focus) -> (Buffer, u16)          │
 └─────────────────────────────────────────────────────────────┘
                               │
@@ -20,9 +19,10 @@ The document system (`src/tui/document/`) provides scrollable, focusable content
 ┌─────────────────────────────────────────────────────────────┐
 │                    DocumentView                              │
 │  - Holds Arc<dyn Document>                                   │
-│  - Manages Viewport (scroll offset, height)                  │
-│  - Manages FocusManager (focus state, navigation)             │
-│  - Renders visible portion to Buffer                          │
+│  - Render-only shim: applies a focus index + scroll offset   │
+│    (both computed by document_nav.rs) and renders            │
+│  - No navigation methods of its own -- see                   │
+│    "Generic Document Navigation (document_nav.rs)" below     │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -52,8 +52,8 @@ per document, not three.
 
 ```rust
 pub trait Document: Send + Sync {
-    /// Build the element tree (called on each render, and by every default
-    /// metadata method below)
+    /// Build the element tree (called on each render, and by both default
+    /// methods below)
     fn build(&self, focus: &FocusContext) -> Vec<DocumentElement>;
 
     /// Document title for navigation/history
@@ -62,14 +62,16 @@ pub trait Document: Send + Sync {
     /// Unique document ID
     fn id(&self) -> String;
 
-    // Default implementations provided, each calling build() with a default
+    // Default implementations provided, each calling build() once with a
     // FocusContext:
     fn calculate_height(&self) -> u16;
-    fn focusable_positions(&self) -> Vec<u16>;
-    fn focusable_heights(&self) -> Vec<u16>;
-    fn focusable_ids(&self) -> Vec<FocusableId>;
-    fn focusable_row_positions(&self) -> Vec<Option<RowPosition>>;
-    fn focusable_link_targets(&self) -> Vec<Option<LinkTarget>>;
+
+    /// The single source of "what's focusable in this document, with what
+    /// metadata": one `build()` call, one collection pass, every field
+    /// (position, height, ID, row membership, link target) gathered
+    /// together so a sync site can no longer update some and forget others.
+    fn focusables(&self, ctx: &FocusContext) -> Vec<FocusableElement>;
+
     fn render_full(&self, width: u16, ctx: &RenderContext, focus: &FocusContext) -> (Buffer, u16);
 }
 ```
@@ -182,7 +184,7 @@ Row with two tables (5 rows each):
 
 See `docs/navigation.md` for the full key-to-message mapping
 (`nav_handler::key_to_nav_msg`) that drives this, including where individual
-tabs and stacked-document handlers deliberately diverge from it.
+tabs and `handle_stacked_document_key` deliberately diverge from it.
 
 ## DocumentBuilder
 
@@ -195,7 +197,11 @@ let doc = DocumentBuilder::new()
     .text("Top scorers this season:")
     .table("scorers", stats_table)
     .separator()
-    .link_with_id("back", "← Back", LinkTarget::Action("go_back".into()))
+    .link_with_id(
+        "team_bos",
+        "Boston Bruins",
+        LinkTarget::Push(StackedDocument::TeamDetail { abbrev: "BOS".into() }),
+    )
     .when(show_details, |b| b.text("Additional details..."))
     .for_each(players.iter(), |b, player| b.text(format!("- {}", player.name)))
     .build();
@@ -222,21 +228,26 @@ pub struct DocumentNavState {
     pub focus_index: Option<usize>,
     pub scroll_offset: u16,
     pub viewport_height: u16,
-    pub focusable_positions: Vec<u16>,
-    pub focusable_heights: Vec<u16>,
-    pub focusable_ids: Vec<FocusableId>,
-    pub focusable_row_positions: Vec<Option<RowPosition>>,
-    pub link_targets: Vec<Option<LinkTarget>>,
+    /// All focusable elements in document order, carrying position, height,
+    /// ID, row membership, and link target together -- replaces five
+    /// index-aligned Vecs that used to be synced by hand at every call site.
+    pub focusables: Vec<FocusableElement>,
     /// Active tab selections for Tabs elements (tabs_id -> active_index)
     pub doc_tab_selections: HashMap<String, usize>,
 }
 ```
 
-Components embed this directly (`ScoresTabState`, `StandingsTabState`,
-`SettingsTabState`) and stacked documents embed it inside
-`DocumentStackEntry::nav`. `DocumentStackEntry::new()` initializes it with
-`focus_index: Some(0)` and `viewport_height: DEFAULT_VIEWPORT_HEIGHT` so a
-freshly pushed document starts with its first focusable element selected.
+`DocumentNavState::sync_focusables(&mut self, doc: &dyn Document, ctx:
+&FocusContext)` is the single sync path: every call site that needs to
+refresh navigation metadata (after data loads, a view/category changes, or
+the layout width changes) calls this one method - `self.focusables =
+doc.focusables(ctx)` - instead of hand-copying individual fields.
+
+Components embed `DocumentNavState` directly (`ScoresTabState`,
+`StandingsTabState`, `SettingsTabState`) and stacked documents embed it
+inside `DocumentStackEntry::nav`. `DocumentStackEntry::new()` initializes it
+with `focus_index: Some(0)` and `viewport_height: DEFAULT_VIEWPORT_HEIGHT` so
+a freshly pushed document starts with its first focusable element selected.
 
 ### DocumentNavMsg
 
@@ -322,21 +333,27 @@ still present, `push_document` sees the loading flag set and returns
            DocumentBuilder::new()
                .heading(1, "My Document")
                .for_each(self.data.iter(), |b, item| {
-                   b.link_with_id(&item.id, &item.name, LinkTarget::Document(...))
+                   b.link_with_id(&item.id, &item.name, LinkTarget::Push(item.destination.clone()))
                })
                .build()
        }
 
        fn title(&self) -> String { "My Document".into() }
        fn id(&self) -> String { "my_doc".into() }
+       // `calculate_height` and `focusables` are provided by the trait's
+       // default implementations, both built on top of `build()` above.
    }
    ```
 
-3. **Store focusable metadata in state** when data changes (or, for a
-   `StackedDocumentHandler`, populate it on-demand inside
-   `populate_focusable_metadata` - see `src/tui/document/handlers.rs`).
+3. **Store focusable metadata in state** when data changes, via
+   `state.doc_nav.sync_focusables(&doc, &ctx)` (or, for a stacked document,
+   this happens automatically on every key event -
+   `handle_stacked_document_key` calls it after building the document from
+   `build_stacked_document`; see `src/tui/document/handlers.rs` and
+   `src/tui/document/factory.rs`).
 
-4. **Handle navigation** via `DocumentNavMsg` in the component, or by
-   implementing `StackedDocumentHandler` if this is a stacked document
-   (its default `handle_key()` already wires up `key_to_nav_msg` and `Enter`
-   activation for you).
+4. **Handle navigation** via `DocumentNavMsg` in the component, or, if this
+   is a stacked document, nothing extra to write: `handle_stacked_document_key`
+   (`src/tui/document/handlers.rs`) already wires up `key_to_nav_msg` and
+   `Enter` activation (`nav.focused_link_target()`) generically for every
+   `StackedDocument` variant.

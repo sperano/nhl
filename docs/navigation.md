@@ -22,8 +22,8 @@ its own source comments):
 2. **ESC** (`handle_esc_key`): a fixed priority chain, see below.
 3. **Document stack routing**: if `state.navigation.document_stack` is
    non-empty, every remaining key (including number keys and `Enter`) becomes
-   `Action::StackedDocumentKey(key)` and is handled by the stacked document's
-   `StackedDocumentHandler` instead of anything below.
+   `Action::StackedDocumentKey(key)` and is handled by
+   `document::handle_stacked_document_key` instead of anything below.
 4. **Number keys** (`handle_number_keys`): direct tab switching, only
    reachable when the document stack is empty.
 5. **Tab bar vs. content focus**: if `!state.navigation.focus_in_content`,
@@ -84,9 +84,9 @@ means:
 
 - Number keys (`1`-`4`) do **not** switch tabs while a document is open - they
   are forwarded to the document instead.
-- `Enter` and all arrow/paging keys are forwarded to the document's
-  `StackedDocumentHandler::handle_key` (see `docs/document-system.md`), not to
-  any tab-specific handler.
+- `Enter` and all arrow/paging keys are forwarded to
+  `document::handle_stacked_document_key` (see `docs/document-system.md`), not
+  to any tab-specific handler.
 
 ## Tab Switching
 
@@ -154,7 +154,7 @@ Scores, so it can only fire while the Scores tab is actually active.
 
 `nav_handler::key_to_nav_msg` is the shared mapping used, with documented
 exceptions, by Standings browse mode, the Settings tab, the Demo tab, and
-stacked documents (`StackedDocumentHandler::handle_key`):
+stacked documents (`document::handle_stacked_document_key`):
 
 | Key | Without Shift | With Shift |
 |-----|----------------|------------|
@@ -198,7 +198,7 @@ Two modes, distinguished by `has_scores_item_focus`:
 | `Down` | `ScoresTabMsg::DocNav(FocusNext)` |
 | `Left` | `ScoresTabMsg::DocNav(FocusLeft)` |
 | `Right` | `ScoresTabMsg::DocNav(FocusRight)` |
-| `Enter` | `ScoresTabMsg::ActivateGame` - the component itself resolves `focus_index` to a game ID via `focusable_ids`; an out-of-range `focus_index` still delegates unconditionally and the component's own bounds check turns it into a no-op |
+| `Enter` | `ScoresTabMsg::ActivateGame` - reads the destination straight off the focused element (`doc_nav.focused_link_target()`), pushing the boxscore document it carries; no focused link target is a no-op |
 | `Esc` | `ScoresTabMsg::ExitBoxSelection` (ESC priority 3) |
 | anything else | no-op |
 

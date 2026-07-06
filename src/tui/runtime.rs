@@ -11,6 +11,7 @@ use super::constants::{SCORES_TAB_PATH, SETTINGS_TAB_PATH, STANDINGS_TAB_PATH};
 use super::effects::DataEffects;
 use super::reducer::reduce;
 use super::state::AppState;
+use super::tab_component::TabState;
 
 /// Component runtime - manages component lifecycle and action processing
 ///
@@ -205,8 +206,9 @@ impl Runtime {
     /// Update viewport heights for all document-based components
     ///
     /// Called from the main render loop with the current terminal area height.
-    /// Different components have different chrome (tabs, subtabs, status bars),
-    /// so they get different viewport heights.
+    /// Each tab declares its own chrome height via `TabState::chrome_lines()`
+    /// (tab bar + status bar, plus a nested subtab bar for tabs that have
+    /// one), so the runtime doesn't need to know per-tab chrome shapes.
     pub fn update_viewport_heights(&mut self, terminal_height: u16) {
         use crate::tui::components::scores_tab::ScoresTabState;
         use crate::tui::components::settings_tab::SettingsTabState;
@@ -214,55 +216,47 @@ impl Runtime {
         #[cfg(feature = "development")]
         use crate::tui::document_nav::DocumentNavState;
 
-        // Base chrome = main tab bar (2 lines) + status bar (2 lines) = 4 lines
-        // Standings/Settings have nested subtab bar = +2 lines
-        const BASE_CHROME_LINES: u16 = 4;
-        const SUBTAB_CHROME_LINES: u16 = 2;
+        Self::sync_viewport_height::<StandingsTabState>(
+            &mut self.component_states,
+            STANDINGS_TAB_PATH,
+            terminal_height,
+        );
+        Self::sync_viewport_height::<ScoresTabState>(
+            &mut self.component_states,
+            SCORES_TAB_PATH,
+            terminal_height,
+        );
+        Self::sync_viewport_height::<SettingsTabState>(
+            &mut self.component_states,
+            SETTINGS_TAB_PATH,
+            terminal_height,
+        );
 
+        // DemoTab uses DocumentNavState directly as its state type (no
+        // dedicated tab-state struct to hang a `chrome_lines()` override
+        // off), so it falls back to `TabState`'s default (base chrome only).
         #[cfg(feature = "development")]
-        let base_viewport = terminal_height.saturating_sub(BASE_CHROME_LINES);
-        let subtab_viewport =
-            terminal_height.saturating_sub(BASE_CHROME_LINES + SUBTAB_CHROME_LINES);
+        Self::sync_viewport_height::<DocumentNavState>(
+            &mut self.component_states,
+            DEMO_TAB_PATH,
+            terminal_height,
+        );
+    }
 
-        // Update StandingsTab viewport (has subtabs)
-        if let Some(state) = self
-            .component_states
-            .get_mut::<StandingsTabState>(STANDINGS_TAB_PATH)
-        {
-            if state.doc_nav.viewport_height != subtab_viewport {
-                state.doc_nav.viewport_height = subtab_viewport;
-            }
-        }
-
-        // Update ScoresTab viewport (has subtabs - date selector)
-        if let Some(state) = self
-            .component_states
-            .get_mut::<ScoresTabState>(SCORES_TAB_PATH)
-        {
-            if state.doc_nav.viewport_height != subtab_viewport {
-                state.doc_nav.viewport_height = subtab_viewport;
-            }
-        }
-
-        // Update SettingsTab viewport (has subtabs)
-        if let Some(state) = self
-            .component_states
-            .get_mut::<SettingsTabState>(SETTINGS_TAB_PATH)
-        {
-            if state.doc_nav.viewport_height != subtab_viewport {
-                state.doc_nav.viewport_height = subtab_viewport;
-            }
-        }
-
-        // Update DemoTab viewport (no subtabs, uses base chrome)
-        // DemoTab uses DocumentNavState directly as its state type
-        #[cfg(feature = "development")]
-        if let Some(state) = self
-            .component_states
-            .get_mut::<DocumentNavState>(DEMO_TAB_PATH)
-        {
-            if state.viewport_height != base_viewport {
-                state.viewport_height = base_viewport;
+    /// Resize one tab's viewport to fit the terminal height, subtracting
+    /// that tab's own declared chrome height.
+    fn sync_viewport_height<S>(
+        component_states: &mut ComponentStateStore,
+        path: &str,
+        terminal_height: u16,
+    ) where
+        S: TabState + 'static + Send + Sync,
+    {
+        let target_height = terminal_height.saturating_sub(S::chrome_lines());
+        if let Some(state) = component_states.get_mut::<S>(path) {
+            let doc_nav = state.doc_nav_mut();
+            if doc_nav.viewport_height != target_height {
+                doc_nav.viewport_height = target_height;
             }
         }
     }
@@ -683,5 +677,83 @@ mod tests {
             runtime.state().navigation.current_tab,
             crate::tui::Tab::Scores
         );
+    }
+
+    /// Locks in the effective viewport height per tab after the F5 refactor
+    /// that moved chrome-height ownership from `update_viewport_heights`
+    /// onto `TabState::chrome_lines()`. Standings/Scores/Settings each have
+    /// a nested subtab bar (6 total chrome lines); Demo has none (4 chrome
+    /// lines, the `TabState` default). These numbers must not change as a
+    /// side effect of that refactor.
+    #[tokio::test]
+    async fn test_update_viewport_heights_matches_pre_refactor_values() {
+        use crate::tui::components::scores_tab::ScoresTabState;
+        use crate::tui::components::settings_tab::SettingsTabState;
+        use crate::tui::components::standings_tab::StandingsTabState;
+
+        let mut runtime = create_test_runtime();
+        runtime
+            .component_states
+            .insert(STANDINGS_TAB_PATH.to_string(), StandingsTabState::default());
+        runtime
+            .component_states
+            .insert(SCORES_TAB_PATH.to_string(), ScoresTabState::default());
+        runtime
+            .component_states
+            .insert(SETTINGS_TAB_PATH.to_string(), SettingsTabState::default());
+        #[cfg(feature = "development")]
+        {
+            use crate::tui::document_nav::DocumentNavState;
+            runtime
+                .component_states
+                .insert(DEMO_TAB_PATH.to_string(), DocumentNavState::default());
+        }
+
+        let terminal_height = 40;
+        runtime.update_viewport_heights(terminal_height);
+
+        assert_eq!(
+            runtime
+                .component_states
+                .get_mut::<StandingsTabState>(STANDINGS_TAB_PATH)
+                .unwrap()
+                .doc_nav
+                .viewport_height,
+            34,
+            "Standings: 40 - (4 base + 2 subtab) chrome lines"
+        );
+        assert_eq!(
+            runtime
+                .component_states
+                .get_mut::<ScoresTabState>(SCORES_TAB_PATH)
+                .unwrap()
+                .doc_nav
+                .viewport_height,
+            34,
+            "Scores: 40 - (4 base + 2 subtab) chrome lines"
+        );
+        assert_eq!(
+            runtime
+                .component_states
+                .get_mut::<SettingsTabState>(SETTINGS_TAB_PATH)
+                .unwrap()
+                .doc_nav
+                .viewport_height,
+            34,
+            "Settings: 40 - (4 base + 2 subtab) chrome lines"
+        );
+        #[cfg(feature = "development")]
+        {
+            use crate::tui::document_nav::DocumentNavState;
+            assert_eq!(
+                runtime
+                    .component_states
+                    .get_mut::<DocumentNavState>(DEMO_TAB_PATH)
+                    .unwrap()
+                    .viewport_height,
+                36,
+                "Demo: 40 - 4 base chrome lines (no subtab bar)"
+            );
+        }
     }
 }

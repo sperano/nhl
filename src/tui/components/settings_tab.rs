@@ -18,7 +18,10 @@ use crate::tui::document::DocumentView;
 use crate::tui::document::{FocusableElement, FocusableId};
 use crate::tui::document_nav::{DocumentNavMsg, DocumentNavState};
 use crate::tui::settings_helpers::ModalOption;
-use crate::tui::tab_component::{handle_common_message, CommonTabMessage, TabMessage, TabState};
+use crate::tui::tab_component::{
+    handle_common_message, CommonTabMessage, TabMessage, TabState, BASE_CHROME_LINES,
+    SUBTAB_CHROME_LINES,
+};
 use crate::tui::SettingsCategory;
 
 /// Props for SettingsTab component
@@ -66,6 +69,11 @@ impl TabState for SettingsTabState {
 
     fn doc_nav_mut(&mut self) -> &mut DocumentNavState {
         &mut self.doc_nav
+    }
+
+    /// Settings has a nested category subtab bar above its document viewport.
+    fn chrome_lines() -> u16 {
+        BASE_CHROME_LINES + SUBTAB_CHROME_LINES
     }
 }
 

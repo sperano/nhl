@@ -68,22 +68,6 @@ impl FocusableId {
         Self::GameLink(game_id)
     }
 
-    /// Get the table row if this is a table cell
-    pub fn table_row(&self) -> Option<usize> {
-        match self {
-            Self::TableCell { row, .. } => Some(*row),
-            _ => None,
-        }
-    }
-
-    /// Get the table name if this is a table cell
-    pub fn table_name(&self) -> Option<&str> {
-        match self {
-            Self::TableCell { table_name, .. } => Some(table_name),
-            _ => None,
-        }
-    }
-
     /// Format for user-friendly display
     pub fn display_name(&self) -> String {
         match self {
@@ -139,36 +123,6 @@ impl FocusableElement {
             height,
             rect,
             link_target,
-            row_position: None,
-        }
-    }
-
-    /// Create a focusable link element
-    pub fn link(id: impl Into<String>, y: u16, width: u16, target: LinkTarget) -> Self {
-        Self {
-            id: FocusableId::link(id),
-            y,
-            height: 1,
-            rect: Rect::new(0, y, width, 1),
-            link_target: Some(target),
-            row_position: None,
-        }
-    }
-
-    /// Create a focusable table cell element
-    pub fn table_cell(
-        table_name: impl Into<String>,
-        row: usize,
-        col: usize,
-        rect: Rect,
-        target: Option<LinkTarget>,
-    ) -> Self {
-        Self {
-            id: FocusableId::table_cell(table_name, row, col),
-            y: rect.y,
-            height: rect.height,
-            rect,
-            link_target: target,
             row_position: None,
         }
     }
@@ -267,7 +221,6 @@ mod tests {
     use super::*;
     use crate::tui::document::elements::DocumentElement;
     use crate::tui::document::link::LinkTarget;
-    use crate::tui::types::StackedDocument;
 
     #[test]
     fn test_from_elements_no_focus_by_default() {
@@ -311,35 +264,5 @@ mod tests {
 
         assert!(fm.focus_by_index(1));
         assert_eq!(fm.get_current_id(), Some(&FocusableId::link("b")));
-    }
-
-    #[test]
-    fn test_focusable_element_link() {
-        let target = LinkTarget::Anchor("test".to_string());
-        let elem = FocusableElement::link("my_link", 10, 20, target.clone());
-
-        assert_eq!(elem.id, FocusableId::link("my_link"));
-        assert_eq!(elem.y, 10);
-        assert_eq!(elem.height, 1);
-        assert_eq!(elem.rect, Rect::new(0, 10, 20, 1));
-        assert_eq!(elem.link_target, Some(target));
-        assert_eq!(elem.row_position, None);
-    }
-
-    #[test]
-    fn test_focusable_element_table_cell() {
-        let target = LinkTarget::Push(StackedDocument::PlayerDetail {
-            player_id: 12345,
-            sweater_number: None,
-            last_name: "Test".to_string(),
-        });
-        let rect = Rect::new(5, 10, 15, 1);
-        let elem = FocusableElement::table_cell("standings", 3, 2, rect, Some(target.clone()));
-
-        assert_eq!(elem.id, FocusableId::table_cell("standings", 3, 2));
-        assert_eq!(elem.y, 10);
-        assert_eq!(elem.height, 1);
-        assert_eq!(elem.rect, rect);
-        assert_eq!(elem.link_target, Some(target));
     }
 }

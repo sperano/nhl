@@ -22,7 +22,10 @@ use crate::component_message_impl;
 use crate::tui::action::Action;
 use crate::tui::component::Effect;
 use crate::tui::document_nav::{DocumentNavMsg, DocumentNavState};
-use crate::tui::tab_component::{handle_common_message, CommonTabMessage, TabMessage, TabState};
+use crate::tui::tab_component::{
+    handle_common_message, CommonTabMessage, TabMessage, TabState, BASE_CHROME_LINES,
+    SUBTAB_CHROME_LINES,
+};
 
 /// Component state for StandingsTab - managed by the component itself
 #[derive(Clone, Debug)]
@@ -49,6 +52,11 @@ impl TabState for StandingsTabState {
 
     fn doc_nav_mut(&mut self) -> &mut DocumentNavState {
         &mut self.doc_nav
+    }
+
+    /// Standings has a nested group-by subtab bar above its document viewport.
+    fn chrome_lines() -> u16 {
+        BASE_CHROME_LINES + SUBTAB_CHROME_LINES
     }
 }
 

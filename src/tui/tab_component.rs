@@ -39,6 +39,16 @@
 use crate::tui::component::Effect;
 use crate::tui::document_nav::{DocumentNavMsg, DocumentNavState};
 
+/// Terminal lines consumed by chrome shared by every tab: the main tab bar
+/// (2 lines) + the status bar (2 lines). A tab's document viewport gets
+/// whatever terminal height remains after subtracting its `chrome_lines()`.
+pub const BASE_CHROME_LINES: u16 = 4;
+
+/// Additional chrome for tabs that also render a nested subtab/date bar
+/// above their document viewport (e.g. Standings' group-by tabs, Scores'
+/// date selector, Settings' category tabs).
+pub const SUBTAB_CHROME_LINES: u16 = 2;
+
 /// Implement TabState for DocumentNavState itself
 ///
 /// This allows components that use DocumentNavState directly as their State type
@@ -62,6 +72,20 @@ pub trait TabState {
 
     /// Get mutable reference to document navigation state
     fn doc_nav_mut(&mut self) -> &mut DocumentNavState;
+
+    /// Terminal lines this tab's chrome consumes above its document viewport.
+    ///
+    /// `Runtime::update_viewport_heights` subtracts this from the terminal
+    /// height to size the viewport, so each tab declares its own chrome
+    /// shape instead of the runtime hardcoding it per tab. Override this for
+    /// tabs with extra chrome (e.g. a nested subtab bar); the default covers
+    /// the shared tab bar + status bar only.
+    fn chrome_lines() -> u16
+    where
+        Self: Sized,
+    {
+        BASE_CHROME_LINES
+    }
 
     /// Check if an item in the document has focus
     ///

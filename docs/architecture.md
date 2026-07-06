@@ -365,12 +365,14 @@ Both traits take `ctx: &RenderContext`, not a bare `DisplayConfig`.
 
 Scrollable content (standings tables, boxscores, settings) is built on the
 `Document` trait (`src/tui/document/mod.rs`): `build(&FocusContext) ->
-Vec<DocumentElement>`, plus default methods that derive focusable-element
-metadata (`focusable_positions`, `focusable_heights`, `focusable_ids`,
-`focusable_row_positions`, `focusable_link_targets`) from that same
-`build()` output. `DocumentView` wraps a `document: Arc<dyn Document>` with
-a `Viewport` and `FocusManager`, and is what an `ElementWidget::render`
-typically constructs at render time (widths aren't known until then):
+Vec<DocumentElement>`, plus a default `focusables(&FocusContext) ->
+Vec<FocusableElement>` method that collects all focusable-element metadata
+(position, height, ID, row membership, link target) from that same
+`build()` output in one pass. `DocumentView` is a render-only shim around a
+`document: Arc<dyn Document>` (no navigation methods of its own - all
+focus/scroll/paging logic lives in `document_nav.rs`), and is what an
+`ElementWidget::render` typically constructs at render time (widths aren't
+known until then):
 
 ```rust
 let mut view = DocumentView::new(Arc::new(doc), area.height);
@@ -381,10 +383,12 @@ view.render(area, buf, ctx);
 
 Documents shown inline in a tab (`ScoreBoxesDocument`, the standings
 documents, `SettingsDocument`) keep their focus/scroll state in the owning
-tab's `DocumentNavState`. Documents pushed onto `AppState.navigation.
-document_stack` (`Boxscore`, `TeamDetail`, `PlayerDetail`) instead implement
-`StackedDocumentHandler` (`activate()` + `populate_focusable_metadata()`),
-dispatched via `get_stacked_document_handler()` and driven by
+tab's `DocumentNavState`, refreshed via `DocumentNavState::sync_focusables`.
+Documents pushed onto `AppState.navigation.document_stack` (`Boxscore`,
+`TeamDetail`, `PlayerDetail`) are built by the single factory
+`document::build_stacked_document` (used identically by the render path and
+the input path) and driven by the free function
+`document::handle_stacked_document_key`, dispatched from
 `Action::StackedDocumentKey` in `reduce_document_stack`. See
 `docs/document-system.md` for the full design of this subsystem
 (`DocumentBuilder`, `FocusManager`, link activation, etc.).

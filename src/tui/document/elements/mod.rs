@@ -544,61 +544,6 @@ impl DocumentElement {
         }
     }
 
-    /// Collect focusable element IDs from this element (simpler version for display)
-    ///
-    /// # Arguments
-    /// - `out`: Vector to append IDs to
-    /// - `y_offset`: Current y offset for tracking position in document
-    pub fn collect_focusable_ids(&self, out: &mut Vec<FocusableId>, y_offset: u16) {
-        match self {
-            Self::Link { id, .. } => {
-                out.push(FocusableId::link(id));
-            }
-            Self::Group { children, .. } => {
-                let mut child_offset = y_offset;
-                for child in children {
-                    child.collect_focusable_ids(out, child_offset);
-                    child_offset += child.height();
-                }
-            }
-            Self::Custom { focusable, .. } | Self::Table { focusable, .. } => {
-                for elem in focusable {
-                    out.push(elem.id.clone());
-                }
-            }
-            Self::Row { children, .. } => {
-                for child in children {
-                    child.collect_focusable_ids(out, y_offset);
-                }
-            }
-            Self::ScoreBoxElement { game_id, .. } => {
-                out.push(FocusableId::game_link(*game_id));
-            }
-            Self::Indented { element, .. } => {
-                element.collect_focusable_ids(out, y_offset);
-            }
-            Self::TeamBoxscore { focusable, .. } => {
-                for elem in focusable {
-                    out.push(elem.id.clone());
-                }
-            }
-            Self::Tabs {
-                tabs, active_index, ..
-            } => {
-                // Only collect IDs from active tab
-                if let Some(tab) = tabs.get(*active_index) {
-                    let content_y = y_offset + TAB_BAR_HEIGHT;
-                    let mut content_offset = content_y;
-                    for child in &tab.content {
-                        child.collect_focusable_ids(out, content_offset);
-                        content_offset += child.height();
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-
     /// Render this element to a buffer
     pub fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
         match self {

@@ -11,7 +11,10 @@ use crate::tui::action::Action;
 use crate::tui::component::{Component, Effect, Element, ElementWidget};
 use crate::tui::document::{DocumentView, LinkTarget};
 use crate::tui::document_nav::{DocumentNavMsg, DocumentNavState};
-use crate::tui::tab_component::{handle_common_message, CommonTabMessage, TabMessage, TabState};
+use crate::tui::tab_component::{
+    handle_common_message, CommonTabMessage, TabMessage, TabState, BASE_CHROME_LINES,
+    SUBTAB_CHROME_LINES,
+};
 
 use super::score_boxes_document::ScoreBoxesDocument;
 use super::{TabItem, TabbedPanel, TabbedPanelProps};
@@ -44,6 +47,11 @@ impl TabState for ScoresTabState {
 
     fn doc_nav_mut(&mut self) -> &mut DocumentNavState {
         &mut self.doc_nav
+    }
+
+    /// Scores has a nested date-selector subtab bar above its document viewport.
+    fn chrome_lines() -> u16 {
+        BASE_CHROME_LINES + SUBTAB_CHROME_LINES
     }
 }
 

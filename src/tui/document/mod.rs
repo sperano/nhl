@@ -16,7 +16,6 @@ pub mod focus;
 mod handlers;
 pub mod link;
 pub mod viewport;
-pub mod widget;
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -33,7 +32,6 @@ pub use focus::{FocusManager, FocusableElement, FocusableId, RowPosition};
 pub use handlers::handle_stacked_document_key;
 pub use link::LinkTarget;
 pub use viewport::Viewport;
-pub use widget::DocumentElementWidget;
 
 /// Focus context passed when building a document
 #[derive(Clone, Debug, PartialEq)]
@@ -65,35 +63,18 @@ impl Default for FocusContext {
 impl FocusContext {
     /// Create a new focus context from a FocusableId
     pub fn from_id(id: &FocusableId) -> Self {
-        Self {
-            focused_id: Some(id.clone()),
-            available_width: None,
-            use_unicode: true,
-            box_chars: crate::formatting::BoxChars::unicode(),
-            tab_selections: std::collections::HashMap::new(),
-        }
-    }
-
-    /// Create a new focus context with a focused link ID
-    pub fn with_link(id: impl Into<String>) -> Self {
-        Self {
-            focused_id: Some(FocusableId::link(id)),
-            available_width: None,
-            use_unicode: true,
-            box_chars: crate::formatting::BoxChars::unicode(),
-            tab_selections: std::collections::HashMap::new(),
-        }
+        Self::default().with_id(id.clone())
     }
 
     /// Create a new focus context with a focused table cell
     pub fn with_table_cell(table_name: impl Into<String>, row: usize, col: usize) -> Self {
-        Self {
-            focused_id: Some(FocusableId::table_cell(table_name, row, col)),
-            available_width: None,
-            use_unicode: true,
-            box_chars: crate::formatting::BoxChars::unicode(),
-            tab_selections: std::collections::HashMap::new(),
-        }
+        Self::default().with_id(FocusableId::table_cell(table_name, row, col))
+    }
+
+    /// Set the focused element ID
+    pub fn with_id(mut self, id: FocusableId) -> Self {
+        self.focused_id = Some(id);
+        self
     }
 
     /// Set the available width for layout decisions
@@ -126,11 +107,6 @@ impl FocusContext {
         }
     }
 
-    /// Check if the given ID is focused
-    pub fn is_focused(&self, id: &FocusableId) -> bool {
-        self.focused_id.as_ref() == Some(id)
-    }
-
     /// Check if a link with the given ID is focused
     pub fn is_link_focused(&self, id: &str) -> bool {
         matches!(&self.focused_id, Some(FocusableId::Link(link_id)) if link_id == id)
@@ -143,11 +119,6 @@ impl FocusContext {
     ) -> Self {
         self.tab_selections = selections;
         self
-    }
-
-    /// Get the active tab index for a tabs element
-    pub fn get_tab_selection(&self, tabs_id: &str) -> Option<usize> {
-        self.tab_selections.get(tabs_id).copied()
     }
 }
 
