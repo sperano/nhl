@@ -2,7 +2,7 @@ use tracing::debug;
 
 use crate::tui::action::Action;
 use crate::tui::component::Effect;
-use crate::tui::document::get_stacked_document_handler;
+use crate::tui::document::handle_stacked_document_key;
 use crate::tui::state::{AppState, DocumentStackEntry, LoadingKey};
 use crate::tui::types::StackedDocument;
 
@@ -29,8 +29,13 @@ fn stacked_document_key(state: AppState, key: crossterm::event::KeyEvent) -> (Ap
     let width = new_state.system.terminal_width;
 
     if let Some(entry) = new_state.navigation.document_stack.last_mut() {
-        let handler = get_stacked_document_handler(&entry.document);
-        let effect = handler.handle_key(key, &mut entry.nav, &new_state.data, width);
+        let effect = handle_stacked_document_key(
+            &entry.document,
+            key,
+            &mut entry.nav,
+            &new_state.data,
+            width,
+        );
         return (new_state, effect);
     }
 
@@ -60,6 +65,10 @@ fn push_document(state: AppState, doc: StackedDocument) -> (AppState, Effect) {
                     "DOCUMENT_STACK: Requesting boxscore fetch for game_id={}",
                     game_id
                 );
+                new_state
+                    .data
+                    .loading
+                    .insert(LoadingKey::Boxscore(*game_id));
                 Effect::FetchBoxscore(*game_id)
             } else {
                 Effect::None
@@ -76,6 +85,10 @@ fn push_document(state: AppState, doc: StackedDocument) -> (AppState, Effect) {
                     "DOCUMENT_STACK: Requesting team roster stats fetch for team={}",
                     abbrev
                 );
+                new_state
+                    .data
+                    .loading
+                    .insert(LoadingKey::TeamRosterStats(abbrev.clone()));
                 Effect::FetchTeamRosterStats(abbrev.clone())
             } else {
                 Effect::None
@@ -92,6 +105,10 @@ fn push_document(state: AppState, doc: StackedDocument) -> (AppState, Effect) {
                     "DOCUMENT_STACK: Requesting player stats fetch for player_id={}",
                     player_id
                 );
+                new_state
+                    .data
+                    .loading
+                    .insert(LoadingKey::PlayerStats(*player_id));
                 Effect::FetchPlayerStats(*player_id)
             } else {
                 Effect::None
@@ -183,6 +200,7 @@ mod tests {
             home_abbrev: "BOS".to_string(),
             away_score: 0,
             home_score: 0,
+            game_date: "12/24".to_string(),
         }
     }
 
@@ -196,6 +214,47 @@ mod tests {
 
         assert_eq!(new_state.navigation.document_stack.len(), 1);
         assert!(matches!(effect, Effect::FetchBoxscore(id) if id == game_id));
+        // The dispatched fetch must mark the key as loading, or the loading
+        // animation never fires and a rapid re-push would re-fetch.
+        assert!(new_state
+            .data
+            .loading
+            .contains(&LoadingKey::Boxscore(game_id)));
+    }
+
+    #[test]
+    fn test_push_document_team_detail_marks_loading() {
+        let state = AppState::default();
+        let panel = StackedDocument::TeamDetail {
+            abbrev: "BOS".to_string(),
+        };
+
+        let (new_state, effect) = push_document(state, panel);
+
+        assert!(matches!(effect, Effect::FetchTeamRosterStats(ref abbrev) if abbrev == "BOS"));
+        assert!(new_state
+            .data
+            .loading
+            .contains(&LoadingKey::TeamRosterStats("BOS".to_string())));
+    }
+
+    #[test]
+    fn test_push_document_player_detail_marks_loading() {
+        let state = AppState::default();
+        let player_id = 8478402;
+        let panel = StackedDocument::PlayerDetail {
+            player_id,
+            sweater_number: Some(87),
+            last_name: "Crosby".to_string(),
+        };
+
+        let (new_state, effect) = push_document(state, panel);
+
+        assert!(matches!(effect, Effect::FetchPlayerStats(id) if id == player_id));
+        assert!(new_state
+            .data
+            .loading
+            .contains(&LoadingKey::PlayerStats(player_id)));
     }
 
     #[test]

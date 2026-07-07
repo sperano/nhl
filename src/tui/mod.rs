@@ -10,7 +10,6 @@ pub mod constants;
 pub mod document;
 pub mod document_nav;
 pub mod effects;
-pub mod focus_helpers;
 pub mod helpers;
 pub mod keys;
 pub mod nav_handler;
@@ -50,7 +49,11 @@ use crossterm::{
 use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+/// While idle (nothing loading, no animation), redraw at most this often so the status bar's
+/// "Updated Ns ago" text stays live without a full rebuild+render every poll cycle.
+const IDLE_REDRAW_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Check if an action is a quit action
 fn is_quit_action(action: &Action) -> bool {
@@ -115,69 +118,97 @@ pub async fn run(client: Arc<dyn NHLDataProvider>, config: Config) -> Result<(),
     #[cfg(feature = "development")]
     let mut screenshot_requested = false;
 
+    // Tracks whether the next loop iteration needs a real rebuild+render. Skipping the
+    // draw call when nothing changed is what keeps the app from burning CPU at ~10Hz while
+    // completely idle; every place that mutates rendered-visible state must set this.
+    let mut dirty = true; // must render once at startup
+    let mut last_render_at = Instant::now();
+
     // Main loop
     loop {
         // Process any actions from effects FIRST (so data loads trigger re-render)
         let actions_processed = runtime.process_actions();
         if actions_processed > 0 {
             tracing::debug!("LOOP: Processed {} actions", actions_processed);
+            dirty = true;
         }
 
-        // Render
+        // Detect terminal resize without requiring a draw call, so resize is caught even
+        // when nothing else would otherwise make this iteration dirty.
+        let term_size = terminal.size()?;
+        if runtime.state().system.terminal_width != term_size.width {
+            runtime.dispatch(Action::UpdateTerminalWidth(term_size.width));
+            dirty = true;
+        }
+
         #[cfg(feature = "development")]
-        let mut screenshot_buffer: Option<ratatui::buffer::Buffer> = None;
+        if screenshot_requested {
+            dirty = true; // force a draw so we have a buffer to capture
+        }
 
-        let mut terminal_width = 80u16; // Default
-
-        terminal.draw(|f| {
-            let area = f.area();
-            terminal_width = area.width; // Capture width for key handling
-
-            // Build virtual tree from current state
-            // This creates component states if they don't exist yet
-            let element = runtime.build();
-
-            // Update viewport heights for document-based components
-            // Called after build() to ensure component states exist
-            runtime.update_viewport_heights(area.height);
-
-            // Render virtual tree to ratatui buffer
-            let config = &runtime.state().system.config.display;
-            let mut renderer = Renderer::new();
-            renderer.render(element, area, f.buffer_mut(), config);
-
-            // Clone buffer if screenshot requested
+        if dirty {
+            // Render
             #[cfg(feature = "development")]
-            if screenshot_requested {
-                screenshot_buffer = Some(f.buffer_mut().clone());
-            }
-        })?;
+            let mut screenshot_buffer: Option<ratatui::buffer::Buffer> = None;
 
-        #[cfg(feature = "development")]
-        if let Some(buffer) = screenshot_buffer {
-            screenshot_requested = false;
-            let counter = get_next_screenshot_counter();
-            let filename = format!("nhl-screenshot-{:03}.txt", counter);
-            let area = ratatui::layout::Rect::new(0, 0, buffer.area().width, buffer.area().height);
-            if let Err(e) = crate::dev::screenshot::save_buffer_screenshot(&buffer, area, &filename)
-            {
-                tracing::error!("Failed to save screenshot: {}", e);
-                runtime.dispatch(Action::SetStatusMessage {
-                    message: format!("Failed to save screenshot: {}", e),
-                    is_error: true,
-                });
-            } else {
-                tracing::info!("Screenshot saved to {}", filename);
-                runtime.dispatch(Action::SetStatusMessage {
-                    message: format!("Screenshot saved: {}", filename),
-                    is_error: false,
-                });
-            }
-        }
+            terminal.draw(|f| {
+                let area = f.area();
 
-        // Update terminal width in state if it changed
-        if runtime.state().system.terminal_width != terminal_width {
-            runtime.dispatch(Action::UpdateTerminalWidth(terminal_width));
+                // Set global background color if theme specifies one
+                let theme = &runtime.state().system.config.display.theme;
+                if let Some(bg_color) = theme.as_ref().and_then(|t| t.bg) {
+                    f.buffer_mut()
+                        .set_style(area, ratatui::style::Style::default().bg(bg_color));
+                }
+
+                // Build virtual tree from current state
+                // This creates component states if they don't exist yet
+                let element = runtime.build();
+
+                // Update viewport heights for document-based components
+                // Called after build() to ensure component states exist
+                runtime.update_viewport_heights(area.height);
+
+                // Render virtual tree to ratatui buffer
+                let config = &runtime.state().system.config.display;
+                let ctx = crate::config::RenderContext::focused(config);
+                let mut renderer = Renderer::new();
+                renderer.render(element, area, f.buffer_mut(), &ctx);
+
+                // Clone buffer if screenshot requested
+                #[cfg(feature = "development")]
+                if screenshot_requested {
+                    screenshot_buffer = Some(f.buffer_mut().clone());
+                }
+            })?;
+
+            dirty = false;
+            last_render_at = Instant::now();
+
+            #[cfg(feature = "development")]
+            if let Some(buffer) = screenshot_buffer {
+                screenshot_requested = false;
+                let counter = get_next_screenshot_counter();
+                let filename = format!("nhl-screenshot-{:03}.txt", counter);
+                let area =
+                    ratatui::layout::Rect::new(0, 0, buffer.area().width, buffer.area().height);
+                if let Err(e) =
+                    crate::dev::screenshot::save_buffer_screenshot(&buffer, area, &filename)
+                {
+                    tracing::error!("Failed to save screenshot: {}", e);
+                    runtime.dispatch(Action::SetStatusMessage {
+                        message: format!("Failed to save screenshot: {}", e),
+                        is_error: true,
+                    });
+                } else {
+                    tracing::info!("Screenshot saved to {}", filename);
+                    runtime.dispatch(Action::SetStatusMessage {
+                        message: format!("Screenshot saved: {}", filename),
+                        is_error: false,
+                    });
+                }
+                dirty = true; // status message above needs to be shown
+            }
         }
 
         // If actions were processed, continue loop immediately to check for more
@@ -210,9 +241,15 @@ pub async fn run(client: Arc<dyn NHLDataProvider>, config: Config) -> Result<(),
                 }
             });
 
-        // Dispatch Tick for loading animation
-        if needs_animation {
-            runtime.dispatch(Action::Tick);
+        // Dispatch Tick unconditionally: it drives the loading animation *and* the
+        // elapsed-time check that triggers periodic auto-refresh (see reducer::reduce).
+        // Skipping it while idle would silently stop auto-refresh once initial data loads.
+        // Tick alone does NOT mark the frame dirty (it fires every poll cycle and would
+        // defeat the point); redraw when the loading animation needs to advance, or at
+        // IDLE_REDRAW_INTERVAL so the status bar's elapsed-time text stays live.
+        runtime.dispatch(Action::Tick);
+        if needs_animation || last_render_at.elapsed() >= IDLE_REDRAW_INTERVAL {
+            dirty = true;
         }
 
         // Poll for keyboard events - use shorter timeout when animating for smoother animation
@@ -239,6 +276,7 @@ pub async fn run(client: Arc<dyn NHLDataProvider>, config: Config) -> Result<(),
                 // Dispatch action if we have one
                 if let Some(act) = action {
                     runtime.dispatch(act);
+                    dirty = true;
 
                     // Trigger immediate re-render to show state changes
                     if !should_quit {
@@ -280,7 +318,7 @@ mod tests {
     fn test_is_quit_action_with_non_quit_actions() {
         assert!(!is_quit_action(&Action::RefreshData));
         assert!(!is_quit_action(&Action::NavigateTab(Tab::Scores)));
-        assert!(!is_quit_action(&Action::ToggleCommandPalette));
+        assert!(!is_quit_action(&Action::FocusNext));
         assert!(!is_quit_action(&Action::SelectGame(12345)));
     }
 

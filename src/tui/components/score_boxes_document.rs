@@ -10,7 +10,12 @@ use nhl_api::{DailySchedule, GameDate, GameMatchup};
 
 use crate::commands::scores_format::format_period_text;
 use crate::layout_constants::SCORE_BOX_WIDTH;
-use crate::tui::document::{Document, DocumentBuilder, DocumentElement, FocusContext, FocusableId};
+use crate::team_abbrev::abbrev_to_common_name;
+use crate::tui::document::{
+    Document, DocumentBuilder, DocumentElement, FocusContext, FocusableId, LinkTarget,
+};
+use crate::tui::reducer::format_date_for_breadcrumb;
+use crate::tui::types::StackedDocument;
 use crate::tui::widgets::{loading_animation::loading_animation_text, ScoreBox, ScoreBoxStatus};
 
 /// Gap between score boxes in characters
@@ -56,7 +61,7 @@ impl ScoreBoxesDocument {
         }
     }
 
-    /// Get team display name from game_info or fallback to abbreviation
+    /// Get team display name from game_info or fallback to common name lookup
     fn get_team_name(&self, game_id: i64, is_away: bool, abbrev: &str) -> String {
         if let Some(info) = self.game_info.get(&game_id) {
             let team = if is_away {
@@ -66,18 +71,21 @@ impl ScoreBoxesDocument {
             };
             team.common_name.default.clone()
         } else {
-            abbrev.to_string()
+            // Use common name from lookup, fallback to abbreviation if not found
+            abbrev_to_common_name(abbrev)
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| abbrev.to_string())
         }
     }
 
     /// Create a ScoreBox widget for a given game
     fn create_score_box(&self, game: &nhl_api::ScheduleGame) -> ScoreBox {
-        // Get team names (prefer common_name from game_info, fall back to abbrev)
-        let away_team = self.get_team_name(game.id, true, &game.away_team.abbrev);
-        let home_team = self.get_team_name(game.id, false, &game.home_team.abbrev);
+        // Get team names (prefer common_name from game_info, fall back to common name lookup)
+        let away_team = self.get_team_name(game.id.into(), true, &game.away_team.abbrev);
+        let home_team = self.get_team_name(game.id.into(), false, &game.home_team.abbrev);
 
         // Get scores from schedule or game_info
-        let (away_score, home_score) = if let Some(info) = self.game_info.get(&game.id) {
+        let (away_score, home_score) = if let Some(info) = self.game_info.get(&game.id.into()) {
             (Some(info.away_team.score), Some(info.home_team.score))
         } else {
             (game.away_team.score, game.home_team.score)
@@ -86,10 +94,10 @@ impl ScoreBoxesDocument {
         // Determine game status
         let status = if game.game_state.is_final() {
             // Check for OT/SO from game_info
-            let (overtime, shootout) = if let Some(info) = self.game_info.get(&game.id) {
+            let (overtime, shootout) = if let Some(info) = self.game_info.get(&game.id.into()) {
                 let is_ot = info.period_descriptor.number > 3
-                    || info.period_descriptor.period_type == nhl_api::PeriodType::Overtime;
-                let is_so = info.period_descriptor.period_type == nhl_api::PeriodType::Shootout;
+                    || info.period_descriptor.period_type == Some(nhl_api::PeriodType::Overtime);
+                let is_so = info.period_descriptor.period_type == Some(nhl_api::PeriodType::Shootout);
                 (is_ot && !is_so, is_so)
             } else {
                 (false, false)
@@ -97,7 +105,7 @@ impl ScoreBoxesDocument {
             ScoreBoxStatus::Final { overtime, shootout }
         } else if game.game_state.has_started() {
             // Get period text and time from game_info
-            if let Some(info) = self.game_info.get(&game.id) {
+            if let Some(info) = self.game_info.get(&game.id.into()) {
                 let period = format_period_text(
                     info.period_descriptor.period_type,
                     info.period_descriptor.number,
@@ -136,6 +144,31 @@ impl ScoreBoxesDocument {
 
         ScoreBox::new(away_team, home_team, away_score, home_score, status)
     }
+
+    /// Build the activation target for a game's score box
+    ///
+    /// Resolves the same away/home abbrev and score data `create_score_box`
+    /// uses for display, so the pushed `StackedDocument::Boxscore` always
+    /// matches what's on screen.
+    fn build_link_target(&self, game: &nhl_api::ScheduleGame) -> LinkTarget {
+        let (away_score, home_score) = if let Some(info) = self.game_info.get(&game.id.into()) {
+            (info.away_team.score, info.home_team.score)
+        } else {
+            (
+                game.away_team.score.unwrap_or(0),
+                game.home_team.score.unwrap_or(0),
+            )
+        };
+
+        LinkTarget::Push(StackedDocument::Boxscore {
+            game_id: game.id.into(),
+            away_abbrev: game.away_team.abbrev.clone(),
+            home_abbrev: game.home_team.abbrev.clone(),
+            away_score,
+            home_score,
+            game_date: format_date_for_breadcrumb(&self.game_date),
+        })
+    }
 }
 
 impl Document for ScoreBoxesDocument {
@@ -169,13 +202,14 @@ impl Document for ScoreBoxesDocument {
                 .iter()
                 .map(|game| {
                     // ScoreBoxElement uses FocusableId::GameLink(game_id)
-                    let focused = focus.focused_id == Some(FocusableId::GameLink(game.id));
+                    let focused = focus.focused_id == Some(FocusableId::GameLink(game.id.into()));
 
                     // Create the ScoreBox widget
                     let score_box = self.create_score_box(game);
+                    let link_target = self.build_link_target(game);
 
                     // Use the ScoreBoxElement variant
-                    DocumentElement::score_box_element(game.id, score_box, focused)
+                    DocumentElement::score_box_element(game.id.into(), score_box, focused, link_target)
                 })
                 .collect();
 
@@ -202,20 +236,20 @@ mod tests {
 
     fn create_test_game(id: i64, away: &str, home: &str) -> ScheduleGame {
         ScheduleGame {
-            id,
+            id: id.into(),
             game_type: nhl_api::GameType::RegularSeason,
             game_date: Some("2024-01-15".to_string()),
             start_time_utc: "2024-01-15T20:00:00Z".to_string(),
             game_state: ApiGameState::Final,
             away_team: ScheduleTeam {
-                id: 1,
+                id: 1.into(),
                 abbrev: away.to_string(),
                 score: Some(2),
                 logo: String::new(),
                 place_name: None,
             },
             home_team: ScheduleTeam {
-                id: 2,
+                id: 2.into(),
                 abbrev: home.to_string(),
                 score: Some(3),
                 logo: String::new(),
@@ -320,6 +354,56 @@ mod tests {
 
         // Should have 2 spacers + 2 rows = 4 elements
         assert_eq!(elements.len(), 4);
+    }
+
+    #[test]
+    fn test_game_box_link_target_pushes_matching_boxscore() {
+        use crate::tui::document::LinkTarget;
+        use crate::tui::types::StackedDocument;
+
+        let game = create_test_game(42, "TOR", "MTL");
+        let schedule = DailySchedule {
+            date: "2024-01-15".to_string(),
+            games: vec![game],
+            next_start_date: None,
+            previous_start_date: None,
+            number_of_games: 1,
+        };
+        let game_date = GameDate::from_ymd(2024, 1, 15).unwrap();
+
+        let doc = ScoreBoxesDocument::new(
+            Arc::new(Some(schedule)),
+            Arc::new(HashMap::new()),
+            2,
+            game_date,
+            0,
+        );
+
+        let targets: Vec<_> = doc
+            .focusables(&FocusContext::default())
+            .into_iter()
+            .map(|f| f.link_target)
+            .collect();
+        assert_eq!(targets.len(), 1);
+        match &targets[0] {
+            Some(LinkTarget::Push(StackedDocument::Boxscore {
+                game_id,
+                away_abbrev,
+                home_abbrev,
+                away_score,
+                home_score,
+                game_date,
+            })) => {
+                assert_eq!(*game_id, 42);
+                assert_eq!(away_abbrev, "TOR");
+                assert_eq!(home_abbrev, "MTL");
+                // create_test_game fixture scores (away 2, home 3).
+                assert_eq!(*away_score, 2);
+                assert_eq!(*home_score, 3);
+                assert_eq!(game_date, "01/15");
+            }
+            other => panic!("expected Push(Boxscore), got {other:?}"),
+        }
     }
 
     #[test]

@@ -6,48 +6,49 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 
-use crate::config::DisplayConfig;
+use crate::config::RenderContext;
 use crate::tui::CellValue;
 
 use super::{TableWidget, SELECTOR_WIDTH};
 
 impl TableWidget {
-    /// Get the style for a cell based on whether it's the focused link cell
+    /// Get the style for a cell based on whether it receives selection styling
     ///
-    /// Only link cells in focused rows get the selection style.
+    /// Cells that receive selection style (StyledText, PlayerLink, TeamLink)
+    /// get selection styling when the row is focused.
     /// Other cells use normal styling.
     pub(super) fn get_cell_style(
         &self,
         is_row_focused: bool,
         cell_value: &CellValue,
-        config: &DisplayConfig,
+        ctx: &RenderContext,
     ) -> Style {
-        let is_focused_link = is_row_focused && cell_value.is_link();
+        let base = ctx.base_style();
+        let is_styled = is_row_focused && cell_value.receives_selection_style();
 
-        if is_focused_link {
-            // Focused link cell: use REVERSED + BOLD modifier
-            if let Some(theme) = &config.theme {
-                Style::default()
-                    .fg(theme.fg2)
+        if is_styled {
+            // Styled cell in focused row: use selection colors
+            if let Some(theme) = ctx.theme() {
+                base.fg(theme.selection_text_fg)
+                    .bg(theme.selection_text_bg)
                     .add_modifier(crate::config::SELECTION_STYLE_MODIFIER)
             } else {
-                Style::default().add_modifier(crate::config::SELECTION_STYLE_MODIFIER)
+                base.add_modifier(crate::config::THEMELESS_SELECTION_STYLE_MODIFIER)
             }
         } else {
-            // Not focused or not a link: use fg2 from theme (or default if no theme)
-            if let Some(theme) = &config.theme {
-                Style::default().fg(theme.fg2)
-            } else {
-                Style::default()
-            }
+            // Not focused or not styled: use text_style (handles dimming automatically)
+            ctx.text_style()
         }
     }
 
     /// Internal render implementation
-    pub(super) fn render_internal(&self, area: Rect, buf: &mut Buffer, config: &DisplayConfig) {
+    pub(super) fn render_internal(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
         if area.height == 0 || area.width == 0 {
             return;
         }
+
+        // Fill entire area with background color first
+        buf.set_style(area, ctx.base_style());
 
         let mut y = area.y;
 
@@ -55,11 +56,7 @@ impl TableWidget {
         if y < area.bottom() {
             let mut x = area.x + SELECTOR_WIDTH as u16;
 
-            let col_header_style = if let Some(theme) = &config.theme {
-                Style::default().fg(theme.fg2).add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().add_modifier(Modifier::BOLD)
-            };
+            let col_header_style = ctx.text_style().add_modifier(Modifier::BOLD);
 
             for (col_idx, header) in self.column_headers.iter().enumerate() {
                 let width = self.column_widths[col_idx];
@@ -76,16 +73,10 @@ impl TableWidget {
             let total_width: usize = self.column_widths.iter().sum::<usize>()
                 + (self.column_widths.len().saturating_sub(1) * 2);
 
-            let separator = config.box_chars.horizontal.repeat(total_width);
+            let separator = ctx.box_chars().horizontal.repeat(total_width);
             let separator_line = format!("{}{}", " ".repeat(SELECTOR_WIDTH), separator);
 
-            let separator_style = if let Some(theme) = &config.theme {
-                Style::default().fg(theme.fg3)
-            } else {
-                Style::default()
-            };
-
-            buf.set_string(area.x, y, &separator_line, separator_style);
+            buf.set_string(area.x, y, &separator_line, ctx.boxchar_style());
             y += 1;
         }
 
@@ -99,18 +90,13 @@ impl TableWidget {
 
             // Render selector indicator
             let selector = if is_row_focused {
-                format!("{} ", config.box_chars.selector)
+                format!("{} ", ctx.box_chars().selector)
             } else {
                 " ".repeat(SELECTOR_WIDTH)
             };
 
             // Render selector
-            let selector_style = if let Some(theme) = &config.theme {
-                Style::default().fg(theme.fg2)
-            } else {
-                Style::default()
-            };
-            buf.set_string(area.x, y, &selector, selector_style);
+            buf.set_string(area.x, y, &selector, ctx.boxchar_style());
 
             // Render cells
             let mut x = area.x + SELECTOR_WIDTH as u16;
@@ -120,9 +106,21 @@ impl TableWidget {
                 let cell_text = cell_value.display_text();
                 let formatted = self.format_cell(cell_text, width, align);
 
-                let style = self.get_cell_style(is_row_focused, cell_value, config);
+                let style = self.get_cell_style(is_row_focused, cell_value, ctx);
 
                 buf.set_string(x, y, &formatted, style);
+
+                // Style the gap if current cell is styled AND next cell is also styled
+                let next_cell = row_cells.get(col_idx + 1);
+                let current_styled = is_row_focused && cell_value.receives_selection_style();
+                let next_styled = next_cell
+                    .map(|c| is_row_focused && c.receives_selection_style())
+                    .unwrap_or(false);
+
+                if current_styled && next_styled {
+                    buf.set_string(x + width as u16, y, "  ", style);
+                }
+
                 x += width as u16 + 2;
             }
 

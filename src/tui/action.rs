@@ -1,6 +1,9 @@
 use crossterm::event::KeyEvent;
-use nhl_api::{Boxscore, ClubStats, DailySchedule, GameDate, GameMatchup, PlayerLanding, Standing};
+use nhl_api::{
+    Boxscore, ClubStats, DailySchedule, GameDate, GameMatchup, NHLApiError, PlayerLanding, Standing,
+};
 use std::any::Any;
+use std::sync::Arc;
 
 use super::component::Effect;
 use super::types::{StackedDocument, Tab};
@@ -36,16 +39,6 @@ pub enum Action {
     ExitContentFocus,  // Up key: move focus from content back to tab bar
     PushDocument(StackedDocument),
     PopDocument,
-    ToggleCommandPalette,
-
-    /// Unified "navigate up" action (ESC key)
-    ///
-    /// Hierarchical fallthrough:
-    /// 1. If document stack not empty → pop document
-    /// 2. Send NavigateUpMsg to current tab component
-    /// 3. Component returns whether it handled it (closed modal, exited browse mode)
-    /// 4. If not handled and content_focused → set content_focused = false
-    NavigateUp,
 
     /// Route key events to stacked documents
     ///
@@ -60,12 +53,12 @@ pub enum Action {
     RefreshSchedule(GameDate), // Refresh schedule for specific date
 
     // Data loaded (from effects)
-    StandingsLoaded(Result<Vec<Standing>, String>),
-    ScheduleLoaded(Result<DailySchedule, String>),
-    GameDetailsLoaded(i64, Result<GameMatchup, String>),
-    BoxscoreLoaded(i64, Result<Boxscore, String>),
-    TeamRosterStatsLoaded(String, Result<ClubStats, String>),
-    PlayerStatsLoaded(i64, Result<PlayerLanding, String>),
+    StandingsLoaded(Result<Vec<Standing>, Arc<NHLApiError>>),
+    ScheduleLoaded(Result<DailySchedule, Arc<NHLApiError>>),
+    GameDetailsLoaded(i64, Result<GameMatchup, Arc<NHLApiError>>),
+    BoxscoreLoaded(i64, Result<Boxscore, Arc<NHLApiError>>),
+    TeamRosterStatsLoaded(String, Result<ClubStats, Arc<NHLApiError>>),
+    PlayerStatsLoaded(i64, Result<PlayerLanding, Arc<NHLApiError>>),
 
     // UI actions
     FocusNext,
@@ -94,7 +87,6 @@ pub enum Action {
 
     // System actions
     Quit,
-    Error(String),
     SetStatusMessage {
         message: String,
         is_error: bool,
@@ -107,8 +99,6 @@ pub enum Action {
 /// Tab-specific actions for Settings
 #[derive(Debug, Clone)]
 pub enum SettingsAction {
-    NavigateCategoryLeft,
-    NavigateCategoryRight,
     ToggleBoolean(String),                        // Setting key to toggle
     UpdateSetting { key: String, value: String }, // Update a setting value
     UpdateConfig(Box<crate::config::Config>),
@@ -124,8 +114,6 @@ impl Clone for Action {
             Self::ExitContentFocus => Self::ExitContentFocus,
             Self::PushDocument(doc) => Self::PushDocument(doc.clone()),
             Self::PopDocument => Self::PopDocument,
-            Self::ToggleCommandPalette => Self::ToggleCommandPalette,
-            Self::NavigateUp => Self::NavigateUp,
             Self::StackedDocumentKey(key) => Self::StackedDocumentKey(*key),
             Self::RefreshData => Self::RefreshData,
             Self::RefreshSchedule(date) => Self::RefreshSchedule(date.clone()),
@@ -147,7 +135,6 @@ impl Clone for Action {
                 message: message.clone_box(),
             },
             Self::Quit => Self::Quit,
-            Self::Error(msg) => Self::Error(msg.clone()),
             Self::SetStatusMessage { message, is_error } => Self::SetStatusMessage {
                 message: message.clone(),
                 is_error: *is_error,
@@ -160,8 +147,12 @@ impl Clone for Action {
 
 impl Action {
     /// Returns true if this action should trigger a re-render
+    ///
+    /// Every action currently warrants a re-render; this stays a method
+    /// (rather than being deleted outright) so future actions with no visible
+    /// effect have an obvious place to opt out.
     pub fn should_render(&self) -> bool {
-        !matches!(self, Self::Error(_))
+        true
     }
 }
 
@@ -177,17 +168,8 @@ mod tests {
         assert!(Action::ExitContentFocus.should_render());
         assert!(Action::RefreshData.should_render());
         assert!(Action::Quit.should_render());
-        assert!(Action::ToggleCommandPalette.should_render());
         assert!(Action::PopDocument.should_render());
         assert!(Action::FocusNext.should_render());
         assert!(Action::FocusPrevious.should_render());
-        assert!(Action::NavigateUp.should_render());
-    }
-
-    #[test]
-    fn test_should_render_returns_false_for_error_actions() {
-        assert!(!Action::Error("test error".to_string()).should_render());
-        assert!(!Action::Error("another error".to_string()).should_render());
-        assert!(!Action::Error(String::new()).should_render());
     }
 }

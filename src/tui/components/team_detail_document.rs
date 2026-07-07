@@ -5,7 +5,7 @@ use ratatui::{buffer::Buffer, layout::Rect};
 use nhl_api::{ClubGoalieStats, ClubSkaterStats, ClubStats, Standing};
 
 use super::table::TableWidget;
-use crate::config::DisplayConfig;
+use crate::config::RenderContext;
 use crate::tui::helpers::{ClubGoalieStatsSorting, ClubSkaterStatsSorting};
 use crate::tui::widgets::{LoadingAnimation, StandaloneWidget};
 use crate::tui::{
@@ -17,13 +17,18 @@ use crate::tui::{
 /// Props for TeamDetailDocument component
 #[derive(Clone)]
 pub struct TeamDetailDocumentProps {
-    pub team_abbrev: String,
-    pub standing: Option<Standing>,
-    pub club_stats: Option<ClubStats>,
+    /// Pre-built content document, or `None` while roster data hasn't
+    /// arrived yet (rendered as a loading spinner). Built by
+    /// `document::build_stacked_document`, the single production
+    /// construction site shared with the input-handling path.
+    pub document: Option<Arc<dyn Document>>,
     pub loading: bool,
     pub selected_index: Option<usize>,
     pub scroll_offset: u16,
     pub animation_frame: u8,
+    /// Whether this document has focus (affects dim/bright rendering)
+    /// Stacked documents are always focused
+    pub focused: bool,
 }
 
 /// TeamDetailDocument component - renders team info and season player stats
@@ -36,13 +41,12 @@ impl Component for TeamDetailDocument {
 
     fn view(&self, props: &Self::Props, _state: &Self::State) -> Element {
         Element::Widget(Box::new(TeamDetailDocumentWidget {
-            team_abbrev: props.team_abbrev.clone(),
-            standing: props.standing.clone(),
-            club_stats: props.club_stats.clone(),
+            document: props.document.clone(),
             loading: props.loading,
             selected_index: props.selected_index,
             scroll_offset: props.scroll_offset,
             animation_frame: props.animation_frame,
+            focused: props.focused,
         }))
     }
 }
@@ -173,11 +177,14 @@ fn skater_columns() -> Vec<ColumnDef<ClubSkaterStats>> {
         ColumnDef::new("Player", 20, Alignment::Left, |s: &ClubSkaterStats| {
             CellValue::PlayerLink {
                 display: format!("{} {}", s.first_name.default, s.last_name.default),
-                player_id: s.player_id,
+                player_id: s.player_id.into(),
+                // ClubSkaterStats doesn't carry a sweater number.
+                sweater_number: None,
+                last_name: s.last_name.default.clone(),
             }
         }),
         ColumnDef::new("Pos", 3, Alignment::Left, |s: &ClubSkaterStats| {
-            CellValue::Text(s.position.to_string())
+            CellValue::Text(s.position.map_or_else(String::new, |p| p.code().to_string()))
         }),
         ColumnDef::new("GP", 4, Alignment::Right, |s: &ClubSkaterStats| {
             CellValue::Text(s.games_played.to_string())
@@ -206,7 +213,10 @@ fn goalie_columns() -> Vec<ColumnDef<ClubGoalieStats>> {
         ColumnDef::new("Player", 20, Alignment::Left, |g: &ClubGoalieStats| {
             CellValue::PlayerLink {
                 display: format!("{} {}", g.first_name.default, g.last_name.default),
-                player_id: g.player_id,
+                player_id: g.player_id.into(),
+                // ClubGoalieStats doesn't carry a sweater number.
+                sweater_number: None,
+                last_name: g.last_name.default.clone(),
             }
         }),
         ColumnDef::new("GP", 4, Alignment::Right, |g: &ClubGoalieStats| {
@@ -235,20 +245,23 @@ fn goalie_columns() -> Vec<ColumnDef<ClubGoalieStats>> {
 
 /// Widget for rendering the team detail document
 struct TeamDetailDocumentWidget {
-    team_abbrev: String,
-    standing: Option<Standing>,
-    club_stats: Option<ClubStats>,
+    document: Option<Arc<dyn Document>>,
     loading: bool,
     selected_index: Option<usize>,
     scroll_offset: u16,
     animation_frame: u8,
+    /// Whether this widget has focus (affects dim/bright rendering)
+    focused: bool,
 }
 
 impl ElementWidget for TeamDetailDocumentWidget {
-    fn render(&self, area: Rect, buf: &mut Buffer, config: &DisplayConfig) {
+    fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
+        // Create child RenderContext with our focus state
+        let child_ctx = RenderContext::new(ctx.config, self.focused);
+
         // Show animation if loading or data hasn't arrived yet
-        if self.loading || self.club_stats.is_none() {
-            LoadingAnimation::new(self.animation_frame).render(area, buf, config);
+        if self.loading || self.document.is_none() {
+            LoadingAnimation::new(self.animation_frame).render(area, buf, &child_ctx);
             return;
         }
 
@@ -256,14 +269,11 @@ impl ElementWidget for TeamDetailDocumentWidget {
             return;
         }
 
-        // Create document and render with DocumentView
-        let doc = TeamDetailDocumentContent::new(
-            self.team_abbrev.clone(),
-            self.standing.clone(),
-            self.club_stats.clone(),
-        );
+        // Safe to unwrap since we checked is_none() above
+        let document = self.document.clone().unwrap();
 
-        let mut view = DocumentView::new(Arc::new(doc), area.height);
+        // Render the pre-built document with DocumentView
+        let mut view = DocumentView::new(document, area.height);
 
         // Apply focus state
         if let Some(idx) = self.selected_index {
@@ -274,18 +284,17 @@ impl ElementWidget for TeamDetailDocumentWidget {
         view.set_scroll_offset(self.scroll_offset);
 
         // Render the document
-        view.render(area, buf, config);
+        view.render(area, buf, &child_ctx);
     }
 
     fn clone_box(&self) -> Box<dyn ElementWidget> {
         Box::new(TeamDetailDocumentWidget {
-            team_abbrev: self.team_abbrev.clone(),
-            standing: self.standing.clone(),
-            club_stats: self.club_stats.clone(),
+            document: self.document.clone(),
             loading: self.loading,
             selected_index: self.selected_index,
             scroll_offset: self.scroll_offset,
             animation_frame: self.animation_frame,
+            focused: self.focused,
         })
     }
 }
@@ -293,8 +302,9 @@ impl ElementWidget for TeamDetailDocumentWidget {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{DisplayConfig, RenderContext};
     use crate::tui::document::FocusContext;
-    use nhl_api::{ClubGoalieStats, ClubSkaterStats, LocalizedString, Position};
+    use nhl_api::{ClubGoalieStats, ClubSkaterStats, LocalizedString, Position, Season};
     use ratatui::{buffer::Buffer, layout::Rect};
 
     fn create_test_skater(
@@ -308,7 +318,7 @@ mod tests {
         points: i32,
     ) -> ClubSkaterStats {
         ClubSkaterStats {
-            player_id,
+            player_id: player_id.into(),
             headshot: String::new(),
             first_name: LocalizedString {
                 default: first_name.to_string(),
@@ -316,7 +326,7 @@ mod tests {
             last_name: LocalizedString {
                 default: last_name.to_string(),
             },
-            position,
+            position: Some(position),
             games_played: gp,
             goals,
             assists,
@@ -343,7 +353,7 @@ mod tests {
         wins: i32,
     ) -> ClubGoalieStats {
         ClubGoalieStats {
-            player_id,
+            player_id: player_id.into(),
             headshot: String::new(),
             first_name: LocalizedString {
                 default: first_name.to_string(),
@@ -401,7 +411,7 @@ mod tests {
         let goalies = vec![create_test_goalie(3, "Bob", "Johnson", 15, 8)];
 
         ClubStats {
-            season: "20242025".to_string(),
+            season: Season::new(2024),
             game_type: nhl_api::GameType::RegularSeason,
             skaters,
             goalies,
@@ -448,7 +458,7 @@ mod tests {
         let doc =
             TeamDetailDocumentContent::new("TST".to_string(), Some(standing), Some(club_stats));
 
-        let positions = doc.focusable_positions();
+        let positions = doc.focusables(&FocusContext::default());
 
         // Should have 3 focusable positions: 2 skaters + 1 goalie
         assert_eq!(positions.len(), 3);
@@ -462,7 +472,7 @@ mod tests {
         let doc =
             TeamDetailDocumentContent::new("TST".to_string(), Some(standing), Some(club_stats));
 
-        let ids = doc.focusable_ids();
+        let ids = doc.focusables(&FocusContext::default());
 
         // Should have 3 focusable IDs: 2 skaters + 1 goalie
         assert_eq!(ids.len(), 3);
@@ -497,31 +507,36 @@ mod tests {
         }
 
         let club_stats = ClubStats {
-            season: "20242025".to_string(),
+            season: Season::new(2024),
             game_type: nhl_api::GameType::RegularSeason,
             skaters,
             goalies,
         };
 
         let standing = create_test_standing();
+        let document: Arc<dyn Document> = Arc::new(TeamDetailDocumentContent::new(
+            "TST".to_string(),
+            Some(standing),
+            Some(club_stats),
+        ));
 
         let widget = TeamDetailDocumentWidget {
-            team_abbrev: "TST".to_string(),
-            standing: Some(standing),
-            club_stats: Some(club_stats),
+            document: Some(document),
             loading: false,
             selected_index: None,
             scroll_offset: 0,
             animation_frame: 0,
+            focused: true,
         };
 
         // Create a small area that is definitely smaller than the preferred height
         let area = Rect::new(0, 0, 80, 20);
         let mut buf = Buffer::empty(area);
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
         // This should NOT panic
-        widget.render(area, &mut buf, &config);
+        widget.render(area, &mut buf, &ctx);
 
         assert_eq!(*buf.area(), area);
     }
@@ -541,29 +556,34 @@ mod tests {
         let goalies = vec![create_test_goalie(2, "Jane", "Smith", 15, 8)];
 
         let club_stats = ClubStats {
-            season: "20242025".to_string(),
+            season: Season::new(2024),
             game_type: nhl_api::GameType::RegularSeason,
             skaters,
             goalies,
         };
 
         let standing = create_test_standing();
+        let document: Arc<dyn Document> = Arc::new(TeamDetailDocumentContent::new(
+            "TST".to_string(),
+            Some(standing),
+            Some(club_stats),
+        ));
 
         let widget = TeamDetailDocumentWidget {
-            team_abbrev: "TST".to_string(),
-            standing: Some(standing),
-            club_stats: Some(club_stats),
+            document: Some(document),
             loading: false,
             selected_index: None,
             scroll_offset: 0,
             animation_frame: 0,
+            focused: true,
         };
 
         let area = Rect::new(0, 0, 80, 15);
         let mut buf = Buffer::empty(area);
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        widget.render(area, &mut buf, &config);
+        widget.render(area, &mut buf, &ctx);
 
         assert_eq!(*buf.area(), area);
     }
@@ -571,20 +591,20 @@ mod tests {
     #[test]
     fn test_loading_state_renders() {
         let widget = TeamDetailDocumentWidget {
-            team_abbrev: "TST".to_string(),
-            standing: None,
-            club_stats: None,
+            document: None,
             loading: true,
             selected_index: None,
             scroll_offset: 0,
             animation_frame: 0,
+            focused: true,
         };
 
         let area = Rect::new(0, 0, 80, 20);
         let mut buf = Buffer::empty(area);
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        widget.render(area, &mut buf, &config);
+        widget.render(area, &mut buf, &ctx);
 
         // Should render loading message without panic
         assert_eq!(*buf.area(), area);
@@ -593,20 +613,20 @@ mod tests {
     #[test]
     fn test_no_stats_renders() {
         let widget = TeamDetailDocumentWidget {
-            team_abbrev: "TST".to_string(),
-            standing: None,
-            club_stats: None,
+            document: None,
             loading: false,
             selected_index: None,
             scroll_offset: 0,
             animation_frame: 0,
+            focused: true,
         };
 
         let area = Rect::new(0, 0, 80, 20);
         let mut buf = Buffer::empty(area);
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        widget.render(area, &mut buf, &config);
+        widget.render(area, &mut buf, &ctx);
 
         // Should render "no stats" message without panic
         assert_eq!(*buf.area(), area);

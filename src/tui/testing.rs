@@ -65,11 +65,9 @@ macro_rules! setup_test_render {
 /// ```ignore
 /// use nhl::setup_test_render_with;
 /// use nhl::tui::types::Tab;
-/// use nhl::commands::standings::GroupBy;
 ///
 /// let (mut state, config, area, buf) = setup_test_render_with!(|state| {
-///     state.navigation.current_tab = Tab::Standings;
-///     state.ui.standings.view = GroupBy::Conference;
+///     state.navigation.current_tab = Tab::Settings;
 /// });
 /// ```
 #[macro_export]

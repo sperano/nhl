@@ -14,7 +14,7 @@ use nhl_api::Standing;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 
-use crate::config::{Config, DisplayConfig};
+use crate::config::{Config, RenderContext};
 use crate::tui::component::ElementWidget;
 use crate::tui::document::{Document, DocumentView};
 
@@ -33,68 +33,78 @@ pub struct StandingsDocumentWidget {
     doc: Arc<dyn Document>,
     focus_index: Option<usize>,
     scroll_offset: u16,
+    /// Whether this widget has focus (affects dim/bright rendering)
+    focused: bool,
 }
 
 impl StandingsDocumentWidget {
     /// Create widget for League standings
     pub fn league(
         standings: Arc<Vec<Standing>>,
-        config: Config,
+        config: impl Into<Arc<Config>>,
         focus_index: Option<usize>,
         scroll_offset: u16,
+        focused: bool,
     ) -> Self {
         Self {
             doc: Arc::new(LeagueStandingsDocument::new(standings, config)),
             focus_index,
             scroll_offset,
+            focused,
         }
     }
 
     /// Create widget for Conference standings
     pub fn conference(
         standings: Arc<Vec<Standing>>,
-        config: Config,
+        config: impl Into<Arc<Config>>,
         focus_index: Option<usize>,
         scroll_offset: u16,
+        focused: bool,
     ) -> Self {
         Self {
             doc: Arc::new(ConferenceStandingsDocument::new(standings, config)),
             focus_index,
             scroll_offset,
+            focused,
         }
     }
 
     /// Create widget for Division standings
     pub fn division(
         standings: Arc<Vec<Standing>>,
-        config: Config,
+        config: impl Into<Arc<Config>>,
         focus_index: Option<usize>,
         scroll_offset: u16,
+        focused: bool,
     ) -> Self {
         Self {
             doc: Arc::new(DivisionStandingsDocument::new(standings, config)),
             focus_index,
             scroll_offset,
+            focused,
         }
     }
 
     /// Create widget for Wildcard standings
     pub fn wildcard(
         standings: Arc<Vec<Standing>>,
-        config: Config,
+        config: impl Into<Arc<Config>>,
         focus_index: Option<usize>,
         scroll_offset: u16,
+        focused: bool,
     ) -> Self {
         Self {
             doc: Arc::new(WildcardStandingsDocument::new(standings, config)),
             focus_index,
             scroll_offset,
+            focused,
         }
     }
 }
 
 impl ElementWidget for StandingsDocumentWidget {
-    fn render(&self, area: Rect, buf: &mut Buffer, display_config: &DisplayConfig) {
+    fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
         // Create DocumentView with viewport height
         let mut view = DocumentView::new(self.doc.clone(), area.height);
 
@@ -106,8 +116,11 @@ impl ElementWidget for StandingsDocumentWidget {
         // Apply scroll offset from AppState
         view.set_scroll_offset(self.scroll_offset);
 
+        // Create child RenderContext with our focus state
+        let child_ctx = RenderContext::new(ctx.config, self.focused);
+
         // Render the document
-        view.render(area, buf, display_config);
+        view.render(area, buf, &child_ctx);
     }
 
     fn clone_box(&self) -> Box<dyn ElementWidget> {
@@ -115,6 +128,7 @@ impl ElementWidget for StandingsDocumentWidget {
             doc: self.doc.clone(),
             focus_index: self.focus_index,
             scroll_offset: self.scroll_offset,
+            focused: self.focused,
         })
     }
 
@@ -126,7 +140,7 @@ impl ElementWidget for StandingsDocumentWidget {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::DisplayConfig;
+    use crate::config::{DisplayConfig, RenderContext};
     use crate::tui::document::{DocumentElement, FocusContext};
     use crate::tui::testing::{assert_buffer, create_test_standings};
     use std::sync::Arc;
@@ -134,7 +148,7 @@ mod tests {
     #[test]
     fn test_league_standings_document_renders() {
         let standings = Arc::new(create_test_standings());
-        let config = Config::default();
+        let config = Arc::new(Config::default());
         let doc = LeagueStandingsDocument::new(standings, config);
 
         // Build with no focus
@@ -157,11 +171,12 @@ mod tests {
     #[test]
     fn test_league_standings_document_full_render() {
         let standings = Arc::new(create_test_standings());
-        let config = Config::default();
+        let config = Arc::new(Config::default());
         let doc = LeagueStandingsDocument::new(standings, config);
 
         let display_config = DisplayConfig::default();
-        let (buf, height) = doc.render_full(60, &display_config, &FocusContext::default());
+        let ctx = RenderContext::focused(&display_config);
+        let (buf, height) = doc.render_full(60, &ctx, &FocusContext::default());
 
         // Height should be: column headers (1) + separator (1) + 32 teams = 34 lines
         assert_eq!(height, 34);
@@ -211,7 +226,7 @@ mod tests {
     #[test]
     fn test_league_standings_document_with_focus() {
         let standings = Arc::new(create_test_standings());
-        let config = Config::default();
+        let config = Arc::new(Config::default());
         let doc = LeagueStandingsDocument::new(standings, config);
 
         // Create focus context for row 2
@@ -232,7 +247,7 @@ mod tests {
     #[test]
     fn test_league_standings_document_metadata() {
         let standings = Arc::new(create_test_standings());
-        let config = Config::default();
+        let config = Arc::new(Config::default());
         let doc = LeagueStandingsDocument::new(standings, config);
 
         assert_eq!(doc.title(), "League Standings");
@@ -242,10 +257,14 @@ mod tests {
     #[test]
     fn test_league_standings_focusable_positions() {
         let standings = Arc::new(create_test_standings());
-        let config = Config::default();
+        let config = Arc::new(Config::default());
         let doc = LeagueStandingsDocument::new(standings, config);
 
-        let positions = doc.focusable_positions();
+        let positions: Vec<u16> = doc
+            .focusables(&FocusContext::default())
+            .iter()
+            .map(|f| f.y)
+            .collect();
 
         // Should have 32 focusable positions (one per team row)
         assert_eq!(positions.len(), 32);
@@ -264,7 +283,7 @@ mod tests {
     #[test]
     fn test_conference_standings_document_renders() {
         let standings = Arc::new(create_test_standings());
-        let config = Config::default();
+        let config = Arc::new(Config::default());
         let doc = ConferenceStandingsDocument::new(standings, config);
 
         // Build with no focus
@@ -305,7 +324,7 @@ mod tests {
     #[test]
     fn test_conference_standings_document_metadata() {
         let standings = Arc::new(create_test_standings());
-        let config = Config::default();
+        let config = Arc::new(Config::default());
         let doc = ConferenceStandingsDocument::new(standings, config);
 
         assert_eq!(doc.title(), "Conference Standings");
@@ -315,10 +334,14 @@ mod tests {
     #[test]
     fn test_conference_standings_focusable_positions() {
         let standings = Arc::new(create_test_standings());
-        let config = Config::default();
+        let config = Arc::new(Config::default());
         let doc = ConferenceStandingsDocument::new(standings, config);
 
-        let positions = doc.focusable_positions();
+        let positions: Vec<u16> = doc
+            .focusables(&FocusContext::default())
+            .iter()
+            .map(|f| f.y)
+            .collect();
 
         // Should have 32 focusable positions (16 per conference)
         assert_eq!(positions.len(), 32);
@@ -355,10 +378,14 @@ mod tests {
     #[test]
     fn test_conference_standings_row_positions() {
         let standings = Arc::new(create_test_standings());
-        let config = Config::default();
+        let config = Arc::new(Config::default());
         let doc = ConferenceStandingsDocument::new(standings, config);
 
-        let row_positions = doc.focusable_row_positions();
+        let row_positions: Vec<_> = doc
+            .focusables(&FocusContext::default())
+            .iter()
+            .map(|f| f.row_position)
+            .collect();
 
         // Should have 32 row positions
         assert_eq!(row_positions.len(), 32);
@@ -388,7 +415,7 @@ mod tests {
         // Test with western_first = false (Eastern left, Western right)
         let mut config = Config::default();
         config.display_standings_western_first = false;
-        let doc = ConferenceStandingsDocument::new(standings.clone(), config);
+        let doc = ConferenceStandingsDocument::new(standings.clone(), Arc::new(config));
         let elements = doc.build(&FocusContext::default());
 
         // Verify Row structure
@@ -405,7 +432,7 @@ mod tests {
         // Test with western_first = true (Western left, Eastern right)
         let mut config = Config::default();
         config.display_standings_western_first = true;
-        let doc = ConferenceStandingsDocument::new(standings, config);
+        let doc = ConferenceStandingsDocument::new(standings, Arc::new(config));
         let elements = doc.build(&FocusContext::default());
 
         // Verify Row structure (same structure, different internal ordering)
@@ -425,7 +452,7 @@ mod tests {
     #[test]
     fn test_division_standings_document_renders() {
         let standings = Arc::new(create_test_standings());
-        let config = Config::default();
+        let config = Arc::new(Config::default());
         let doc = DivisionStandingsDocument::new(standings, config);
 
         // Build with no focus
@@ -474,7 +501,7 @@ mod tests {
     #[test]
     fn test_division_standings_document_metadata() {
         let standings = Arc::new(create_test_standings());
-        let config = Config::default();
+        let config = Arc::new(Config::default());
         let doc = DivisionStandingsDocument::new(standings, config);
 
         assert_eq!(doc.title(), "Division Standings");
@@ -484,10 +511,10 @@ mod tests {
     #[test]
     fn test_division_standings_focusable_positions() {
         let standings = Arc::new(create_test_standings());
-        let config = Config::default();
+        let config = Arc::new(Config::default());
         let doc = DivisionStandingsDocument::new(standings, config);
 
-        let positions = doc.focusable_positions();
+        let positions = doc.focusables(&FocusContext::default());
 
         // Should have 32 focusable positions (32 teams across 4 divisions)
         assert_eq!(positions.len(), 32);
@@ -496,10 +523,14 @@ mod tests {
     #[test]
     fn test_division_standings_row_positions() {
         let standings = Arc::new(create_test_standings());
-        let config = Config::default();
+        let config = Arc::new(Config::default());
         let doc = DivisionStandingsDocument::new(standings, config);
 
-        let row_positions = doc.focusable_row_positions();
+        let row_positions: Vec<_> = doc
+            .focusables(&FocusContext::default())
+            .iter()
+            .map(|f| f.row_position)
+            .collect();
 
         // Should have 32 row positions
         assert_eq!(row_positions.len(), 32);
@@ -529,7 +560,7 @@ mod tests {
         // Test with western_first = false (Eastern divisions left, Western divisions right)
         let mut config = Config::default();
         config.display_standings_western_first = false;
-        let doc = DivisionStandingsDocument::new(standings.clone(), config);
+        let doc = DivisionStandingsDocument::new(standings.clone(), Arc::new(config));
         let elements = doc.build(&FocusContext::default());
 
         // Verify Row structure with Groups
@@ -545,7 +576,7 @@ mod tests {
         // Test with western_first = true (Western divisions left, Eastern divisions right)
         let mut config = Config::default();
         config.display_standings_western_first = true;
-        let doc = DivisionStandingsDocument::new(standings, config);
+        let doc = DivisionStandingsDocument::new(standings, Arc::new(config));
         let elements = doc.build(&FocusContext::default());
 
         // Verify Row structure (same structure, different internal ordering)

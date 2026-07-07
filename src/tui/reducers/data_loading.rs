@@ -7,10 +7,41 @@ use crate::tui::component::Effect;
 #[cfg(feature = "development")]
 use crate::tui::constants::DEMO_TAB_PATH;
 use crate::tui::constants::{SCORES_TAB_PATH, STANDINGS_TAB_PATH};
-#[cfg(feature = "development")]
-use crate::tui::document::Document;
 use crate::tui::reducers::standings::rebuild_standings_focusable_metadata;
 use crate::tui::state::{AppState, LoadingKey};
+
+// Error-message prefixes used both to build the user-facing status-bar message
+// and to recognize (via `starts_with`) whether a currently-displayed status
+// error belongs to this data type. This lets a successful load clear only its
+// own error, without clobbering an unrelated error from a different feed that
+// is still failing (e.g. a schedule fetch succeeding must not hide a standings
+// error).
+const STANDINGS_ERROR_PREFIX: &str = "Failed to load standings:";
+const SCHEDULE_ERROR_PREFIX: &str = "Failed to load schedule:";
+const BOXSCORE_ERROR_PREFIX: &str = "Failed to load boxscore:";
+const TEAM_ROSTER_ERROR_PREFIX: &str = "Failed to load team roster:";
+const PLAYER_STATS_ERROR_PREFIX: &str = "Failed to load player stats:";
+
+/// Game-detail fetches happen many at once (one per live game, every refresh
+/// cycle), so unlike the other feeds this message carries no per-game detail.
+/// See `handle_game_details_loaded` for the dedup policy that keeps a batch of
+/// failures from spamming the status bar.
+const GAME_DETAILS_ERROR_MESSAGE: &str = "Failed to load game details";
+
+/// Clears the status-bar error message, but only if it's currently showing an
+/// error that belongs to this data type (matched by prefix). A successful load
+/// of one feed should not erase an error still showing for a different feed.
+fn clear_error_with_prefix(state: &mut AppState, prefix: &str) {
+    if state.system.status_is_error
+        && state
+            .system
+            .status_message
+            .as_deref()
+            .is_some_and(|message| message.starts_with(prefix))
+    {
+        state.system.reset_status_message();
+    }
+}
 
 /// Handle all data loading actions (API responses)
 ///
@@ -58,7 +89,7 @@ pub fn reduce_data_loading(
 
 fn handle_standings_loaded(
     state: AppState,
-    result: Result<Vec<nhl_api::Standing>, String>,
+    result: Result<Vec<nhl_api::Standing>, Arc<nhl_api::NHLApiError>>,
     component_states: &mut crate::tui::component_store::ComponentStateStore,
 ) -> (AppState, Effect) {
     let mut new_state = state;
@@ -67,22 +98,20 @@ fn handle_standings_loaded(
         Ok(standings) => {
             debug!("DATA: Loaded {} standings", standings.len());
             new_state.data.standings = Arc::new(Some(standings.clone()));
-            new_state.data.errors.clear();
+            clear_error_with_prefix(&mut new_state, STANDINGS_ERROR_PREFIX);
             new_state.data.loading.remove(&LoadingKey::Standings);
 
             // Rebuild demo document focusable data in component state
             #[cfg(feature = "development")]
             {
                 use crate::tui::components::demo_tab::DemoDocument;
+                use crate::tui::document::FocusContext;
                 use crate::tui::document_nav::DocumentNavState;
                 if let Some(demo_state) =
                     component_states.get_mut::<DocumentNavState>(DEMO_TAB_PATH)
                 {
                     let demo_doc = DemoDocument::new(Some(standings.clone()));
-                    demo_state.focusable_positions = demo_doc.focusable_positions();
-                    demo_state.focusable_ids = demo_doc.focusable_ids();
-                    demo_state.focusable_row_positions = demo_doc.focusable_row_positions();
-                    demo_state.link_targets = demo_doc.focusable_link_targets();
+                    demo_state.sync_focusables(&demo_doc, &FocusContext::default());
                 }
             }
 
@@ -91,25 +120,22 @@ fn handle_standings_loaded(
         }
         Err(e) => {
             debug!("DATA: Failed to load standings: {}", e);
-            new_state.data.errors.insert(
-                "standings".to_string(),
-                format!("Failed to load standings: {}", e),
-            );
+            new_state
+                .system
+                .set_status_error_message(format!("{} {}", STANDINGS_ERROR_PREFIX, e));
             new_state.data.loading.remove(&LoadingKey::Standings);
 
             // Rebuild demo focusable data for empty standings case
             #[cfg(feature = "development")]
             {
                 use crate::tui::components::demo_tab::DemoDocument;
+                use crate::tui::document::FocusContext;
                 use crate::tui::document_nav::DocumentNavState;
                 if let Some(demo_state) =
                     component_states.get_mut::<DocumentNavState>(DEMO_TAB_PATH)
                 {
                     let demo_doc = DemoDocument::new(None);
-                    demo_state.focusable_positions = demo_doc.focusable_positions();
-                    demo_state.focusable_ids = demo_doc.focusable_ids();
-                    demo_state.focusable_row_positions = demo_doc.focusable_row_positions();
-                    demo_state.link_targets = demo_doc.focusable_link_targets();
+                    demo_state.sync_focusables(&demo_doc, &FocusContext::default());
                 }
             }
 
@@ -118,10 +144,7 @@ fn handle_standings_loaded(
             if let Some(standings_state) =
                 component_states.get_mut::<StandingsTabState>(STANDINGS_TAB_PATH)
             {
-                standings_state.doc_nav.focusable_positions = Vec::new();
-                standings_state.doc_nav.focusable_ids = Vec::new();
-                standings_state.doc_nav.focusable_row_positions = Vec::new();
-                standings_state.doc_nav.link_targets = Vec::new();
+                standings_state.doc_nav.focusables.clear();
             }
         }
     }
@@ -131,7 +154,7 @@ fn handle_standings_loaded(
 
 fn handle_schedule_loaded(
     state: AppState,
-    result: Result<nhl_api::DailySchedule, String>,
+    result: Result<nhl_api::DailySchedule, Arc<nhl_api::NHLApiError>>,
     component_states: &mut crate::tui::component_store::ComponentStateStore,
 ) -> (AppState, Effect) {
     let mut new_state = state;
@@ -140,13 +163,13 @@ fn handle_schedule_loaded(
         Ok(schedule) => {
             debug!("DATA: Loaded schedule with {} games", schedule.games.len());
             new_state.data.schedule = Arc::new(Some(schedule.clone()));
-            new_state.data.errors.clear();
+            clear_error_with_prefix(&mut new_state, SCHEDULE_ERROR_PREFIX);
             // TODO: Remove Schedule loading key - needs date string
 
             // Rebuild scores tab focusable metadata from the document
             use crate::tui::components::score_boxes_document::ScoreBoxesDocument;
             use crate::tui::components::scores_tab::ScoresTabState;
-            use crate::tui::document::Document;
+            use crate::tui::document::FocusContext;
 
             if let Some(scores_state) = component_states.get_mut::<ScoresTabState>(SCORES_TAB_PATH)
             {
@@ -164,11 +187,13 @@ fn handle_schedule_loaded(
                     0,
                 );
 
-                // Use document methods to get focusable metadata
-                scores_state.doc_nav.focusable_positions = doc.focusable_positions();
-                scores_state.doc_nav.focusable_heights = doc.focusable_heights();
-                scores_state.doc_nav.focusable_ids = doc.focusable_ids();
-                scores_state.doc_nav.focusable_row_positions = doc.focusable_row_positions();
+                // Single sync call fills position/height/id/row-position/link-target
+                // together -- link_target is load-bearing for ActivateGame (Enter on
+                // a focused box pushes the target's boxscore document), so a sync
+                // site can no longer forget it.
+                scores_state
+                    .doc_nav
+                    .sync_focusables(&doc, &FocusContext::default());
             }
 
             // Return fetch effects for started games
@@ -183,7 +208,7 @@ fn handle_schedule_loaded(
                         "DATA: Requesting game details fetch for game_id={}",
                         game.id
                     );
-                    effects.push(Effect::FetchGameDetails(game.id));
+                    effects.push(Effect::FetchGameDetails(game.id.into()));
                 }
             }
 
@@ -197,10 +222,9 @@ fn handle_schedule_loaded(
         }
         Err(e) => {
             debug!("DATA: Failed to load schedule: {}", e);
-            new_state.data.errors.insert(
-                "error".to_string(),
-                format!("Failed to load schedule: {}", e),
-            );
+            new_state
+                .system
+                .set_status_error_message(format!("{} {}", SCHEDULE_ERROR_PREFIX, e));
             // TODO: Remove Schedule loading key - needs date string
         }
     }
@@ -211,7 +235,7 @@ fn handle_schedule_loaded(
 fn handle_game_details_loaded(
     state: AppState,
     game_id: i64,
-    result: Result<nhl_api::GameMatchup, String>,
+    result: Result<nhl_api::GameMatchup, Arc<nhl_api::NHLApiError>>,
 ) -> (AppState, Effect) {
     let mut new_state = state;
 
@@ -232,6 +256,7 @@ fn handle_game_details_loaded(
                 .data
                 .loading
                 .remove(&LoadingKey::GameDetails(game_id));
+            clear_error_with_prefix(&mut new_state, GAME_DETAILS_ERROR_MESSAGE);
         }
         Err(e) => {
             debug!("DATA: Failed to load game details for {}: {}", game_id, e);
@@ -239,6 +264,16 @@ fn handle_game_details_loaded(
                 .data
                 .loading
                 .remove(&LoadingKey::GameDetails(game_id));
+
+            // A schedule refresh can trigger many of these in one cycle (one per
+            // live game). Only surface the first failure so per-game noise
+            // doesn't spam-overwrite the status bar every tick, and so a more
+            // actionable standings/schedule error already showing isn't hidden.
+            if !new_state.system.status_is_error {
+                new_state
+                    .system
+                    .set_status_error_message(GAME_DETAILS_ERROR_MESSAGE.to_string());
+            }
         }
     }
 
@@ -248,26 +283,26 @@ fn handle_game_details_loaded(
 fn handle_boxscore_loaded(
     state: AppState,
     game_id: i64,
-    result: Result<nhl_api::Boxscore, String>,
+    result: Result<nhl_api::Boxscore, Arc<nhl_api::NHLApiError>>,
 ) -> (AppState, Effect) {
     let mut new_state = state;
 
     match result {
         Ok(boxscore) => {
             debug!("DATA: Loaded boxscore for game {}", game_id);
-            // Focusable metadata is populated on-demand by StackedDocumentHandler
+            // Focusable metadata is populated on-demand by handle_stacked_document_key
             Arc::make_mut(&mut new_state.data.boxscores).insert(game_id, boxscore);
             new_state
                 .data
                 .loading
                 .remove(&LoadingKey::Boxscore(game_id));
+            clear_error_with_prefix(&mut new_state, BOXSCORE_ERROR_PREFIX);
         }
         Err(e) => {
             debug!("DATA: Failed to load boxscore for {}: {}", game_id, e);
-            new_state.data.errors.insert(
-                "error".to_string(),
-                format!("Failed to load boxscore: {}", e),
-            );
+            new_state
+                .system
+                .set_status_error_message(format!("{} {}", BOXSCORE_ERROR_PREFIX, e));
             new_state
                 .data
                 .loading
@@ -281,30 +316,30 @@ fn handle_boxscore_loaded(
 fn handle_team_roster_loaded(
     state: AppState,
     team_abbrev: String,
-    result: Result<nhl_api::ClubStats, String>,
+    result: Result<nhl_api::ClubStats, Arc<nhl_api::NHLApiError>>,
 ) -> (AppState, Effect) {
     let mut new_state = state;
 
     match result {
         Ok(roster) => {
             debug!("DATA: Loaded roster for team {}", team_abbrev);
-            // Focusable metadata is populated on-demand by StackedDocumentHandler
+            // Focusable metadata is populated on-demand by handle_stacked_document_key
             Arc::make_mut(&mut new_state.data.team_roster_stats)
                 .insert(team_abbrev.clone(), roster);
             new_state
                 .data
                 .loading
                 .remove(&LoadingKey::TeamRosterStats(team_abbrev));
+            clear_error_with_prefix(&mut new_state, TEAM_ROSTER_ERROR_PREFIX);
         }
         Err(e) => {
             debug!(
                 "DATA: Failed to load team roster for {}: {}",
                 team_abbrev, e
             );
-            new_state.data.errors.insert(
-                "error".to_string(),
-                format!("Failed to load team roster: {}", e),
-            );
+            new_state
+                .system
+                .set_status_error_message(format!("{} {}", TEAM_ROSTER_ERROR_PREFIX, e));
             new_state
                 .data
                 .loading
@@ -318,26 +353,26 @@ fn handle_team_roster_loaded(
 fn handle_player_stats_loaded(
     state: AppState,
     player_id: i64,
-    result: Result<nhl_api::PlayerLanding, String>,
+    result: Result<nhl_api::PlayerLanding, Arc<nhl_api::NHLApiError>>,
 ) -> (AppState, Effect) {
     let mut new_state = state;
 
     match result {
         Ok(stats) => {
             debug!("DATA: Loaded stats for player {}", player_id);
-            // Focusable metadata is populated on-demand by StackedDocumentHandler
+            // Focusable metadata is populated on-demand by handle_stacked_document_key
             Arc::make_mut(&mut new_state.data.player_data).insert(player_id, stats);
             new_state
                 .data
                 .loading
                 .remove(&LoadingKey::PlayerStats(player_id));
+            clear_error_with_prefix(&mut new_state, PLAYER_STATS_ERROR_PREFIX);
         }
         Err(e) => {
             debug!("DATA: Failed to load player stats for {}: {}", player_id, e);
-            new_state.data.errors.insert(
-                "error".to_string(),
-                format!("Failed to load player stats: {}", e),
-            );
+            new_state
+                .system
+                .set_status_error_message(format!("{} {}", PLAYER_STATS_ERROR_PREFIX, e));
             new_state
                 .data
                 .loading
@@ -357,6 +392,8 @@ fn handle_refresh_data(state: AppState) -> (AppState, Effect) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tui::component_store::ComponentStateStore;
+    use crate::tui::state::DEFAULT_STATUS_MESSAGE;
 
     #[test]
     fn test_game_details_loaded_stores_game_info() {
@@ -370,7 +407,8 @@ mod tests {
         const TEST_GAME_ID: i64 = 2024020123;
 
         // Verify the function signature exists and handles both Ok and Err cases
-        let result_ok: Result<nhl_api::GameMatchup, String> = Err("test".to_string());
+        let result_ok: Result<nhl_api::GameMatchup, Arc<nhl_api::NHLApiError>> =
+            Err(Arc::new(nhl_api::NHLApiError::Other("test".to_string())));
         let (new_state, _effect) =
             handle_game_details_loaded(state.clone(), TEST_GAME_ID, result_ok);
 
@@ -387,5 +425,203 @@ mod tests {
         // 3. Loading key is removed
         //
         // This is verified by the code review showing lines 88-92 extract period_scores
+    }
+
+    /// Regression test: the scores metadata sync must populate link_targets.
+    /// ActivateGame reads focused_link_target() to push the boxscore document;
+    /// when this site skipped link_targets, Enter on a focused game silently
+    /// did nothing.
+    #[test]
+    fn test_schedule_loaded_populates_scores_link_targets() {
+        use crate::fixtures::create_mock_schedule;
+        use crate::tui::components::scores_tab::ScoresTabState;
+        use crate::tui::document::LinkTarget;
+        use crate::tui::types::StackedDocument;
+
+        let mut store = ComponentStateStore::new();
+        store.insert(SCORES_TAB_PATH.to_string(), ScoresTabState::default());
+
+        let schedule = create_mock_schedule(None);
+        let expected_game_id = schedule.games[0].id;
+        let (_state, _effect) =
+            handle_schedule_loaded(AppState::default(), Ok(schedule), &mut store);
+
+        let scores = store.get::<ScoresTabState>(SCORES_TAB_PATH).unwrap();
+        let nav = &scores.doc_nav;
+        assert!(!nav.focusables.is_empty(), "expected at least one game box");
+        let first_link_target = nav.focusables.first().and_then(|f| f.link_target.as_ref());
+        assert!(
+            matches!(
+                first_link_target,
+                Some(LinkTarget::Push(StackedDocument::Boxscore { game_id, .. }))
+                    if *game_id == expected_game_id.as_i64()
+            ),
+            "first game box must carry a Push(Boxscore) target, got {:?}",
+            first_link_target
+        );
+    }
+
+    fn network_error(message: &str) -> Arc<nhl_api::NHLApiError> {
+        Arc::new(nhl_api::NHLApiError::Other(message.to_string()))
+    }
+
+    #[test]
+    fn test_standings_error_sets_status_error_message() {
+        let mut store = ComponentStateStore::new();
+        let (state, _effect) = handle_standings_loaded(
+            AppState::default(),
+            Err(network_error("Network error")),
+            &mut store,
+        );
+
+        assert!(state.system.status_is_error);
+        assert_eq!(
+            state.system.status_message,
+            Some("Failed to load standings: Network error".to_string())
+        );
+    }
+
+    #[test]
+    fn test_standings_success_clears_previous_standings_error() {
+        let mut store = ComponentStateStore::new();
+        let (errored_state, _effect) = handle_standings_loaded(
+            AppState::default(),
+            Err(network_error("Network error")),
+            &mut store,
+        );
+        assert!(errored_state.system.status_is_error);
+
+        let (recovered_state, _effect) =
+            handle_standings_loaded(errored_state, Ok(Vec::new()), &mut store);
+
+        assert!(!recovered_state.system.status_is_error);
+        assert_eq!(
+            recovered_state.system.status_message,
+            Some(DEFAULT_STATUS_MESSAGE.to_string())
+        );
+    }
+
+    #[test]
+    fn test_standings_success_does_not_clear_unrelated_error() {
+        // A standings load succeeding must not hide an in-progress schedule
+        // error - only the matching error type should be cleared.
+        let mut store = ComponentStateStore::new();
+        let mut state = AppState::default();
+        state
+            .system
+            .set_status_error_message("Failed to load schedule: timeout".to_string());
+
+        let (new_state, _effect) = handle_standings_loaded(state, Ok(Vec::new()), &mut store);
+
+        assert!(new_state.system.status_is_error);
+        assert_eq!(
+            new_state.system.status_message,
+            Some("Failed to load schedule: timeout".to_string())
+        );
+    }
+
+    #[test]
+    fn test_schedule_error_sets_status_error_message() {
+        let mut store = ComponentStateStore::new();
+        let (state, _effect) = handle_schedule_loaded(
+            AppState::default(),
+            Err(network_error("Connection refused")),
+            &mut store,
+        );
+
+        assert!(state.system.status_is_error);
+        assert_eq!(
+            state.system.status_message,
+            Some("Failed to load schedule: Connection refused".to_string())
+        );
+    }
+
+    #[test]
+    fn test_schedule_success_clears_previous_schedule_error() {
+        use crate::fixtures::create_mock_schedule;
+
+        let mut store = ComponentStateStore::new();
+        let (errored_state, _effect) = handle_schedule_loaded(
+            AppState::default(),
+            Err(network_error("Connection refused")),
+            &mut store,
+        );
+        assert!(errored_state.system.status_is_error);
+
+        let schedule = create_mock_schedule(None);
+        let (recovered_state, _effect) =
+            handle_schedule_loaded(errored_state, Ok(schedule), &mut store);
+
+        assert!(!recovered_state.system.status_is_error);
+        assert_eq!(
+            recovered_state.system.status_message,
+            Some(DEFAULT_STATUS_MESSAGE.to_string())
+        );
+    }
+
+    #[test]
+    fn test_game_details_first_error_sets_generic_message() {
+        let (state, _effect) =
+            handle_game_details_loaded(AppState::default(), 1, Err(network_error("timed out")));
+
+        assert!(state.system.status_is_error);
+        assert_eq!(
+            state.system.status_message,
+            Some(GAME_DETAILS_ERROR_MESSAGE.to_string())
+        );
+    }
+
+    #[test]
+    fn test_game_details_subsequent_errors_in_same_batch_do_not_spam_overwrite() {
+        // Simulates several live games failing in the same refresh cycle: only
+        // the first failure should set the status message.
+        let (state, _effect) =
+            handle_game_details_loaded(AppState::default(), 1, Err(network_error("timed out")));
+
+        let (state, _effect) =
+            handle_game_details_loaded(state, 2, Err(network_error("different error entirely")));
+
+        assert_eq!(
+            state.system.status_message,
+            Some(GAME_DETAILS_ERROR_MESSAGE.to_string()),
+            "a second game's failure must not overwrite the first game's message"
+        );
+    }
+
+    #[test]
+    fn test_game_details_error_does_not_overwrite_standings_error() {
+        // Per the chosen policy, a more actionable standings/schedule error
+        // already showing should win over per-game noise.
+        let mut state = AppState::default();
+        state
+            .system
+            .set_status_error_message("Failed to load standings: down".to_string());
+
+        let (new_state, _effect) =
+            handle_game_details_loaded(state, 1, Err(network_error("timed out")));
+
+        assert_eq!(
+            new_state.system.status_message,
+            Some("Failed to load standings: down".to_string())
+        );
+    }
+
+    #[test]
+    fn test_game_details_success_clears_generic_error() {
+        use crate::fixtures::create_mock_game_matchup;
+
+        let (errored_state, _effect) =
+            handle_game_details_loaded(AppState::default(), 1, Err(network_error("timed out")));
+        assert!(errored_state.system.status_is_error);
+
+        let game_matchup = create_mock_game_matchup(1);
+        let (recovered_state, _effect) =
+            handle_game_details_loaded(errored_state, 1, Ok(game_matchup));
+
+        assert!(!recovered_state.system.status_is_error);
+        assert_eq!(
+            recovered_state.system.status_message,
+            Some(DEFAULT_STATUS_MESSAGE.to_string())
+        );
     }
 }

@@ -13,11 +13,23 @@ use std::fmt;
 /// Links are focusable and can be activated with Enter key.
 #[derive(Clone, Debug, PartialEq)]
 pub enum CellValue {
-    /// Plain text cell (not focusable)
+    /// Plain text cell (not focusable, no selection styling)
     Text(String),
 
+    /// Styled text cell (not focusable, but receives selection styling when row is focused)
+    StyledText(String),
+
     /// Link to player profile (focusable)
-    PlayerLink { display: String, player_id: i64 },
+    PlayerLink {
+        display: String,
+        player_id: i64,
+        /// Player jersey number, when known (carried through to the
+        /// `LinkTarget::Push(StackedDocument::PlayerDetail { .. })` built for
+        /// this cell so activation doesn't need to re-derive it)
+        sweater_number: Option<i32>,
+        /// Player last name, carried through for the same reason
+        last_name: String,
+    },
 
     /// Link to team page (focusable)
     TeamLink {
@@ -32,10 +44,18 @@ impl CellValue {
         matches!(self, Self::PlayerLink { .. } | Self::TeamLink { .. })
     }
 
+    /// Returns true if this cell receives selection styling when row is focused
+    pub fn receives_selection_style(&self) -> bool {
+        matches!(
+            self,
+            Self::StyledText(_) | Self::PlayerLink { .. } | Self::TeamLink { .. }
+        )
+    }
+
     /// Get the display text for this cell
     pub fn display_text(&self) -> &str {
         match self {
-            Self::Text(s) => s,
+            Self::Text(s) | Self::StyledText(s) => s,
             Self::PlayerLink { display, .. } => display,
             Self::TeamLink { display, .. } => display,
         }
@@ -44,8 +64,10 @@ impl CellValue {
     /// Get debug info for link activation logging
     pub fn link_info(&self) -> String {
         match self {
-            Self::Text(_) => "Not a link".to_string(),
-            Self::PlayerLink { display, player_id } => {
+            Self::Text(_) | Self::StyledText(_) => "Not a link".to_string(),
+            Self::PlayerLink {
+                display, player_id, ..
+            } => {
                 format!("PlayerLink(display='{}', id={})", display, player_id)
             }
             Self::TeamLink {
@@ -90,6 +112,8 @@ pub enum Alignment {
 ///     |p: &Player| CellValue::PlayerLink {
 ///         display: p.name.clone(),
 ///         player_id: p.id,
+///         sweater_number: None,
+///         last_name: p.name.clone(),
 ///     }
 /// );
 ///
@@ -164,9 +188,14 @@ mod tests {
         let text = CellValue::Text("Hello".to_string());
         assert!(!text.is_link());
 
+        let styled_text = CellValue::StyledText("42".to_string());
+        assert!(!styled_text.is_link());
+
         let player_link = CellValue::PlayerLink {
             display: "Connor McDavid".to_string(),
             player_id: 8478402,
+            sweater_number: None,
+            last_name: "Test".to_string(),
         };
         assert!(player_link.is_link());
 
@@ -178,13 +207,41 @@ mod tests {
     }
 
     #[test]
-    fn test_cell_value_display_text() {
+    fn test_cell_value_receives_selection_style() {
         let text = CellValue::Text("Hello".to_string());
-        assert_eq!(text.display_text(), "Hello");
+        assert!(!text.receives_selection_style());
+
+        let styled_text = CellValue::StyledText("42".to_string());
+        assert!(styled_text.receives_selection_style());
 
         let player_link = CellValue::PlayerLink {
             display: "Connor McDavid".to_string(),
             player_id: 8478402,
+            sweater_number: None,
+            last_name: "Test".to_string(),
+        };
+        assert!(player_link.receives_selection_style());
+
+        let team_link = CellValue::TeamLink {
+            display: "Edmonton Oilers".to_string(),
+            team_abbrev: "EDM".to_string(),
+        };
+        assert!(team_link.receives_selection_style());
+    }
+
+    #[test]
+    fn test_cell_value_display_text() {
+        let text = CellValue::Text("Hello".to_string());
+        assert_eq!(text.display_text(), "Hello");
+
+        let styled_text = CellValue::StyledText("42".to_string());
+        assert_eq!(styled_text.display_text(), "42");
+
+        let player_link = CellValue::PlayerLink {
+            display: "Connor McDavid".to_string(),
+            player_id: 8478402,
+            sweater_number: None,
+            last_name: "Test".to_string(),
         };
         assert_eq!(player_link.display_text(), "Connor McDavid");
 
@@ -200,9 +257,14 @@ mod tests {
         let text = CellValue::Text("Hello".to_string());
         assert_eq!(text.link_info(), "Not a link");
 
+        let styled_text = CellValue::StyledText("42".to_string());
+        assert_eq!(styled_text.link_info(), "Not a link");
+
         let player_link = CellValue::PlayerLink {
             display: "Connor McDavid".to_string(),
             player_id: 8478402,
+            sweater_number: None,
+            last_name: "Test".to_string(),
         };
         assert_eq!(
             player_link.link_info(),
@@ -268,6 +330,8 @@ mod tests {
             CellValue::PlayerLink {
                 display: p.name.clone(),
                 player_id: p.id,
+                sweater_number: None,
+                last_name: p.name.clone(),
             }
         });
 
@@ -326,14 +390,20 @@ mod tests {
         let player1 = CellValue::PlayerLink {
             display: "Player".to_string(),
             player_id: 123,
+            sweater_number: None,
+            last_name: "Test".to_string(),
         };
         let player2 = CellValue::PlayerLink {
             display: "Player".to_string(),
             player_id: 123,
+            sweater_number: None,
+            last_name: "Test".to_string(),
         };
         let player3 = CellValue::PlayerLink {
             display: "Player".to_string(),
             player_id: 456,
+            sweater_number: None,
+            last_name: "Test".to_string(),
         };
 
         assert_eq!(player1, player2);

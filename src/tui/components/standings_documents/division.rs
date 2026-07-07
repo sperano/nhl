@@ -28,12 +28,19 @@ use super::{standings_columns, TableWidget};
 /// left column first, then down through right column).
 pub struct DivisionStandingsDocument {
     standings: Arc<Vec<Standing>>,
-    config: Config,
+    config: Arc<Config>,
 }
 
 impl DivisionStandingsDocument {
-    pub fn new(standings: Arc<Vec<Standing>>, config: Config) -> Self {
-        Self { standings, config }
+    /// `config` accepts anything convertible to `Arc<Config>`: an owned `Config`
+    /// (allocates a fresh Arc, used by the reducer's occasional focusable-metadata
+    /// rebuild) or an existing `Arc<Config>` (zero-cost, used by the per-frame
+    /// render path).
+    pub fn new(standings: Arc<Vec<Standing>>, config: impl Into<Arc<Config>>) -> Self {
+        Self {
+            standings,
+            config: config.into(),
+        }
     }
 
     /// Group standings by division and return maps for each conference
@@ -123,9 +130,13 @@ impl Document for DivisionStandingsDocument {
         // Build right column (Group with 2 division tables)
         let right_group = Self::build_division_group(&right_divs, right_prefix, focus);
 
-        // Use Row element to place columns side-by-side
+        // Use Row element to place columns side-by-side with center alignment
+        const GAP: u16 = 4;
         DocumentBuilder::new()
-            .row(vec![left_group, right_group])
+            .element(DocumentElement::row_center_with_gap(
+                vec![left_group, right_group],
+                GAP,
+            ))
             .build()
     }
 

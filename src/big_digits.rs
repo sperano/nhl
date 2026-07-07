@@ -1,6 +1,6 @@
 /// Big digit font - each digit is represented as 4 lines of text
 /// Each line is exactly 4 characters wide
-pub const BIG_DIGITS: [[&str; 4]; 10] = [
+const BIG_DIGITS: [[&str; 4]; 10] = [
     // 0
     ["▟▀▀▙", "█  █", "█  █", "▜▄▄▛"],
     // 1

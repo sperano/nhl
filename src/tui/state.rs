@@ -8,7 +8,7 @@ use crate::commands::scores_format::PeriodScores;
 use crate::config::Config;
 
 use super::document_nav::DocumentNavState;
-use super::types::{SettingsCategory, StackedDocument, Tab};
+use super::types::{StackedDocument, Tab};
 
 /// Root application state - single source of truth
 ///
@@ -34,8 +34,8 @@ pub struct AppState {
 pub struct NavigationState {
     pub current_tab: Tab,
     pub document_stack: Vec<DocumentStackEntry>,
-    /// Whether focus is on content (true) or tab bar (false)
-    pub content_focused: bool,
+    /// Whether focus is in content area (true) or on tab bar (false)
+    pub focus_in_content: bool,
 }
 
 impl Default for NavigationState {
@@ -43,7 +43,7 @@ impl Default for NavigationState {
         Self {
             current_tab: Tab::Scores,
             document_stack: Vec::new(),
-            content_focused: false, // Start with tab bar focused
+            focus_in_content: false, // Start with tab bar focused
         }
     }
 }
@@ -101,9 +101,6 @@ pub struct DataState {
 
     // Loading states
     pub loading: HashSet<LoadingKey>,
-
-    // Errors
-    pub errors: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -119,7 +116,6 @@ pub enum LoadingKey {
 #[derive(Debug, Clone, Default)]
 pub struct UiState {
     pub scores: ScoresUiState,
-    pub settings: SettingsUiState,
 }
 
 /// UI state for Scores tab (minimal - most state in component-local ScoresTabState)
@@ -145,14 +141,9 @@ impl Default for ScoresUiState {
     }
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct SettingsUiState {
-    pub selected_category: SettingsCategory,
-}
-
 /// Default help message shown in the status bar
 pub const DEFAULT_STATUS_MESSAGE: &str =
-    "Keys: ←→ navigate | ↓ enter | ↑/ESC back | q quit | 1-6 jump to tab | / command palette";
+    "Keys: ←→ navigate | ↓ enter | ↑/ESC back | q quit | 1-6 jump to tab";
 
 #[derive(Debug, Clone, Default)]
 pub struct SystemState {

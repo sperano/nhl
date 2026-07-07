@@ -5,12 +5,12 @@
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Modifier, Style},
+    style::Modifier,
     text::{Line, Span},
 };
 
-use crate::config::DisplayConfig;
-use crate::tui::{component::ElementWidget, state::DocumentStackEntry, Tab};
+use crate::config::{DisplayConfig, RenderContext};
+use crate::tui::{component::ElementWidget, state::DocumentStackEntry, StackedDocument, Tab};
 
 /// Breadcrumb widget that renders a navigation path
 #[derive(Clone)]
@@ -34,28 +34,33 @@ impl BreadcrumbWidget {
         // Get styles from theme
         let (text_style, separator_style) = if let Some(theme) = &config.theme {
             (
-                Style::default().fg(theme.fg2).add_modifier(Modifier::BOLD),
-                Style::default().fg(theme.fg3),
+                config
+                    .base_style()
+                    .fg(theme.fg)
+                    .add_modifier(Modifier::BOLD),
+                config.base_style().fg(theme.boxchar_fg),
             )
         } else {
             (
-                Style::default().add_modifier(Modifier::BOLD),
-                Style::default(),
+                config.base_style().add_modifier(Modifier::BOLD),
+                config.base_style(),
             )
         };
 
         let separator = format!(" {} ", config.box_chars.breadcrumb_separator);
 
-        // Start with the current tab name
-        let tab_name = match self.current_tab {
-            Tab::Scores => "Scores",
-            Tab::Standings => "Standings",
-            Tab::Settings => "Settings",
-            #[cfg(feature = "development")]
-            Tab::Demo => "Demo",
+        // Check if first document is a Boxscore - if so, use its game_date instead of tab name
+        let first_label = if let Some(first_doc) = self.document_stack.first() {
+            if let StackedDocument::Boxscore { game_date, .. } = &first_doc.document {
+                game_date.clone()
+            } else {
+                self.tab_name().to_string()
+            }
+        } else {
+            self.tab_name().to_string()
         };
 
-        spans.push(Span::styled(tab_name.to_string(), text_style));
+        spans.push(Span::styled(first_label, text_style));
 
         // Add each document in the stack
         for doc_entry in &self.document_stack {
@@ -68,29 +73,43 @@ impl BreadcrumbWidget {
 
         spans
     }
+
+    fn tab_name(&self) -> &'static str {
+        match self.current_tab {
+            Tab::Scores => "Scores",
+            Tab::Standings => "Standings",
+            Tab::Settings => "Settings",
+            #[cfg(feature = "development")]
+            Tab::Demo => "Demo",
+        }
+    }
 }
 
 /// Box drawing character for horizontal divider
 const HORIZONTAL_LINE: char = '─';
 
 impl ElementWidget for BreadcrumbWidget {
-    fn render(&self, area: Rect, buf: &mut Buffer, config: &DisplayConfig) {
+    fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
         if area.height == 0 || area.width == 0 {
             return;
         }
 
-        let spans = self.build_breadcrumb_text(config);
+        const LEFT_MARGIN: u16 = 1;
+        let x = area.x + LEFT_MARGIN;
+        let width = area.width.saturating_sub(LEFT_MARGIN);
+
+        let spans = self.build_breadcrumb_text(ctx.config);
         let line = Line::from(spans);
 
-        // Render the breadcrumb line
-        buf.set_line(area.x, area.y, &line, area.width);
+        // Render the breadcrumb line with left margin
+        buf.set_line(x, area.y, &line, width);
 
-        // Render the divider line on the second row
+        // Render the divider line on the second row (full width, no margin)
         if area.height >= 2 {
-            let divider_style = if let Some(theme) = &config.theme {
-                Style::default().fg(theme.fg3)
+            let divider_style = if let Some(theme) = ctx.theme() {
+                ctx.base_style().fg(theme.boxchar_fg)
             } else {
-                Style::default()
+                ctx.base_style()
             };
             let divider: String =
                 std::iter::repeat_n(HORIZONTAL_LINE, area.width as usize).collect();
@@ -115,6 +134,7 @@ impl ElementWidget for BreadcrumbWidget {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::RenderContext;
     use crate::tui::testing::assert_buffer;
     use crate::tui::StackedDocument;
     use ratatui::buffer::Buffer;
@@ -124,15 +144,16 @@ mod tests {
     fn test_breadcrumb_no_documents() {
         let widget = BreadcrumbWidget::new(Tab::Scores, Vec::new());
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
         let mut buf = Buffer::empty(Rect::new(0, 0, 80, 2));
-        widget.render(buf.area, &mut buf, &config);
+        widget.render(buf.area, &mut buf, &ctx);
 
-        // With no documents, should just show the tab name and divider
+        // With no documents, should just show the tab name and divider (with 1 char left margin)
         assert_buffer(
             &buf,
             &[
-                "Scores",
+                " Scores",
                 "────────────────────────────────────────────────────────────────────────────────",
             ],
         );
@@ -149,14 +170,15 @@ mod tests {
 
         let widget = BreadcrumbWidget::new(Tab::Standings, document_stack);
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
         let mut buf = Buffer::empty(Rect::new(0, 0, 80, 2));
-        widget.render(buf.area, &mut buf, &config);
+        widget.render(buf.area, &mut buf, &ctx);
 
         assert_buffer(
             &buf,
             &[
-                "Standings ▶ TOR",
+                " Standings ▶ TOR",
                 "────────────────────────────────────────────────────────────────────────────────",
             ],
         );
@@ -171,20 +193,22 @@ mod tests {
                 home_abbrev: "BOS".to_string(),
                 away_score: 3,
                 home_score: 2,
+                game_date: "12/24".to_string(),
             },
             None,
         )];
 
         let widget = BreadcrumbWidget::new(Tab::Scores, document_stack);
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
         let mut buf = Buffer::empty(Rect::new(0, 0, 80, 2));
-        widget.render(buf.area, &mut buf, &config);
+        widget.render(buf.area, &mut buf, &ctx);
 
         assert_buffer(
             &buf,
             &[
-                "Scores ▶ TOR:3-BOS:2",
+                " 12/24 ▶ TOR:3-BOS:2",
                 "────────────────────────────────────────────────────────────────────────────────",
             ],
         );
@@ -200,6 +224,7 @@ mod tests {
                     home_abbrev: "BOS".to_string(),
                     away_score: 3,
                     home_score: 2,
+                    game_date: "12/24".to_string(),
                 },
                 None,
             ),
@@ -215,14 +240,15 @@ mod tests {
 
         let widget = BreadcrumbWidget::new(Tab::Scores, document_stack);
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
         let mut buf = Buffer::empty(Rect::new(0, 0, 80, 2));
-        widget.render(buf.area, &mut buf, &config);
+        widget.render(buf.area, &mut buf, &ctx);
 
         assert_buffer(
             &buf,
             &[
-                "Scores ▶ TOR:3-BOS:2 ▶ #87 Crosby",
+                " 12/24 ▶ TOR:3-BOS:2 ▶ #87 Crosby",
                 "────────────────────────────────────────────────────────────────────────────────",
             ],
         );
@@ -232,14 +258,15 @@ mod tests {
     fn test_breadcrumb_standings_tab() {
         let widget = BreadcrumbWidget::new(Tab::Standings, Vec::new());
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
         let mut buf = Buffer::empty(Rect::new(0, 0, 80, 2));
-        widget.render(buf.area, &mut buf, &config);
+        widget.render(buf.area, &mut buf, &ctx);
 
         assert_buffer(
             &buf,
             &[
-                "Standings",
+                " Standings",
                 "────────────────────────────────────────────────────────────────────────────────",
             ],
         );
@@ -249,14 +276,15 @@ mod tests {
     fn test_breadcrumb_settings_tab() {
         let widget = BreadcrumbWidget::new(Tab::Settings, Vec::new());
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
         let mut buf = Buffer::empty(Rect::new(0, 0, 80, 2));
-        widget.render(buf.area, &mut buf, &config);
+        widget.render(buf.area, &mut buf, &ctx);
 
         assert_buffer(
             &buf,
             &[
-                "Settings",
+                " Settings",
                 "────────────────────────────────────────────────────────────────────────────────",
             ],
         );
@@ -267,14 +295,15 @@ mod tests {
     fn test_breadcrumb_browser_tab() {
         let widget = BreadcrumbWidget::new(Tab::Demo, Vec::new());
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
         let mut buf = Buffer::empty(Rect::new(0, 0, 80, 2));
-        widget.render(buf.area, &mut buf, &config);
+        widget.render(buf.area, &mut buf, &ctx);
 
         assert_buffer(
             &buf,
             &[
-                "Demo",
+                " Demo",
                 "────────────────────────────────────────────────────────────────────────────────",
             ],
         );
@@ -284,9 +313,10 @@ mod tests {
     fn test_breadcrumb_zero_height_area() {
         let widget = BreadcrumbWidget::new(Tab::Scores, Vec::new());
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
         let mut buf = Buffer::empty(Rect::new(0, 0, 80, 0));
-        widget.render(buf.area, &mut buf, &config);
+        widget.render(buf.area, &mut buf, &ctx);
 
         // Should render nothing for zero-height area
     }
@@ -295,9 +325,10 @@ mod tests {
     fn test_breadcrumb_zero_width_area() {
         let widget = BreadcrumbWidget::new(Tab::Scores, Vec::new());
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
         let mut buf = Buffer::empty(Rect::new(0, 0, 0, 1));
-        widget.render(buf.area, &mut buf, &config);
+        widget.render(buf.area, &mut buf, &ctx);
 
         // Should render nothing for zero-width area
     }
@@ -341,14 +372,15 @@ mod tests {
 
         let widget = BreadcrumbWidget::new(Tab::Scores, document_stack);
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
         let mut buf = Buffer::empty(Rect::new(0, 0, 80, 2));
-        widget.render(buf.area, &mut buf, &config);
+        widget.render(buf.area, &mut buf, &ctx);
 
         assert_buffer(
             &buf,
             &[
-                "Scores ▶ #97 McDavid",
+                " Scores ▶ #97 McDavid",
                 "────────────────────────────────────────────────────────────────────────────────",
             ],
         );
@@ -367,14 +399,15 @@ mod tests {
 
         let widget = BreadcrumbWidget::new(Tab::Scores, document_stack);
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
         let mut buf = Buffer::empty(Rect::new(0, 0, 80, 2));
-        widget.render(buf.area, &mut buf, &config);
+        widget.render(buf.area, &mut buf, &ctx);
 
         assert_buffer(
             &buf,
             &[
-                "Scores ▶ Smith",
+                " Scores ▶ Smith",
                 "────────────────────────────────────────────────────────────────────────────────",
             ],
         );

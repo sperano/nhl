@@ -1,4 +1,3 @@
-use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -10,7 +9,7 @@ use nhl_api::Standing;
 
 use crate::commands::standings::GroupBy;
 use crate::config::Config;
-use crate::config::DisplayConfig;
+use crate::config::RenderContext;
 use crate::tui::{
     component::{Component, Element, ElementWidget},
     state::DocumentStackEntry,
@@ -23,15 +22,17 @@ use crate::component_message_impl;
 use crate::tui::action::Action;
 use crate::tui::component::Effect;
 use crate::tui::document_nav::{DocumentNavMsg, DocumentNavState};
-use crate::tui::tab_component::{handle_common_message, CommonTabMessage, TabMessage, TabState};
-use crate::tui::types::StackedDocument;
+use crate::tui::tab_component::{
+    handle_common_message, CommonTabMessage, TabMessage, TabState, BASE_CHROME_LINES,
+    SUBTAB_CHROME_LINES,
+};
 
 /// Component state for StandingsTab - managed by the component itself
 #[derive(Clone, Debug)]
 pub struct StandingsTabState {
     pub view: GroupBy,
-    // Document navigation state (embedded, browse_mode derived from focus_index)
-    // Contains focusable_ids, link_targets, positions, etc.
+    // Document navigation state (embedded, has_item_focus derived from focus_index)
+    // Contains the focusable elements (id, position, height, link target, etc.)
     pub doc_nav: DocumentNavState,
 }
 
@@ -52,14 +53,16 @@ impl TabState for StandingsTabState {
     fn doc_nav_mut(&mut self) -> &mut DocumentNavState {
         &mut self.doc_nav
     }
+
+    /// Standings has a nested group-by subtab bar above its document viewport.
+    fn chrome_lines() -> u16 {
+        BASE_CHROME_LINES + SUBTAB_CHROME_LINES
+    }
 }
 
 /// Messages handled by StandingsTab component
 #[derive(Clone, Debug)]
 pub enum StandingsTabMsg {
-    /// Key event when this tab is focused
-    Key(KeyEvent),
-
     /// Navigate up request (ESC in browse mode, returns to tab bar otherwise)
     NavigateUp,
 
@@ -104,8 +107,9 @@ pub struct StandingsTabProps {
     // Navigation state
     pub document_stack: Vec<DocumentStackEntry>,
     pub focused: bool,
-    // Config
-    pub config: Config,
+    // Config (Arc'd by the caller so cloning props each render is a pointer bump,
+    // not a deep copy of the underlying Config)
+    pub config: Arc<Config>,
     // Animation frame for loading indicator
     pub animation_frame: u8,
 }
@@ -119,8 +123,26 @@ impl Component for StandingsTab {
     type State = StandingsTabState;
     type Message = StandingsTabMsg;
 
-    fn init(_props: &Self::Props) -> Self::State {
-        StandingsTabState::default()
+    fn init(props: &Self::Props) -> Self::State {
+        use crate::tui::components::WildcardStandingsDocument;
+        use crate::tui::document::FocusContext;
+
+        let mut state = StandingsTabState::default();
+        // Component state is created lazily on first render, which can happen AFTER
+        // StandingsLoaded already ran rebuild_standings_focusable_metadata against a
+        // store that had no standings state yet. Populate metadata for the default
+        // view from the data in props, or Down in view-selection mode finds no
+        // focusables and browse mode can never be entered.
+        // state.view is GroupBy::Wildcard here (StandingsTabState::default()), so the
+        // wildcard document is the right one to build.
+        if let Some(standings) = props.standings.as_ref().as_ref() {
+            let doc =
+                WildcardStandingsDocument::new(Arc::new(standings.clone()), props.config.clone());
+            state
+                .doc_nav
+                .sync_focusables(&doc, &FocusContext::default());
+        }
+        state
     }
 
     fn update(&mut self, msg: Self::Message, state: &mut Self::State) -> Effect {
@@ -131,8 +153,6 @@ impl Component for StandingsTab {
 
         // Handle tab-specific messages
         match msg {
-            StandingsTabMsg::Key(key) => self.handle_key(key, state),
-
             StandingsTabMsg::CycleViewLeft => {
                 state.view = match state.view {
                     GroupBy::Wildcard => GroupBy::League,
@@ -141,7 +161,7 @@ impl Component for StandingsTab {
                     GroupBy::League => GroupBy::Conference,
                 };
                 // Reset focus/scroll when changing views
-                state.exit_browse_mode();
+                state.clear_item_focus();
                 // Signal that focusable metadata needs to be rebuilt
                 Effect::Action(crate::tui::action::Action::RebuildStandingsFocusable)
             }
@@ -153,33 +173,25 @@ impl Component for StandingsTab {
                     GroupBy::League => GroupBy::Wildcard,
                 };
                 // Reset focus/scroll when changing views
-                state.exit_browse_mode();
+                state.clear_item_focus();
                 // Signal that focusable metadata needs to be rebuilt
                 Effect::Action(crate::tui::action::Action::RebuildStandingsFocusable)
             }
             StandingsTabMsg::EnterBrowseMode => {
-                state.enter_browse_mode();
+                state.focus_first_item();
                 Effect::None
             }
             StandingsTabMsg::ExitBrowseMode => {
-                state.exit_browse_mode();
+                state.clear_item_focus();
                 Effect::None
             }
 
-            StandingsTabMsg::ActivateTeam => {
-                // Get the team abbreviation from the focused element's link target
-                if let Some(crate::tui::document::LinkTarget::Action(action)) =
-                    state.doc_nav().focused_link_target()
-                {
-                    // Parse "team:TOR" format
-                    if let Some(abbrev) = action.strip_prefix("team:") {
-                        return Effect::Action(Action::PushDocument(StackedDocument::TeamDetail {
-                            abbrev: abbrev.to_string(),
-                        }));
-                    }
+            StandingsTabMsg::ActivateTeam => match state.doc_nav().focused_link_target() {
+                Some(crate::tui::document::LinkTarget::Push(doc)) => {
+                    Effect::Action(Action::PushDocument(doc.clone()))
                 }
-                Effect::None
-            }
+                _ => Effect::None,
+            },
 
             // Common messages already handled above
             StandingsTabMsg::DocNav(_)
@@ -191,50 +203,11 @@ impl Component for StandingsTab {
     }
 
     fn view(&self, props: &Self::Props, state: &Self::State) -> Element {
-        // If in document stack view, render the stacked document instead
-        if !props.document_stack.is_empty() {
-            tracing::debug!(
-                "RENDER: Document stack has {} items, rendering stacked document",
-                props.document_stack.len()
-            );
-            return self.render_stacked_document(props);
-        }
-
         self.render_view_tabs(props, state)
     }
 }
 
 impl StandingsTab {
-    /// Handle key events when this tab is focused
-    fn handle_key(&mut self, key: KeyEvent, state: &mut StandingsTabState) -> Effect {
-        use crate::tui::nav_handler::key_to_nav_msg;
-
-        if state.is_browse_mode() {
-            // Browse mode - arrow keys navigate teams
-
-            // Try standard navigation first (handles Tab, arrows, PageUp/Down, etc.)
-            if let Some(nav_msg) = key_to_nav_msg(key) {
-                return crate::tui::document_nav::handle_message(&mut state.doc_nav, &nav_msg);
-            }
-
-            // Handle Enter to activate focused element
-            match key.code {
-                KeyCode::Enter => self.update(StandingsTabMsg::ActivateTeam, state),
-                _ => Effect::None,
-            }
-        } else {
-            // View selection mode - arrow keys navigate views
-            match key.code {
-                KeyCode::Left => self.update(StandingsTabMsg::CycleViewLeft, state),
-                KeyCode::Right => self.update(StandingsTabMsg::CycleViewRight, state),
-                KeyCode::Down | KeyCode::Enter => {
-                    self.update(StandingsTabMsg::EnterBrowseMode, state)
-                }
-                _ => Effect::None,
-            }
-        }
-    }
-
     /// Render view tabs using TabbedPanel (Wildcard/Division/Conference/League)
     fn render_view_tabs(&self, props: &StandingsTabProps, state: &StandingsTabState) -> Element {
         // All inactive tabs get Element::None to avoid cloning issues
@@ -263,7 +236,8 @@ impl StandingsTab {
             &TabbedPanelProps {
                 active_key: state.view.name().to_string(),
                 tabs,
-                focused: props.focused && !state.is_browse_mode(),
+                focused: props.focused && !state.has_item_focus(),
+                content_has_focus: props.focused && state.has_item_focus(),
             },
             &(),
         )
@@ -304,11 +278,13 @@ impl StandingsTab {
     ) -> Element {
         use super::StandingsDocumentWidget;
 
+        // Document is only focused when in browse mode (navigating within the document)
         Element::Widget(Box::new(StandingsDocumentWidget::league(
             Arc::new(standings.to_vec()),
             props.config.clone(),
             state.doc_nav.focus_index,
             state.doc_nav.scroll_offset,
+            props.focused && state.has_item_focus(),
         )))
     }
 
@@ -321,11 +297,13 @@ impl StandingsTab {
         // Use the document system for Conference view (like League view)
         use super::StandingsDocumentWidget;
 
+        // Document is only focused when in browse mode (navigating within the document)
         Element::Widget(Box::new(StandingsDocumentWidget::conference(
             Arc::new(standings.to_vec()),
             props.config.clone(),
             state.doc_nav.focus_index,
             state.doc_nav.scroll_offset,
+            props.focused && state.has_item_focus(),
         )))
     }
 
@@ -338,11 +316,13 @@ impl StandingsTab {
         // Use the document system for Division view
         use super::StandingsDocumentWidget;
 
+        // Document is only focused when in browse mode (navigating within the document)
         Element::Widget(Box::new(StandingsDocumentWidget::division(
             Arc::new(standings.to_vec()),
             props.config.clone(),
             state.doc_nav.focus_index,
             state.doc_nav.scroll_offset,
+            props.focused && state.has_item_focus(),
         )))
     }
 
@@ -355,36 +335,14 @@ impl StandingsTab {
         // Use the document system for Wildcard view
         use super::StandingsDocumentWidget;
 
+        // Document is only focused when in browse mode (navigating within the document)
         Element::Widget(Box::new(StandingsDocumentWidget::wildcard(
             Arc::new(standings.to_vec()),
             props.config.clone(),
             state.doc_nav.focus_index,
             state.doc_nav.scroll_offset,
+            props.focused && state.has_item_focus(),
         )))
-    }
-
-    fn render_stacked_document(&self, props: &StandingsTabProps) -> Element {
-        // Get the current stacked document info
-        let doc_info = if let Some(doc_entry) = props.document_stack.last() {
-            let msg = match &doc_entry.document {
-                super::super::StackedDocument::TeamDetail { abbrev } => {
-                    format!("Team Detail: {}\n\n(Document rendering not yet implemented)\n\nPress ESC to go back", abbrev)
-                }
-                super::super::StackedDocument::PlayerDetail { player_id, .. } => {
-                    format!("Player Detail: {}\n\n(Document rendering not yet implemented)\n\nPress ESC to go back", player_id)
-                }
-                super::super::StackedDocument::Boxscore { game_id, .. } => {
-                    format!("Boxscore: {}\n\n(Document rendering not yet implemented)\n\nPress ESC to go back", game_id)
-                }
-            };
-            tracing::debug!("RENDER: Rendering stacked document with message: {}", msg);
-            msg
-        } else {
-            tracing::warn!("RENDER: render_stacked_document called but document_stack is empty!");
-            "No document".to_string()
-        };
-
-        Element::Widget(Box::new(StackedDocumentWidget { message: doc_info }))
     }
 }
 
@@ -394,8 +352,8 @@ struct AnimatedLoadingWidget {
 }
 
 impl ElementWidget for AnimatedLoadingWidget {
-    fn render(&self, area: Rect, buf: &mut Buffer, config: &DisplayConfig) {
-        LoadingAnimation::new(self.animation_frame).render(area, buf, config);
+    fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
+        LoadingAnimation::new(self.animation_frame).render(area, buf, ctx);
     }
 
     fn clone_box(&self) -> Box<dyn ElementWidget> {
@@ -411,7 +369,7 @@ struct LoadingWidget {
 }
 
 impl ElementWidget for LoadingWidget {
-    fn render(&self, area: Rect, buf: &mut Buffer, _config: &DisplayConfig) {
+    fn render(&self, area: Rect, buf: &mut Buffer, _ctx: &RenderContext) {
         let widget =
             Paragraph::new(self.message.as_str()).block(Block::default().borders(Borders::NONE));
         ratatui::widgets::Widget::render(widget, area, buf);
@@ -424,36 +382,63 @@ impl ElementWidget for LoadingWidget {
     }
 }
 
-/// Stacked document widget placeholder
-struct StackedDocumentWidget {
-    message: String,
-}
-
-impl ElementWidget for StackedDocumentWidget {
-    fn render(&self, area: Rect, buf: &mut Buffer, _config: &DisplayConfig) {
-        let widget = Paragraph::new(self.message.as_str()).block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("Document View"),
-        );
-        ratatui::widgets::Widget::render(widget, area, buf);
-    }
-
-    fn clone_box(&self) -> Box<dyn ElementWidget> {
-        Box::new(StackedDocumentWidget {
-            message: self.message.clone(),
-        })
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::DisplayConfig;
     use crate::tui::renderer::Renderer;
     use crate::tui::testing::{assert_buffer, create_test_standings};
     use ratatui::{buffer::Buffer, layout::Rect};
     const RENDER_WIDTH: u16 = 120;
     const RENDER_HEIGHT: u16 = 40;
+
+    /// Regression test: component state is created lazily on first render, which
+    /// can be AFTER StandingsLoaded already ran its metadata rebuild against a
+    /// store with no standings state. init() must therefore populate focusable
+    /// metadata itself when data is available, or EnterBrowseMode (Down in
+    /// view-selection mode) finds no focusables and silently does nothing.
+    #[test]
+    fn test_init_populates_focusable_metadata_when_standings_present() {
+        let props = StandingsTabProps {
+            standings: Arc::new(Some(create_test_standings())),
+            document_stack: Vec::new(),
+            focused: true,
+            config: Arc::new(Config::default()),
+            animation_frame: 0,
+        };
+
+        let mut state = StandingsTab::init(&props);
+
+        assert!(
+            !state.doc_nav.focusables.is_empty(),
+            "init with standings data must produce focusable metadata"
+        );
+        assert!(
+            state
+                .doc_nav
+                .focusables
+                .iter()
+                .any(|f| f.link_target.is_some()),
+            "at least one focusable team row must carry a link target"
+        );
+        // The actual user-visible symptom: entering browse mode must focus a team.
+        state.focus_first_item();
+        assert_eq!(state.doc_nav.focus_index, Some(0));
+    }
+
+    #[test]
+    fn test_init_with_no_standings_leaves_metadata_empty() {
+        let props = StandingsTabProps {
+            standings: Arc::new(None),
+            document_stack: Vec::new(),
+            focused: true,
+            config: Arc::new(Config::default()),
+            animation_frame: 0,
+        };
+
+        let state = StandingsTab::init(&props);
+        assert!(state.doc_nav.focusables.is_empty());
+    }
 
     #[test]
     fn test_standings_tab_renders_with_no_standings() {
@@ -462,7 +447,7 @@ mod tests {
             standings: Arc::new(None),
             document_stack: Vec::new(),
             focused: false,
-            config: Config::default(),
+            config: Arc::new(Config::default()),
             animation_frame: 0,
         };
 
@@ -485,7 +470,7 @@ mod tests {
             standings: Arc::new(Some(standings)),
             document_stack: Vec::new(),
             focused: false,
-            config: Config::default(),
+            config: Arc::new(Config::default()),
             animation_frame: 0,
         };
 
@@ -509,9 +494,11 @@ mod tests {
         height: u16,
         config: &DisplayConfig,
     ) -> Buffer {
+        use crate::config::RenderContext;
         let mut buf = Buffer::empty(Rect::new(0, 0, width, height));
         let mut renderer = Renderer::new();
-        renderer.render(element.clone(), buf.area, &mut buf, config);
+        let ctx = RenderContext::focused(config);
+        renderer.render(element.clone(), buf.area, &mut buf, &ctx);
         buf
     }
 
@@ -524,7 +511,7 @@ mod tests {
             standings: Arc::new(Some(standings)),
             document_stack: Vec::new(),
             focused: false,
-            config: Config::default(),
+            config: Arc::new(Config::default()),
             animation_frame: 0,
         };
 
@@ -537,47 +524,48 @@ mod tests {
         let config = DisplayConfig::default();
         let buf = render_element_to_buffer(&element, RENDER_WIDTH, RENDER_HEIGHT, &config);
 
+        // Note: Tab bar has leading space, document content has left/right margins
         assert_buffer(&buf, &[
-            "Wildcard │ Division │ Conference │ League",
-            "─────────┴──────────┴────────────┴──────────────────────────────────────────────────────────────────────────────────────",
-            "  Team                          GP     W    L   OT    PTS",
-            "  ───────────────────────────────────────────────────────",
-            "  Panthers                      19    14    3    2     30",
-            "  Bruins                        18    13    4    1     27",
-            "  Maple Leafs                   19    12    5    2     26",
-            "  Lightning                     18    11    6    1     23",
-            "  Canadiens                     18    10    5    3     23",
-            "  Senators                      18     9    7    2     20",
-            "  Red Wings                     18     8    8    2     18",
-            "  Sabres                        18     6   10    2     14",
-            "  Devils                        18    15    2    1     31",
-            "  Hurricanes                    19    14    3    2     30",
-            "  Rangers                       18    12    5    1     25",
-            "  Penguins                      19    11    6    2     24",
-            "  Capitals                      18    10    7    1     21",
-            "  Islanders                     18     9    7    2     20",
-            "  Flyers                        18     8    9    1     17",
-            "  Blue Jackets                  18     5   11    2     12",
-            "  Avalanche                     19    16    2    1     33",
-            "  Stars                         20    14    4    2     30",
-            "  Jets                          19    13    5    1     27",
-            "  Wild                          19    11    6    2     24",
-            "  Predators                     19    10    7    2     22",
-            "  Blues                         19     8    8    3     19",
-            "  Blackhawks                    18     7   10    1     15",
-            "  Coyotes                       18     4   13    1      9",
-            "  Golden Knights                19    15    3    1     31",
-            "  Oilers                        20    14    4    2     30",
-            "  Kings                         19    12    6    1     25",
-            "  Kraken                        19    11    6    2     24",
-            "  Canucks                       19    10    7    2     22",
-            "  Flames                        19     9    8    2     20",
-            "  Ducks                         19     7   10    2     16",
-            "  Sharks                        18     5   12    1     11",
-            "",
-            "",
-            "",
-            "",
+            " Wildcard │ Division │ Conference │ League",
+            "──────────┴──────────┴────────────┴─────────────────────────────────────────────────────────────────────────────────────",
+            "   Team                          GP     W    L   OT    PTS",
+            "   ───────────────────────────────────────────────────────",
+            "   Panthers                      19    14    3    2     30",
+            "   Bruins                        18    13    4    1     27",
+            "   Maple Leafs                   19    12    5    2     26",
+            "   Lightning                     18    11    6    1     23",
+            "   Canadiens                     18    10    5    3     23",
+            "   Senators                      18     9    7    2     20",
+            "   Red Wings                     18     8    8    2     18",
+            "   Sabres                        18     6   10    2     14",
+            "   Devils                        18    15    2    1     31",
+            "   Hurricanes                    19    14    3    2     30",
+            "   Rangers                       18    12    5    1     25",
+            "   Penguins                      19    11    6    2     24",
+            "   Capitals                      18    10    7    1     21",
+            "   Islanders                     18     9    7    2     20",
+            "   Flyers                        18     8    9    1     17",
+            "   Blue Jackets                  18     5   11    2     12",
+            "   Avalanche                     19    16    2    1     33",
+            "   Stars                         20    14    4    2     30",
+            "   Jets                          19    13    5    1     27",
+            "   Wild                          19    11    6    2     24",
+            "   Predators                     19    10    7    2     22",
+            "   Blues                         19     8    8    3     19",
+            "   Blackhawks                    18     7   10    1     15",
+            "   Coyotes                       18     4   13    1      9",
+            "   Golden Knights                19    15    3    1     31",
+            "   Oilers                        20    14    4    2     30",
+            "   Kings                         19    12    6    1     25",
+            "   Kraken                        19    11    6    2     24",
+            "   Canucks                       19    10    7    2     22",
+            "   Flames                        19     9    8    2     20",
+            "   Ducks                         19     7   10    2     16",
+            "   Sharks                        18     5   12    1     11",
+            " ",
+            " ",
+            " ",
+            " ",
         ]);
     }
 
@@ -590,7 +578,7 @@ mod tests {
             standings: Arc::new(Some(standings)),
             document_stack: Vec::new(),
             focused: false,
-            config: Config::default(),
+            config: Arc::new(Config::default()),
             animation_frame: 0,
         };
 
@@ -603,51 +591,51 @@ mod tests {
         let config = DisplayConfig::default();
         let buf = render_element_to_buffer(&element, RENDER_WIDTH, RENDER_HEIGHT, &config);
 
-        // Division view now uses document system with two Groups in a Row
+        // Division view now uses document system with two Groups in a Row (centered with gap 4)
         // Layout: Atlantic + Metropolitan on left, Central + Pacific on right
         // (when western_first = false, which is the default)
-        // Section titles have no underline
+        // Note: Tab bar has leading space, document content has left/right margins
         assert_buffer(&buf, &[
-            "Wildcard │ Division │ Conference │ League",
-            "─────────┴──────────┴────────────┴──────────────────────────────────────────────────────────────────────────────────────",
-            "  Atlantic                                                     Central",
-            "",
-            "  Team                          GP     W    L   OT    PTS      Team                          GP     W    L   OT    PTS",
-            "  ───────────────────────────────────────────────────────      ───────────────────────────────────────────────────────",
-            "  Panthers                      19    14    3    2     30      Avalanche                     19    16    2    1     33",
-            "  Bruins                        18    13    4    1     27      Stars                         20    14    4    2     30",
-            "  Maple Leafs                   19    12    5    2     26      Jets                          19    13    5    1     27",
-            "  Lightning                     18    11    6    1     23      Wild                          19    11    6    2     24",
-            "  Canadiens                     18    10    5    3     23      Predators                     19    10    7    2     22",
-            "  Senators                      18     9    7    2     20      Blues                         19     8    8    3     19",
-            "  Red Wings                     18     8    8    2     18      Blackhawks                    18     7   10    1     15",
-            "  Sabres                        18     6   10    2     14      Coyotes                       18     4   13    1      9",
-            "",
-            "  Metropolitan                                                 Pacific",
-            "",
-            "  Team                          GP     W    L   OT    PTS      Team                          GP     W    L   OT    PTS",
-            "  ───────────────────────────────────────────────────────      ───────────────────────────────────────────────────────",
-            "  Devils                        18    15    2    1     31      Golden Knights                19    15    3    1     31",
-            "  Hurricanes                    19    14    3    2     30      Oilers                        20    14    4    2     30",
-            "  Rangers                       18    12    5    1     25      Kings                         19    12    6    1     25",
-            "  Penguins                      19    11    6    2     24      Kraken                        19    11    6    2     24",
-            "  Capitals                      18    10    7    1     21      Canucks                       19    10    7    2     22",
-            "  Islanders                     18     9    7    2     20      Flames                        19     9    8    2     20",
-            "  Flyers                        18     8    9    1     17      Ducks                         19     7   10    2     16",
-            "  Blue Jackets                  18     5   11    2     12      Sharks                        18     5   12    1     11",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
+            " Wildcard │ Division │ Conference │ League",
+            "──────────┴──────────┴────────────┴─────────────────────────────────────────────────────────────────────────────────────",
+            "   Atlantic                                                     Central",
+            " ",
+            "   Team                          GP     W    L   OT    PTS      Team                          GP     W    L   OT    PTS",
+            "   ───────────────────────────────────────────────────────      ───────────────────────────────────────────────────────",
+            "   Panthers                      19    14    3    2     30      Avalanche                     19    16    2    1     33",
+            "   Bruins                        18    13    4    1     27      Stars                         20    14    4    2     30",
+            "   Maple Leafs                   19    12    5    2     26      Jets                          19    13    5    1     27",
+            "   Lightning                     18    11    6    1     23      Wild                          19    11    6    2     24",
+            "   Canadiens                     18    10    5    3     23      Predators                     19    10    7    2     22",
+            "   Senators                      18     9    7    2     20      Blues                         19     8    8    3     19",
+            "   Red Wings                     18     8    8    2     18      Blackhawks                    18     7   10    1     15",
+            "   Sabres                        18     6   10    2     14      Coyotes                       18     4   13    1      9",
+            " ",
+            "   Metropolitan                                                 Pacific",
+            " ",
+            "   Team                          GP     W    L   OT    PTS      Team                          GP     W    L   OT    PTS",
+            "   ───────────────────────────────────────────────────────      ───────────────────────────────────────────────────────",
+            "   Devils                        18    15    2    1     31      Golden Knights                19    15    3    1     31",
+            "   Hurricanes                    19    14    3    2     30      Oilers                        20    14    4    2     30",
+            "   Rangers                       18    12    5    1     25      Kings                         19    12    6    1     25",
+            "   Penguins                      19    11    6    2     24      Kraken                        19    11    6    2     24",
+            "   Capitals                      18    10    7    1     21      Canucks                       19    10    7    2     22",
+            "   Islanders                     18     9    7    2     20      Flames                        19     9    8    2     20",
+            "   Flyers                        18     8    9    1     17      Ducks                         19     7   10    2     16",
+            "   Blue Jackets                  18     5   11    2     12      Sharks                        18     5   12    1     11",
+            " ",
+            " ",
+            " ",
+            " ",
+            " ",
+            " ",
+            " ",
+            " ",
+            " ",
+            " ",
+            " ",
+            " ",
+            " ",
         ]);
     }
 
@@ -660,7 +648,7 @@ mod tests {
             standings: Arc::new(Some(standings)),
             document_stack: Vec::new(),
             focused: false,
-            config: Config::default(),
+            config: Arc::new(Config::default()),
             animation_frame: 0,
         };
 
@@ -673,48 +661,49 @@ mod tests {
         let config = DisplayConfig::default();
         let buf = render_element_to_buffer(&element, RENDER_WIDTH, RENDER_HEIGHT, &config);
 
-        // Conference view now uses document system with teams sorted by points
+        // Conference view now uses document system with teams sorted by points (centered with gap 4)
+        // Note: Tab bar has leading space, document content has left/right margins (2 chars total)
         assert_buffer(&buf, &[
-            "Wildcard │ Division │ Conference │ League",
-            "─────────┴──────────┴────────────┴──────────────────────────────────────────────────────────────────────────────────────",
-            "  Eastern                                                      Western",
-            "",
-            "  Team                          GP     W    L   OT    PTS      Team                          GP     W    L   OT    PTS",
-            "  ───────────────────────────────────────────────────────      ───────────────────────────────────────────────────────",
-            "  Devils                        18    15    2    1     31      Avalanche                     19    16    2    1     33",
-            "  Panthers                      19    14    3    2     30      Golden Knights                19    15    3    1     31",
-            "  Hurricanes                    19    14    3    2     30      Stars                         20    14    4    2     30",
-            "  Bruins                        18    13    4    1     27      Oilers                        20    14    4    2     30",
-            "  Maple Leafs                   19    12    5    2     26      Jets                          19    13    5    1     27",
-            "  Rangers                       18    12    5    1     25      Kings                         19    12    6    1     25",
-            "  Penguins                      19    11    6    2     24      Wild                          19    11    6    2     24",
-            "  Lightning                     18    11    6    1     23      Kraken                        19    11    6    2     24",
-            "  Canadiens                     18    10    5    3     23      Predators                     19    10    7    2     22",
-            "  Capitals                      18    10    7    1     21      Canucks                       19    10    7    2     22",
-            "  Senators                      18     9    7    2     20      Flames                        19     9    8    2     20",
-            "  Islanders                     18     9    7    2     20      Blues                         19     8    8    3     19",
-            "  Red Wings                     18     8    8    2     18      Ducks                         19     7   10    2     16",
-            "  Flyers                        18     8    9    1     17      Blackhawks                    18     7   10    1     15",
-            "  Sabres                        18     6   10    2     14      Sharks                        18     5   12    1     11",
-            "  Blue Jackets                  18     5   11    2     12      Coyotes                       18     4   13    1      9",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
+            " Wildcard │ Division │ Conference │ League",
+            "──────────┴──────────┴────────────┴─────────────────────────────────────────────────────────────────────────────────────",
+            "   Eastern                                                      Western",
+            " ",
+            "   Team                          GP     W    L   OT    PTS      Team                          GP     W    L   OT    PTS",
+            "   ───────────────────────────────────────────────────────      ───────────────────────────────────────────────────────",
+            "   Devils                        18    15    2    1     31      Avalanche                     19    16    2    1     33",
+            "   Panthers                      19    14    3    2     30      Golden Knights                19    15    3    1     31",
+            "   Hurricanes                    19    14    3    2     30      Stars                         20    14    4    2     30",
+            "   Bruins                        18    13    4    1     27      Oilers                        20    14    4    2     30",
+            "   Maple Leafs                   19    12    5    2     26      Jets                          19    13    5    1     27",
+            "   Rangers                       18    12    5    1     25      Kings                         19    12    6    1     25",
+            "   Penguins                      19    11    6    2     24      Wild                          19    11    6    2     24",
+            "   Lightning                     18    11    6    1     23      Kraken                        19    11    6    2     24",
+            "   Canadiens                     18    10    5    3     23      Predators                     19    10    7    2     22",
+            "   Capitals                      18    10    7    1     21      Canucks                       19    10    7    2     22",
+            "   Senators                      18     9    7    2     20      Flames                        19     9    8    2     20",
+            "   Islanders                     18     9    7    2     20      Blues                         19     8    8    3     19",
+            "   Red Wings                     18     8    8    2     18      Ducks                         19     7   10    2     16",
+            "   Flyers                        18     8    9    1     17      Blackhawks                    18     7   10    1     15",
+            "   Sabres                        18     6   10    2     14      Sharks                        18     5   12    1     11",
+            "   Blue Jackets                  18     5   11    2     12      Coyotes                       18     4   13    1      9",
+            " ",
+            " ",
+            " ",
+            " ",
+            " ",
+            " ",
+            " ",
+            " ",
+            " ",
+            " ",
+            " ",
+            " ",
+            " ",
+            " ",
+            " ",
+            " ",
+            " ",
+            " ",
         ]);
     }
 
@@ -726,7 +715,7 @@ mod tests {
             standings: Arc::new(Some(standings)),
             document_stack: Vec::new(),
             focused: false,
-            config: Config::default(),
+            config: Arc::new(Config::default()),
             animation_frame: 0,
         };
 
@@ -734,47 +723,48 @@ mod tests {
         let config = DisplayConfig::default();
         let buf = render_element_to_buffer(&element, RENDER_WIDTH, RENDER_HEIGHT, &config);
 
+        // Note: Tab bar has leading space, document content has left/right margins (centered with gap 4)
         assert_buffer(&buf, &[
-            "Wildcard │ Division │ Conference │ League",
-            "─────────┴──────────┴────────────┴──────────────────────────────────────────────────────────────────────────────────────",
-            "  Atlantic                                                     Central",
-            "",
-            "  Team                          GP     W    L   OT    PTS      Team                          GP     W    L   OT    PTS",
-            "  ───────────────────────────────────────────────────────      ───────────────────────────────────────────────────────",
-            "  Panthers                      19    14    3    2     30      Avalanche                     19    16    2    1     33",
-            "  Bruins                        18    13    4    1     27      Stars                         20    14    4    2     30",
-            "  Maple Leafs                   19    12    5    2     26      Jets                          19    13    5    1     27",
-            "",
-            "  Metropolitan                                                 Pacific",
-            "",
-            "  Team                          GP     W    L   OT    PTS      Team                          GP     W    L   OT    PTS",
-            "  ───────────────────────────────────────────────────────      ───────────────────────────────────────────────────────",
-            "  Devils                        18    15    2    1     31      Golden Knights                19    15    3    1     31",
-            "  Hurricanes                    19    14    3    2     30      Oilers                        20    14    4    2     30",
-            "  Rangers                       18    12    5    1     25      Kings                         19    12    6    1     25",
-            "",
-            "  Wildcard                                                     Wildcard",
-            "",
-            "  Team                          GP     W    L   OT    PTS      Team                          GP     W    L   OT    PTS",
-            "  ───────────────────────────────────────────────────────      ───────────────────────────────────────────────────────",
-            "  Penguins                      19    11    6    2     24      Wild                          19    11    6    2     24",
-            "  Lightning                     18    11    6    1     23      Kraken                        19    11    6    2     24",
-            "  Canadiens                     18    10    5    3     23      Predators                     19    10    7    2     22",
-            "  Capitals                      18    10    7    1     21      Canucks                       19    10    7    2     22",
-            "  Senators                      18     9    7    2     20      Flames                        19     9    8    2     20",
-            "  Islanders                     18     9    7    2     20      Blues                         19     8    8    3     19",
-            "  Red Wings                     18     8    8    2     18      Ducks                         19     7   10    2     16",
-            "  Flyers                        18     8    9    1     17      Blackhawks                    18     7   10    1     15",
-            "  Sabres                        18     6   10    2     14      Sharks                        18     5   12    1     11",
-            "  Blue Jackets                  18     5   11    2     12      Coyotes                       18     4   13    1      9",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
+            " Wildcard │ Division │ Conference │ League",
+            "──────────┴──────────┴────────────┴─────────────────────────────────────────────────────────────────────────────────────",
+            "   Atlantic                                                     Central",
+            " ",
+            "   Team                          GP     W    L   OT    PTS      Team                          GP     W    L   OT    PTS",
+            "   ───────────────────────────────────────────────────────      ───────────────────────────────────────────────────────",
+            "   Panthers                      19    14    3    2     30      Avalanche                     19    16    2    1     33",
+            "   Bruins                        18    13    4    1     27      Stars                         20    14    4    2     30",
+            "   Maple Leafs                   19    12    5    2     26      Jets                          19    13    5    1     27",
+            " ",
+            "   Metropolitan                                                 Pacific",
+            " ",
+            "   Team                          GP     W    L   OT    PTS      Team                          GP     W    L   OT    PTS",
+            "   ───────────────────────────────────────────────────────      ───────────────────────────────────────────────────────",
+            "   Devils                        18    15    2    1     31      Golden Knights                19    15    3    1     31",
+            "   Hurricanes                    19    14    3    2     30      Oilers                        20    14    4    2     30",
+            "   Rangers                       18    12    5    1     25      Kings                         19    12    6    1     25",
+            " ",
+            "   Wildcard                                                     Wildcard",
+            " ",
+            "   Team                          GP     W    L   OT    PTS      Team                          GP     W    L   OT    PTS",
+            "   ───────────────────────────────────────────────────────      ───────────────────────────────────────────────────────",
+            "   Penguins                      19    11    6    2     24      Wild                          19    11    6    2     24",
+            "   Lightning                     18    11    6    1     23      Kraken                        19    11    6    2     24",
+            "   Canadiens                     18    10    5    3     23      Predators                     19    10    7    2     22",
+            "   Capitals                      18    10    7    1     21      Canucks                       19    10    7    2     22",
+            "   Senators                      18     9    7    2     20      Flames                        19     9    8    2     20",
+            "   Islanders                     18     9    7    2     20      Blues                         19     8    8    3     19",
+            "   Red Wings                     18     8    8    2     18      Ducks                         19     7   10    2     16",
+            "   Flyers                        18     8    9    1     17      Blackhawks                    18     7   10    1     15",
+            "   Sabres                        18     6   10    2     14      Sharks                        18     5   12    1     11",
+            "   Blue Jackets                  18     5   11    2     12      Coyotes                       18     4   13    1      9",
+            " ",
+            " ",
+            " ",
+            " ",
+            " ",
+            " ",
+            " ",
+            " ",
         ]);
     }
 
@@ -856,7 +846,7 @@ mod tests {
     fn test_activate_team_pushes_team_detail_document() {
         use crate::tui::action::Action;
         use crate::tui::component::{Component, Effect};
-        use crate::tui::document::LinkTarget;
+        use crate::tui::document::{FocusableElement, FocusableId, LinkTarget};
         use crate::tui::types::StackedDocument;
 
         let mut standings_tab = StandingsTab;
@@ -866,10 +856,22 @@ mod tests {
         };
 
         // Set link targets for teams (what table cells now use)
-        state.doc_nav.link_targets = vec![
-            Some(LinkTarget::Action("team:TOR".to_string())),
-            Some(LinkTarget::Action("team:BOS".to_string())),
-            Some(LinkTarget::Action("team:MTL".to_string())),
+        state.doc_nav.focusables = vec![
+            FocusableElement::at(0, 1, FocusableId::team_link("TOR")).with_link_target(
+                LinkTarget::Push(StackedDocument::TeamDetail {
+                    abbrev: "TOR".to_string(),
+                }),
+            ),
+            FocusableElement::at(1, 1, FocusableId::team_link("BOS")).with_link_target(
+                LinkTarget::Push(StackedDocument::TeamDetail {
+                    abbrev: "BOS".to_string(),
+                }),
+            ),
+            FocusableElement::at(2, 1, FocusableId::team_link("MTL")).with_link_target(
+                LinkTarget::Push(StackedDocument::TeamDetail {
+                    abbrev: "MTL".to_string(),
+                }),
+            ),
         ];
 
         // Set focus to second team (BOS)
@@ -889,7 +891,8 @@ mod tests {
     #[test]
     fn test_activate_team_without_focus_does_nothing() {
         use crate::tui::component::{Component, Effect};
-        use crate::tui::document::LinkTarget;
+        use crate::tui::document::{FocusableElement, FocusableId, LinkTarget};
+        use crate::tui::types::StackedDocument;
 
         let mut standings_tab = StandingsTab;
         let mut state = StandingsTabState {
@@ -898,7 +901,10 @@ mod tests {
         };
 
         // Set link targets for teams
-        state.doc_nav.link_targets = vec![Some(LinkTarget::Action("team:TOR".to_string()))];
+        state.doc_nav.focusables = vec![FocusableElement::at(0, 1, FocusableId::team_link("TOR"))
+            .with_link_target(LinkTarget::Push(StackedDocument::TeamDetail {
+                abbrev: "TOR".to_string(),
+            }))];
 
         // No focus set
         state.doc_nav.focus_index = None;

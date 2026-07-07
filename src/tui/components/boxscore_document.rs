@@ -5,13 +5,13 @@ use ratatui::{buffer::Buffer, layout::Rect};
 use nhl_api::{Boxscore, GoalieStats, SkaterStats};
 
 use super::table::TableWidget;
-use crate::config::DisplayConfig;
+use crate::config::RenderContext;
 use crate::tui::component::{Component, Element, ElementWidget};
 use crate::tui::document::{
     Document, DocumentBuilder, DocumentElement, DocumentView, FocusContext,
     TEAM_BOXSCORE_SIDE_BY_SIDE_WIDTH,
 };
-use crate::tui::widgets::{LoadingAnimation, StandaloneWidget};
+use crate::tui::widgets::{BigScoreParams, LoadingAnimation, ScoreBoxStatus, StandaloneWidget};
 use crate::tui::{Alignment, CellValue, ColumnDef};
 
 /// View mode for boxscore panel
@@ -24,10 +24,12 @@ pub enum TeamView {
 /// BoxscoreDocument component props
 #[derive(Clone)]
 pub struct BoxscoreDocumentProps {
-    pub game_id: i64,
-    pub boxscore: Option<Boxscore>,
+    /// Pre-built content document, or `None` while boxscore data hasn't
+    /// arrived yet (rendered as a loading spinner). Built by
+    /// `document::build_stacked_document`, the single production
+    /// construction site shared with the input-handling path.
+    pub document: Option<Arc<dyn Document>>,
     pub loading: bool,
-    pub team_view: TeamView,
     pub selected_index: Option<usize>,
     pub scroll_offset: u16,
     pub focused: bool,
@@ -44,10 +46,8 @@ impl Component for BoxscoreDocument {
 
     fn view(&self, props: &Self::Props, _state: &Self::State) -> Element {
         Element::Widget(Box::new(BoxscoreDocumentWidget {
-            game_id: props.game_id,
-            boxscore: props.boxscore.clone(),
+            document: props.document.clone(),
             loading: props.loading,
-            team_view: props.team_view.clone(),
             selected_index: props.selected_index,
             scroll_offset: props.scroll_offset,
             focused: props.focused,
@@ -72,64 +72,31 @@ impl BoxscoreDocumentContent {
         }
     }
 
-    /// Build header section with game info
-    fn build_header(&self) -> Vec<DocumentElement> {
-        let boxscore = &self.boxscore;
-
-        let title = format!(
-            "{} @ {}",
-            boxscore.away_team.common_name.default, boxscore.home_team.common_name.default
-        );
-
-        let date_venue = format!(
-            "Date: {} | Venue: {}",
-            boxscore.game_date, boxscore.venue.default
-        );
-
-        let period_text = format_period_text(
-            &boxscore.period_descriptor.number,
-            boxscore.period_descriptor.period_type,
-        );
-        let status_period = format!(
-            "Status: {} | Period: {}",
-            format_game_state(&boxscore.game_state),
-            period_text
-        );
-
-        let time_info = if boxscore.clock.running || !boxscore.clock.in_intermission {
-            format!("Time: {}", boxscore.clock.time_remaining)
-        } else if boxscore.clock.in_intermission {
-            "INTERMISSION".to_string()
-        } else {
-            String::new()
-        };
-
-        vec![
-            DocumentElement::heading(1, &title),
-            DocumentElement::text(&date_venue),
-            DocumentElement::text(&status_period),
-            DocumentElement::text(&time_info),
-        ]
-    }
-
     /// Build score section - uses big digits if unicode enabled, otherwise text
     fn build_score(&self, focus: &FocusContext) -> Vec<DocumentElement> {
         let boxscore = &self.boxscore;
 
         if focus.use_unicode {
-            vec![DocumentElement::big_score(
-                &boxscore.away_team.abbrev,
-                &boxscore.home_team.abbrev,
-                boxscore.away_team.score,
-                boxscore.home_team.score,
-            )]
+            let status = boxscore_to_status(boxscore);
+            vec![DocumentElement::big_score(BigScoreParams {
+                away_name: boxscore.away_team.common_name.default.clone(),
+                home_name: boxscore.home_team.common_name.default.clone(),
+                away_score: boxscore.away_team.score,
+                home_score: boxscore.home_team.score,
+                away_sog: boxscore.away_team.sog,
+                home_sog: boxscore.home_team.sog,
+                status,
+                venue: boxscore.venue.default.clone(),
+            })]
         } else {
             let score_text = format!(
-                "{}: {}  |  {}: {}",
+                "{}: {}  |  {}: {}  (SOG: {} - {})",
                 boxscore.away_team.abbrev,
                 boxscore.away_team.score,
                 boxscore.home_team.abbrev,
-                boxscore.home_team.score
+                boxscore.home_team.score,
+                boxscore.away_team.sog,
+                boxscore.home_team.sog,
             );
             vec![
                 DocumentElement::heading(2, "SCORE"),
@@ -157,7 +124,7 @@ impl BoxscoreDocumentContent {
         table_id: &str,
         focus: &FocusContext,
     ) -> TableWidget {
-        let columns = game_goalie_columns();
+        let columns = game_goalie_columns(&focus.box_chars);
         TableWidget::from_data(&columns, goalies.to_vec())
             .with_focused_row(focus.focused_table_row(table_id))
     }
@@ -200,12 +167,6 @@ impl Document for BoxscoreDocumentContent {
     fn build(&self, focus: &FocusContext) -> Vec<DocumentElement> {
         let mut builder = DocumentBuilder::new();
 
-        // Header section
-        for elem in self.build_header() {
-            builder = builder.element(elem);
-        }
-        builder = builder.spacer(1);
-
         // Score section
         for elem in self.build_score(focus) {
             builder = builder.element(elem);
@@ -222,7 +183,10 @@ impl Document for BoxscoreDocumentContent {
             .unwrap_or(false);
 
         if wide_enough {
-            builder = builder.element(DocumentElement::row(vec![away_boxscore, home_boxscore]));
+            builder = builder.element(DocumentElement::row_center_with_gap(
+                vec![away_boxscore, home_boxscore],
+                4,
+            ));
         } else {
             builder = builder.element(away_boxscore);
             builder = builder.spacer(1);
@@ -247,14 +211,19 @@ impl Document for BoxscoreDocumentContent {
 /// Column definitions for game-level skater stats
 fn game_skater_columns() -> Vec<ColumnDef<SkaterStats>> {
     vec![
+        ColumnDef::new("#", 2, Alignment::Right, |s: &SkaterStats| {
+            CellValue::StyledText(s.sweater_number.to_string())
+        }),
         ColumnDef::new("Player", 20, Alignment::Left, |s: &SkaterStats| {
             CellValue::PlayerLink {
                 display: s.name.default.clone(),
-                player_id: s.player_id,
+                player_id: s.player_id.into(),
+                sweater_number: Some(s.sweater_number),
+                last_name: s.name.default.clone(),
             }
         }),
         ColumnDef::new("Pos", 3, Alignment::Center, |s: &SkaterStats| {
-            CellValue::Text(s.position.to_string())
+            CellValue::Text(s.position.map_or_else(String::new, |p| p.code().to_string()))
         }),
         ColumnDef::new("G", 2, Alignment::Right, |s: &SkaterStats| {
             CellValue::Text(s.goals.to_string())
@@ -264,6 +233,9 @@ fn game_skater_columns() -> Vec<ColumnDef<SkaterStats>> {
         }),
         ColumnDef::new("PTS", 3, Alignment::Right, |s: &SkaterStats| {
             CellValue::Text(s.points.to_string())
+        }),
+        ColumnDef::new("PPG", 3, Alignment::Right, |s: &SkaterStats| {
+            CellValue::Text(s.power_play_goals.to_string())
         }),
         ColumnDef::new("+/-", 3, Alignment::Right, |s: &SkaterStats| {
             CellValue::Text(format!("{:+}", s.plus_minus))
@@ -277,6 +249,12 @@ fn game_skater_columns() -> Vec<ColumnDef<SkaterStats>> {
         ColumnDef::new("Blk", 3, Alignment::Right, |s: &SkaterStats| {
             CellValue::Text(s.blocked_shots.to_string())
         }),
+        ColumnDef::new("GA", 2, Alignment::Right, |s: &SkaterStats| {
+            CellValue::Text(s.giveaways.to_string())
+        }),
+        ColumnDef::new("TA", 2, Alignment::Right, |s: &SkaterStats| {
+            CellValue::Text(s.takeaways.to_string())
+        }),
         ColumnDef::new("PIM", 3, Alignment::Right, |s: &SkaterStats| {
             CellValue::Text(s.pim.to_string())
         }),
@@ -287,6 +265,9 @@ fn game_skater_columns() -> Vec<ColumnDef<SkaterStats>> {
                 CellValue::Text("-".to_string())
             }
         }),
+        ColumnDef::new("SH", 3, Alignment::Right, |s: &SkaterStats| {
+            CellValue::Text(s.shifts.to_string())
+        }),
         ColumnDef::new("TOI", 6, Alignment::Right, |s: &SkaterStats| {
             CellValue::Text(s.toi.clone())
         }),
@@ -294,13 +275,33 @@ fn game_skater_columns() -> Vec<ColumnDef<SkaterStats>> {
 }
 
 /// Column definitions for game-level goalie stats
-fn game_goalie_columns() -> Vec<ColumnDef<GoalieStats>> {
+fn game_goalie_columns(box_chars: &crate::formatting::BoxChars) -> Vec<ColumnDef<GoalieStats>> {
+    let checkmark = box_chars.checkmark.to_string();
     vec![
+        ColumnDef::new("#", 2, Alignment::Right, |g: &GoalieStats| {
+            CellValue::StyledText(g.sweater_number.to_string())
+        }),
         ColumnDef::new("Player", 20, Alignment::Left, |g: &GoalieStats| {
             CellValue::PlayerLink {
                 display: g.name.default.clone(),
-                player_id: g.player_id,
+                player_id: g.player_id.into(),
+                sweater_number: Some(g.sweater_number),
+                last_name: g.name.default.clone(),
             }
+        }),
+        ColumnDef::new("DEC", 3, Alignment::Center, |g: &GoalieStats| {
+            let text = match &g.decision {
+                Some(d) => d.to_string(),
+                None => "-".to_string(),
+            };
+            CellValue::Text(text)
+        }),
+        ColumnDef::new("S", 1, Alignment::Center, move |g: &GoalieStats| {
+            let text = match g.starter {
+                Some(true) => checkmark.clone(),
+                _ => " ".to_string(),
+            };
+            CellValue::Text(text)
         }),
         ColumnDef::new("SA", 3, Alignment::Right, |g: &GoalieStats| {
             CellValue::Text(g.shots_against.to_string())
@@ -318,6 +319,15 @@ fn game_goalie_columns() -> Vec<ColumnDef<GoalieStats>> {
                 CellValue::Text("-".to_string())
             }
         }),
+        ColumnDef::new("ES", 6, Alignment::Right, |g: &GoalieStats| {
+            CellValue::Text(g.even_strength_shots_against.clone())
+        }),
+        ColumnDef::new("PP", 4, Alignment::Right, |g: &GoalieStats| {
+            CellValue::Text(g.power_play_shots_against.clone())
+        }),
+        ColumnDef::new("SH", 4, Alignment::Right, |g: &GoalieStats| {
+            CellValue::Text(g.shorthanded_shots_against.clone())
+        }),
         ColumnDef::new("TOI", 7, Alignment::Right, |g: &GoalieStats| {
             CellValue::Text(g.toi.clone())
         }),
@@ -331,33 +341,52 @@ fn game_goalie_columns() -> Vec<ColumnDef<GoalieStats>> {
     ]
 }
 
-fn format_game_state(state: &nhl_api::GameState) -> &str {
-    match state {
-        nhl_api::GameState::Future => "SCHEDULED",
-        nhl_api::GameState::PreGame => "PRE-GAME",
-        nhl_api::GameState::Live => "LIVE",
-        nhl_api::GameState::Final => "FINAL",
-        nhl_api::GameState::Off => "OFF",
-        nhl_api::GameState::Postponed => "POSTPONED",
-        nhl_api::GameState::Suspended => "SUSPENDED",
-        nhl_api::GameState::Critical => "CRITICAL",
-    }
-}
-
-fn format_period_text(number: &i32, period_type: nhl_api::PeriodType) -> String {
-    match period_type {
+/// Missing period type (historical data) is treated as regulation.
+fn format_period_text(number: &i32, period_type: Option<nhl_api::PeriodType>) -> String {
+    match period_type.unwrap_or(nhl_api::PeriodType::Regulation) {
         nhl_api::PeriodType::Regulation => format!("{}", number),
         nhl_api::PeriodType::Overtime => "OT".to_string(),
         nhl_api::PeriodType::Shootout => "SO".to_string(),
     }
 }
 
+fn boxscore_to_status(boxscore: &Boxscore) -> ScoreBoxStatus {
+    match boxscore.game_state {
+        nhl_api::GameState::Future | nhl_api::GameState::PreGame => ScoreBoxStatus::Scheduled {
+            start_time: boxscore.start_time_utc.clone(),
+        },
+        nhl_api::GameState::Live | nhl_api::GameState::Critical => {
+            let period = format_period_text(
+                &boxscore.period_descriptor.number,
+                boxscore.period_descriptor.period_type,
+            );
+            let time = if boxscore.clock.time_remaining.is_empty() {
+                None
+            } else {
+                Some(boxscore.clock.time_remaining.clone())
+            };
+            ScoreBoxStatus::Live {
+                period,
+                time,
+                intermission: boxscore.clock.in_intermission,
+            }
+        }
+        nhl_api::GameState::Final | nhl_api::GameState::Off => ScoreBoxStatus::Final {
+            overtime: boxscore.period_descriptor.period_type == Some(nhl_api::PeriodType::Overtime),
+            shootout: boxscore.period_descriptor.period_type == Some(nhl_api::PeriodType::Shootout),
+        },
+        nhl_api::GameState::Postponed | nhl_api::GameState::Suspended => {
+            ScoreBoxStatus::Scheduled {
+                start_time: "TBD".to_string(),
+            }
+        }
+    }
+}
+
 /// Widget for rendering boxscore document
 struct BoxscoreDocumentWidget {
-    game_id: i64,
-    boxscore: Option<Boxscore>,
+    document: Option<Arc<dyn Document>>,
     loading: bool,
-    team_view: TeamView,
     selected_index: Option<usize>,
     scroll_offset: u16,
     focused: bool,
@@ -365,25 +394,25 @@ struct BoxscoreDocumentWidget {
 }
 
 impl ElementWidget for BoxscoreDocumentWidget {
-    fn render(&self, area: Rect, buf: &mut Buffer, config: &DisplayConfig) {
+    fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
+        // Create child RenderContext with our focus state
+        let child_ctx = RenderContext::new(ctx.config, self.focused);
+
         // Show animation if loading or data hasn't arrived yet
-        if self.loading || self.boxscore.is_none() {
-            LoadingAnimation::new(self.animation_frame).render(area, buf, config);
+        if self.loading || self.document.is_none() {
+            LoadingAnimation::new(self.animation_frame).render(area, buf, &child_ctx);
             return;
         }
 
         // Safe to unwrap since we checked is_none() above
-        let boxscore = self.boxscore.as_ref().unwrap();
+        let document = self.document.clone().unwrap();
 
         if area.width == 0 || area.height == 0 {
             return;
         }
 
-        // Create document and render with DocumentView
-        let doc =
-            BoxscoreDocumentContent::new(self.game_id, boxscore.clone(), self.team_view.clone());
-
-        let mut view = DocumentView::new(Arc::new(doc), area.height);
+        // Render the pre-built document with DocumentView
+        let mut view = DocumentView::new(document, area.height);
 
         // Apply focus state
         if let Some(idx) = self.selected_index {
@@ -394,15 +423,13 @@ impl ElementWidget for BoxscoreDocumentWidget {
         view.set_scroll_offset(self.scroll_offset);
 
         // Render the document
-        view.render(area, buf, config);
+        view.render(area, buf, &child_ctx);
     }
 
     fn clone_box(&self) -> Box<dyn ElementWidget> {
         Box::new(BoxscoreDocumentWidget {
-            game_id: self.game_id,
-            boxscore: self.boxscore.clone(),
+            document: self.document.clone(),
             loading: self.loading,
-            team_view: self.team_view.clone(),
             selected_index: self.selected_index,
             scroll_offset: self.scroll_offset,
             focused: self.focused,
@@ -414,21 +441,23 @@ impl ElementWidget for BoxscoreDocumentWidget {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{DisplayConfig, RenderContext};
     use crate::tui::document::FocusContext;
     use nhl_api::{
-        Boxscore, BoxscoreTeam, GameClock, GameState, GoalieDecision, GoalieStats, LocalizedString,
-        PeriodDescriptor, PeriodType, PlayerByGameStats, Position, SkaterStats, TeamPlayerStats,
+        Boxscore, BoxscoreTeam, GameClock, GameScheduleState, GameState, GoalieDecision,
+        GoalieStats, LocalizedString, PeriodDescriptor, PeriodType, PlayerByGameStats, Position,
+        Season, SkaterStats, TeamPlayerStats,
     };
 
     /// Create a test skater with minimal data
     fn create_test_skater(name: &str, sweater_number: i32, position: Position) -> SkaterStats {
         SkaterStats {
-            player_id: sweater_number as i64,
+            player_id: (sweater_number as i64).into(),
             name: LocalizedString {
                 default: name.to_string(),
             },
             sweater_number,
-            position,
+            position: Some(position),
             goals: 1,
             assists: 2,
             points: 3,
@@ -449,12 +478,12 @@ mod tests {
     /// Create a test goalie with minimal data
     fn create_test_goalie(name: &str, sweater_number: i32) -> GoalieStats {
         GoalieStats {
-            player_id: sweater_number as i64,
+            player_id: (sweater_number as i64).into(),
             name: LocalizedString {
                 default: name.to_string(),
             },
             sweater_number,
-            position: Position::Goalie,
+            position: Some(Position::Goalie),
             even_strength_shots_against: "20".to_string(),
             power_play_shots_against: "5".to_string(),
             shorthanded_shots_against: "0".to_string(),
@@ -489,8 +518,8 @@ mod tests {
         let home_goalies = vec![create_test_goalie("H. Goalie", 31)];
 
         Boxscore {
-            id: 2024020001,
-            season: 20242025,
+            id: 2024020001.into(),
+            season: Season::new(2024),
             game_type: nhl_api::GameType::RegularSeason,
             limited_scoring: false,
             game_date: "2024-10-04".to_string(),
@@ -505,15 +534,15 @@ mod tests {
             venue_utc_offset: "-04:00".to_string(),
             tv_broadcasts: vec![],
             game_state: GameState::Final,
-            game_schedule_state: "OK".to_string(),
+            game_schedule_state: GameScheduleState::Ok,
             period_descriptor: PeriodDescriptor {
                 number: 3,
-                period_type: PeriodType::Regulation,
+                period_type: Some(PeriodType::Regulation),
                 max_regulation_periods: 3,
             },
             special_event: None,
             away_team: BoxscoreTeam {
-                id: 1,
+                id: 1.into(),
                 common_name: LocalizedString {
                     default: "Devils".to_string(),
                 },
@@ -530,7 +559,7 @@ mod tests {
                 },
             },
             home_team: BoxscoreTeam {
-                id: 7,
+                id: 7.into(),
                 common_name: LocalizedString {
                     default: "Sabres".to_string(),
                 },
@@ -592,7 +621,7 @@ mod tests {
         let boxscore = create_test_boxscore();
         let doc = BoxscoreDocumentContent::new(2024020001, boxscore, TeamView::Away);
 
-        let positions = doc.focusable_positions();
+        let positions = doc.focusables(&FocusContext::default());
 
         // Should have focusable positions for all players
         // Away: 2 forwards + 1 defense + 1 goalie = 4
@@ -604,10 +633,8 @@ mod tests {
     #[test]
     fn test_loading_state_renders() {
         let widget = BoxscoreDocumentWidget {
-            game_id: 2024020001,
-            boxscore: None,
+            document: None,
             loading: true,
-            team_view: TeamView::Away,
             selected_index: None,
             scroll_offset: 0,
             focused: true,
@@ -617,8 +644,9 @@ mod tests {
         let area = Rect::new(0, 0, 80, 30);
         let mut buf = Buffer::empty(area);
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        widget.render(area, &mut buf, &config);
+        widget.render(area, &mut buf, &ctx);
 
         // Should render without panic
         assert_eq!(*buf.area(), area);
@@ -627,10 +655,8 @@ mod tests {
     #[test]
     fn test_no_boxscore_renders() {
         let widget = BoxscoreDocumentWidget {
-            game_id: 2024020001,
-            boxscore: None,
+            document: None,
             loading: false,
-            team_view: TeamView::Away,
             selected_index: None,
             scroll_offset: 0,
             focused: true,
@@ -640,8 +666,9 @@ mod tests {
         let area = Rect::new(0, 0, 80, 30);
         let mut buf = Buffer::empty(area);
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        widget.render(area, &mut buf, &config);
+        widget.render(area, &mut buf, &ctx);
 
         // Should render without panic
         assert_eq!(*buf.area(), area);
@@ -650,11 +677,14 @@ mod tests {
     #[test]
     fn test_boxscore_renders() {
         let boxscore = create_test_boxscore();
+        let document: Arc<dyn Document> = Arc::new(BoxscoreDocumentContent::new(
+            2024020001,
+            boxscore,
+            TeamView::Away,
+        ));
         let widget = BoxscoreDocumentWidget {
-            game_id: 2024020001,
-            boxscore: Some(boxscore),
+            document: Some(document),
             loading: false,
-            team_view: TeamView::Away,
             selected_index: None,
             scroll_offset: 0,
             focused: true,
@@ -664,8 +694,9 @@ mod tests {
         let area = Rect::new(0, 0, 100, 50);
         let mut buf = Buffer::empty(area);
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        widget.render(area, &mut buf, &config);
+        widget.render(area, &mut buf, &ctx);
 
         // Should render without panic
         assert_eq!(*buf.area(), area);

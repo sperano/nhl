@@ -10,13 +10,54 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 
 use crate::big_digits::BIG_DIGIT_HEIGHT;
-use crate::config::DisplayConfig;
+use crate::config::RenderContext;
 use crate::tui::component::ElementWidget;
 use crate::tui::components::TableWidget;
-use crate::tui::widgets::{BigScore, ScoreBox, StandaloneWidget};
+use crate::tui::types::StackedDocument;
+use crate::tui::widgets::{BigScore, BigScoreParams, ScoreBox, StandaloneWidget};
 
 use super::focus::{FocusableElement, FocusableId, RowPosition};
 use super::link::LinkTarget;
+use super::FocusContext;
+
+/// Tab bar height (labels line + separator line)
+pub const TAB_BAR_HEIGHT: u16 = 2;
+
+/// Definition of a single tab within a Tabs element
+#[derive(Clone)]
+pub struct DocTabDef {
+    /// Unique key identifying this tab
+    pub key: String,
+    /// Display title for the tab header
+    pub title: String,
+    /// Content elements for this tab
+    pub content: Vec<DocumentElement>,
+}
+
+impl DocTabDef {
+    /// Create a new tab definition
+    pub fn new(
+        key: impl Into<String>,
+        title: impl Into<String>,
+        content: Vec<DocumentElement>,
+    ) -> Self {
+        Self {
+            key: key.into(),
+            title: title.into(),
+            content,
+        }
+    }
+}
+
+impl std::fmt::Debug for DocTabDef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DocTabDef")
+            .field("key", &self.key)
+            .field("title", &self.title)
+            .field("content_count", &self.content.len())
+            .finish()
+    }
+}
 
 /// Alignment options for Row elements with fixed-width children
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -26,6 +67,8 @@ pub enum RowAlignment {
     /// Spread children across available width, maximizing gap
     #[default]
     Spread,
+    /// Center children with minimum gap between them
+    Center,
 }
 
 use render::{
@@ -90,7 +133,7 @@ pub enum DocumentElement {
     /// Used for complex widgets like tables that manage their own focus
     Custom {
         /// Render function that draws to a buffer
-        render_fn: fn(Rect, &mut Buffer, &DisplayConfig),
+        render_fn: fn(Rect, &mut Buffer, &RenderContext),
         /// Height of the element
         height: u16,
         /// Focusable elements within this custom element
@@ -136,6 +179,9 @@ pub enum DocumentElement {
         score_box: ScoreBox,
         /// Whether this score box is currently focused
         focused: bool,
+        /// Destination pushed when this box is activated, attached by the
+        /// caller at build time (it has the full game data in hand)
+        link_target: LinkTarget,
     },
 
     /// Wrapper that adds left margin to any element
@@ -179,6 +225,21 @@ pub enum DocumentElement {
     BigScoreElement {
         /// The BigScore widget
         big_score: BigScore,
+    },
+
+    /// Tabbed panel within a document
+    ///
+    /// Renders a tab bar with multiple tabs, showing only the active tab's content.
+    /// Tab selection is managed via FocusContext and stored in DocumentNavState.
+    ///
+    /// Height = TAB_BAR_HEIGHT (2) + active tab content height
+    Tabs {
+        /// Unique identifier for this tabs element
+        id: String,
+        /// Tab definitions with their content
+        tabs: Vec<DocTabDef>,
+        /// Index of the currently active tab (0-based)
+        active_index: usize,
     },
 }
 
@@ -269,8 +330,18 @@ impl std::fmt::Debug for DocumentElement {
                 .finish(),
             Self::BigScoreElement { big_score } => f
                 .debug_struct("BigScoreElement")
-                .field("away", &big_score.away_abbrev)
-                .field("home", &big_score.home_abbrev)
+                .field("away", &big_score.away_name)
+                .field("home", &big_score.home_name)
+                .finish(),
+            Self::Tabs {
+                id,
+                tabs,
+                active_index,
+            } => f
+                .debug_struct("Tabs")
+                .field("id", id)
+                .field("tab_count", &tabs.len())
+                .field("active_index", active_index)
                 .finish(),
         }
     }
@@ -349,6 +420,16 @@ impl DocumentElement {
             Self::BigScoreElement { big_score } => {
                 big_score.preferred_height().unwrap_or(BIG_DIGIT_HEIGHT + 1)
             }
+            Self::Tabs {
+                tabs, active_index, ..
+            } => {
+                // Tab bar (2 lines) + active tab content height
+                let content_height = tabs
+                    .get(*active_index)
+                    .map(|tab| tab.content.iter().map(|e| e.height()).sum())
+                    .unwrap_or(0);
+                TAB_BAR_HEIGHT + content_height
+            }
         }
     }
 
@@ -415,7 +496,10 @@ impl DocumentElement {
                 }
             }
             Self::ScoreBoxElement {
-                game_id, score_box, ..
+                game_id,
+                score_box,
+                link_target,
+                ..
             } => {
                 // ScoreBox is a single focusable element with typed GameLink ID
                 let height = score_box.preferred_height().unwrap_or(6);
@@ -425,7 +509,7 @@ impl DocumentElement {
                     y: y_offset,
                     height,
                     rect: Rect::new(0, y_offset, width, height),
-                    link_target: Some(LinkTarget::Action(format!("open_boxscore_{}", game_id))),
+                    link_target: Some(link_target.clone()),
                     row_position: None,
                 });
             }
@@ -442,46 +526,18 @@ impl DocumentElement {
                     out.push(adjusted);
                 }
             }
-            _ => {}
-        }
-    }
-
-    /// Collect focusable element IDs from this element (simpler version for display)
-    ///
-    /// # Arguments
-    /// - `out`: Vector to append IDs to
-    /// - `y_offset`: Current y offset for tracking position in document
-    pub fn collect_focusable_ids(&self, out: &mut Vec<FocusableId>, y_offset: u16) {
-        match self {
-            Self::Link { id, .. } => {
-                out.push(FocusableId::link(id));
-            }
-            Self::Group { children, .. } => {
-                let mut child_offset = y_offset;
-                for child in children {
-                    child.collect_focusable_ids(out, child_offset);
-                    child_offset += child.height();
-                }
-            }
-            Self::Custom { focusable, .. } | Self::Table { focusable, .. } => {
-                for elem in focusable {
-                    out.push(elem.id.clone());
-                }
-            }
-            Self::Row { children, .. } => {
-                for child in children {
-                    child.collect_focusable_ids(out, y_offset);
-                }
-            }
-            Self::ScoreBoxElement { game_id, .. } => {
-                out.push(FocusableId::game_link(*game_id));
-            }
-            Self::Indented { element, .. } => {
-                element.collect_focusable_ids(out, y_offset);
-            }
-            Self::TeamBoxscore { focusable, .. } => {
-                for elem in focusable {
-                    out.push(elem.id.clone());
+            Self::Tabs {
+                tabs, active_index, ..
+            } => {
+                // Only collect focusable elements from the active tab
+                if let Some(tab) = tabs.get(*active_index) {
+                    // Content starts after tab bar
+                    let content_y = y_offset + TAB_BAR_HEIGHT;
+                    let mut content_offset = content_y;
+                    for child in &tab.content {
+                        child.collect_focusable(out, content_offset);
+                        content_offset += child.height();
+                    }
                 }
             }
             _ => {}
@@ -489,43 +545,43 @@ impl DocumentElement {
     }
 
     /// Render this element to a buffer
-    pub fn render(&self, area: Rect, buf: &mut Buffer, config: &DisplayConfig) {
+    pub fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
         match self {
             Self::Text { content, style } => {
-                render_text(content, *style, area, buf, config);
+                render_text(content, *style, area, buf, ctx);
             }
             Self::Heading { level, content } => {
-                render_heading(*level, content, area, buf, config);
+                render_heading(*level, content, area, buf, ctx);
             }
             Self::SectionTitle { content, underline } => {
-                render_section_title(content, *underline, area, buf, config);
+                render_section_title(content, *underline, area, buf, ctx);
             }
             Self::Link {
                 display, focused, ..
             } => {
-                render_link(display, *focused, area, buf, config);
+                render_link(display, *focused, area, buf, ctx);
             }
             Self::Separator => {
-                render_separator(area, buf, config);
+                render_separator(area, buf, ctx);
             }
             Self::Spacer { .. } => {
                 // Just empty space, nothing to render
             }
             Self::Group { children, style } => {
-                render_group(children, *style, area, buf, config);
+                render_group(children, *style, area, buf, ctx);
             }
             Self::Custom { render_fn, .. } => {
-                render_fn(area, buf, config);
+                render_fn(area, buf, ctx);
             }
             Self::Table { widget, .. } => {
-                widget.render(area, buf, config);
+                widget.render(area, buf, ctx);
             }
             Self::Row {
                 children,
                 gap,
                 align,
             } => {
-                render_row(children, *gap, *align, area, buf, config);
+                render_row(children, *gap, *align, area, buf, ctx);
             }
             Self::ScoreBoxElement {
                 score_box, focused, ..
@@ -533,14 +589,14 @@ impl DocumentElement {
                 // Clone and set selection based on focus state
                 let mut box_to_render = score_box.clone();
                 box_to_render.selected = *focused;
-                box_to_render.render(area, buf, config);
+                box_to_render.render(area, buf, ctx);
             }
             Self::Indented { element, margin } => {
                 // Render inner element with adjusted area (shifted right by margin)
                 if area.width > *margin {
                     let indented_area =
                         Rect::new(area.x + margin, area.y, area.width - margin, area.height);
-                    element.render(indented_area, buf, config);
+                    element.render(indented_area, buf, ctx);
                 }
             }
             Self::TeamBoxscore {
@@ -557,11 +613,16 @@ impl DocumentElement {
                     goalies_table,
                     area,
                     buf,
-                    config,
+                    ctx,
                 );
             }
             Self::BigScoreElement { big_score } => {
-                big_score.render(area, buf, config);
+                big_score.render(area, buf, ctx);
+            }
+            Self::Tabs {
+                tabs, active_index, ..
+            } => {
+                render::render_tabs(tabs, *active_index, area, buf, ctx);
             }
         }
     }
@@ -687,11 +748,20 @@ impl DocumentElement {
 
                     // Create LinkTarget based on cell type (used for activation)
                     let link_target = match &cell {
-                        CellValue::PlayerLink { player_id, .. } => {
-                            Some(LinkTarget::Action(format!("player:{}", player_id)))
-                        }
+                        CellValue::PlayerLink {
+                            player_id,
+                            sweater_number,
+                            last_name,
+                            ..
+                        } => Some(LinkTarget::Push(StackedDocument::PlayerDetail {
+                            player_id: *player_id,
+                            sweater_number: *sweater_number,
+                            last_name: last_name.clone(),
+                        })),
                         CellValue::TeamLink { team_abbrev, .. } => {
-                            Some(LinkTarget::Action(format!("team:{}", team_abbrev)))
+                            Some(LinkTarget::Push(StackedDocument::TeamDetail {
+                                abbrev: team_abbrev.clone(),
+                            }))
                         }
                         _ => continue, // Skip non-link cells
                     };
@@ -753,18 +823,43 @@ impl DocumentElement {
         }
     }
 
+    /// Create a horizontal row with center alignment
+    pub fn row_center(children: Vec<DocumentElement>) -> Self {
+        Self::Row {
+            children,
+            gap: 2,
+            align: RowAlignment::Center,
+        }
+    }
+
+    /// Create a horizontal row with center alignment and custom gap
+    pub fn row_center_with_gap(children: Vec<DocumentElement>, gap: u16) -> Self {
+        Self::Row {
+            children,
+            gap,
+            align: RowAlignment::Center,
+        }
+    }
+
     /// Create a score box element
     ///
     /// # Arguments
     /// - `game_id`: The NHL API game ID (used for activation and as part of the element ID)
     /// - `score_box`: The ScoreBox widget containing score data
     /// - `focused`: Whether this score box is currently focused
-    pub fn score_box_element(game_id: i64, score_box: ScoreBox, focused: bool) -> Self {
+    /// - `link_target`: Destination pushed when this box is activated
+    pub fn score_box_element(
+        game_id: i64,
+        score_box: ScoreBox,
+        focused: bool,
+        link_target: LinkTarget,
+    ) -> Self {
         Self::ScoreBoxElement {
             id: format!("scorebox_{}", game_id),
             game_id,
             score_box,
             focused,
+            link_target,
         }
     }
 
@@ -806,9 +901,16 @@ impl DocumentElement {
                     if let Some(cell) = forwards_table.get_cell_value(row_idx, col_idx) {
                         let y = data_start_y + row_idx as u16;
                         let link_target = match &cell {
-                            CellValue::PlayerLink { player_id, .. } => {
-                                Some(LinkTarget::Action(format!("player:{}", player_id)))
-                            }
+                            CellValue::PlayerLink {
+                                player_id,
+                                sweater_number,
+                                last_name,
+                                ..
+                            } => Some(LinkTarget::Push(StackedDocument::PlayerDetail {
+                                player_id: *player_id,
+                                sweater_number: *sweater_number,
+                                last_name: last_name.clone(),
+                            })),
                             _ => continue,
                         };
                         focusable.push(FocusableElement {
@@ -836,9 +938,16 @@ impl DocumentElement {
                     if let Some(cell) = defense_table.get_cell_value(row_idx, col_idx) {
                         let y = data_start_y + row_idx as u16;
                         let link_target = match &cell {
-                            CellValue::PlayerLink { player_id, .. } => {
-                                Some(LinkTarget::Action(format!("player:{}", player_id)))
-                            }
+                            CellValue::PlayerLink {
+                                player_id,
+                                sweater_number,
+                                last_name,
+                                ..
+                            } => Some(LinkTarget::Push(StackedDocument::PlayerDetail {
+                                player_id: *player_id,
+                                sweater_number: *sweater_number,
+                                last_name: last_name.clone(),
+                            })),
                             _ => continue,
                         };
                         focusable.push(FocusableElement {
@@ -866,9 +975,16 @@ impl DocumentElement {
                     if let Some(cell) = goalies_table.get_cell_value(row_idx, col_idx) {
                         let y = data_start_y + row_idx as u16;
                         let link_target = match &cell {
-                            CellValue::PlayerLink { player_id, .. } => {
-                                Some(LinkTarget::Action(format!("player:{}", player_id)))
-                            }
+                            CellValue::PlayerLink {
+                                player_id,
+                                sweater_number,
+                                last_name,
+                                ..
+                            } => Some(LinkTarget::Push(StackedDocument::PlayerDetail {
+                                player_id: *player_id,
+                                sweater_number: *sweater_number,
+                                last_name: last_name.clone(),
+                            })),
                             _ => continue,
                         };
                         focusable.push(FocusableElement {
@@ -894,20 +1010,46 @@ impl DocumentElement {
     }
 
     /// Create a big score element
+    pub fn big_score(params: BigScoreParams) -> Self {
+        Self::BigScoreElement {
+            big_score: BigScore::new(params),
+        }
+    }
+
+    /// Create a tabbed panel element
     ///
     /// # Arguments
-    /// - `away_abbrev`: Away team abbreviation (e.g., "NJD")
-    /// - `home_abbrev`: Home team abbreviation (e.g., "BUF")
-    /// - `away_score`: Away team score
-    /// - `home_score`: Home team score
-    pub fn big_score(
-        away_abbrev: impl Into<String>,
-        home_abbrev: impl Into<String>,
-        away_score: i32,
-        home_score: i32,
+    /// - `id`: Unique identifier for this tabs element (used for state tracking)
+    /// - `tabs`: Vec of tab definitions
+    /// - `active_index`: Index of the initially active tab
+    pub fn tabs(id: impl Into<String>, tabs: Vec<DocTabDef>, active_index: usize) -> Self {
+        Self::Tabs {
+            id: id.into(),
+            tabs,
+            active_index,
+        }
+    }
+
+    /// Create a tabbed panel from the focus context
+    ///
+    /// The active index is read from the focus context's tab_selections map.
+    /// Falls back to 0 if not found.
+    pub fn tabs_from_context(
+        id: impl Into<String>,
+        tabs: Vec<DocTabDef>,
+        focus: &FocusContext,
     ) -> Self {
-        Self::BigScoreElement {
-            big_score: BigScore::new(away_abbrev, home_abbrev, away_score, home_score),
+        let id = id.into();
+        let active_index = focus
+            .tab_selections
+            .get(&id)
+            .copied()
+            .unwrap_or(0)
+            .min(tabs.len().saturating_sub(1));
+        Self::Tabs {
+            id,
+            tabs,
+            active_index,
         }
     }
 }
@@ -915,7 +1057,7 @@ impl DocumentElement {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tui::document::link::DocumentLink;
+    use crate::config::{DisplayConfig, RenderContext};
     use ratatui::style::Color;
 
     #[test]
@@ -945,7 +1087,7 @@ mod tests {
     #[test]
     fn test_link_element_height() {
         let elem =
-            DocumentElement::link("link1", "Click me", LinkTarget::Action("test".to_string()));
+            DocumentElement::link("link1", "Click me", LinkTarget::Anchor("test".to_string()));
         assert_eq!(elem.height(), 1);
     }
 
@@ -976,7 +1118,9 @@ mod tests {
         let elem = DocumentElement::link(
             "my_link",
             "Click here",
-            LinkTarget::Document(DocumentLink::team("BOS")),
+            LinkTarget::Push(StackedDocument::TeamDetail {
+                abbrev: "BOS".to_string(),
+            }),
         );
 
         let mut focusable = Vec::new();
@@ -992,9 +1136,9 @@ mod tests {
     fn test_collect_focusable_group() {
         let elem = DocumentElement::group(vec![
             DocumentElement::text("Not focusable"),
-            DocumentElement::link("link1", "First", LinkTarget::Action("a".to_string())),
+            DocumentElement::link("link1", "First", LinkTarget::Anchor("a".to_string())),
             DocumentElement::spacer(2),
-            DocumentElement::link("link2", "Second", LinkTarget::Action("b".to_string())),
+            DocumentElement::link("link2", "Second", LinkTarget::Anchor("b".to_string())),
         ]);
 
         let mut focusable = Vec::new();
@@ -1013,9 +1157,9 @@ mod tests {
             DocumentElement::group(vec![DocumentElement::link(
                 "inner1",
                 "Inner",
-                LinkTarget::Action("x".to_string()),
+                LinkTarget::Anchor("x".to_string()),
             )]),
-            DocumentElement::link("outer1", "Outer", LinkTarget::Action("y".to_string())),
+            DocumentElement::link("outer1", "Outer", LinkTarget::Anchor("y".to_string())),
         ]);
 
         let mut focusable = Vec::new();
@@ -1033,8 +1177,9 @@ mod tests {
         let elem = DocumentElement::text("Hello");
         let mut buf = Buffer::empty(Rect::new(0, 0, 20, 5));
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        elem.render(Rect::new(0, 0, 20, 5), &mut buf, &config);
+        elem.render(Rect::new(0, 0, 20, 5), &mut buf, &ctx);
 
         // Check that "Hello" was rendered
         assert_eq!(buf.cell((0, 0)).unwrap().symbol(), "H");
@@ -1049,8 +1194,9 @@ mod tests {
         let elem = DocumentElement::heading(1, "Title");
         let mut buf = Buffer::empty(Rect::new(0, 0, 20, 5));
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        elem.render(Rect::new(0, 0, 20, 5), &mut buf, &config);
+        elem.render(Rect::new(0, 0, 20, 5), &mut buf, &ctx);
 
         // Check heading text
         assert_eq!(buf.cell((0, 0)).unwrap().symbol(), "T");
@@ -1061,11 +1207,12 @@ mod tests {
     #[test]
     fn test_render_link() {
         let elem =
-            DocumentElement::link("test_link", "Click", LinkTarget::Action("test".to_string()));
+            DocumentElement::link("test_link", "Click", LinkTarget::Anchor("test".to_string()));
         let mut buf = Buffer::empty(Rect::new(0, 0, 20, 5));
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        elem.render(Rect::new(0, 0, 20, 5), &mut buf, &config);
+        elem.render(Rect::new(0, 0, 20, 5), &mut buf, &ctx);
 
         // Unfocused links have "  " prefix for alignment
         assert_eq!(buf.cell((0, 0)).unwrap().symbol(), " ");
@@ -1081,12 +1228,13 @@ mod tests {
         let elem = DocumentElement::focused_link(
             "test_link",
             "Click",
-            LinkTarget::Action("test".to_string()),
+            LinkTarget::Anchor("test".to_string()),
         );
         let mut buf = Buffer::empty(Rect::new(0, 0, 20, 5));
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        elem.render(Rect::new(0, 0, 20, 5), &mut buf, &config);
+        elem.render(Rect::new(0, 0, 20, 5), &mut buf, &ctx);
 
         // Focused links have "▶ " prefix
         assert_eq!(buf.cell((0, 0)).unwrap().symbol(), "▶");
@@ -1105,8 +1253,9 @@ mod tests {
         let elem = DocumentElement::separator();
         let mut buf = Buffer::empty(Rect::new(0, 0, 10, 1));
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        elem.render(Rect::new(0, 0, 10, 1), &mut buf, &config);
+        elem.render(Rect::new(0, 0, 10, 1), &mut buf, &ctx);
 
         // All cells should be horizontal line
         for x in 0..10 {
@@ -1126,8 +1275,9 @@ mod tests {
             }
         }
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        elem.render(Rect::new(0, 0, 10, 3), &mut buf, &config);
+        elem.render(Rect::new(0, 0, 10, 3), &mut buf, &ctx);
 
         // Spacer doesn't change buffer - cells should still be 'X'
         assert_eq!(buf.cell((0, 0)).unwrap().symbol(), "X");
@@ -1140,8 +1290,9 @@ mod tests {
 
         let mut buf = Buffer::empty(Rect::new(0, 0, 20, 1));
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        elem.render(Rect::new(0, 0, 20, 1), &mut buf, &config);
+        elem.render(Rect::new(0, 0, 20, 1), &mut buf, &ctx);
 
         assert_eq!(buf.cell((0, 0)).unwrap().style().fg, Some(Color::Red));
     }
@@ -1233,12 +1384,16 @@ mod tests {
 
         // Check link targets (contain team info for activation)
         match &focusable[0].link_target {
-            Some(LinkTarget::Action(action)) => assert_eq!(action, "team:BOS"),
-            _ => panic!("Expected team action"),
+            Some(LinkTarget::Push(StackedDocument::TeamDetail { abbrev })) => {
+                assert_eq!(abbrev, "BOS")
+            }
+            other => panic!("Expected Push(TeamDetail), got {other:?}"),
         }
         match &focusable[1].link_target {
-            Some(LinkTarget::Action(action)) => assert_eq!(action, "team:TOR"),
-            _ => panic!("Expected team action"),
+            Some(LinkTarget::Push(StackedDocument::TeamDetail { abbrev })) => {
+                assert_eq!(abbrev, "TOR")
+            }
+            other => panic!("Expected Push(TeamDetail), got {other:?}"),
         }
     }
 
@@ -1255,6 +1410,8 @@ mod tests {
             |row: &&str| CellValue::PlayerLink {
                 display: row.to_string(),
                 player_id: 12345,
+                sweater_number: None,
+                last_name: row.to_string(),
             },
         )];
         let data = vec!["Player1", "Player2"];
@@ -1333,8 +1490,9 @@ mod tests {
 
         let mut buf = Buffer::empty(Rect::new(0, 0, 15, 5));
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        elem.render(Rect::new(0, 0, 15, 5), &mut buf, &config);
+        elem.render(Rect::new(0, 0, 15, 5), &mut buf, &ctx);
 
         // Verify the table renders with margin, column header and data
         // TableWidget adds 2 space margin on left
@@ -1369,15 +1527,26 @@ mod tests {
 
         // Row with Spread alignment (default)
         let row = DocumentElement::row(vec![
-            DocumentElement::score_box_element(1, score_box1.clone(), false),
-            DocumentElement::score_box_element(2, score_box2.clone(), false),
+            DocumentElement::score_box_element(
+                1,
+                score_box1.clone(),
+                false,
+                LinkTarget::Anchor("game_1".to_string()),
+            ),
+            DocumentElement::score_box_element(
+                2,
+                score_box2.clone(),
+                false,
+                LinkTarget::Anchor("game_2".to_string()),
+            ),
         ]);
 
         // With area of 60 wide: 25 + 25 = 50, leaving 10 for gap
         // Spread should put gap of 10 between them
         let mut buf = Buffer::empty(Rect::new(0, 0, 60, 6));
         let config = DisplayConfig::default();
-        row.render(Rect::new(0, 0, 60, 6), &mut buf, &config);
+        let ctx = RenderContext::focused(&config);
+        row.render(Rect::new(0, 0, 60, 6), &mut buf, &ctx);
 
         // Second box should start at position 35 (25 + 10 gap)
         // Check the status line of the second box
@@ -1418,15 +1587,26 @@ mod tests {
 
         // Row with Left alignment
         let row = DocumentElement::row_left(vec![
-            DocumentElement::score_box_element(1, score_box1.clone(), false),
-            DocumentElement::score_box_element(2, score_box2.clone(), false),
+            DocumentElement::score_box_element(
+                1,
+                score_box1.clone(),
+                false,
+                LinkTarget::Anchor("game_1".to_string()),
+            ),
+            DocumentElement::score_box_element(
+                2,
+                score_box2.clone(),
+                false,
+                LinkTarget::Anchor("game_2".to_string()),
+            ),
         ]);
 
         // With area of 60 wide, Left alignment should use minimum gap (2)
         // Second box should start at 25 + 2 = 27
         let mut buf = Buffer::empty(Rect::new(0, 0, 60, 6));
         let config = DisplayConfig::default();
-        row.render(Rect::new(0, 0, 60, 6), &mut buf, &config);
+        let ctx = RenderContext::focused(&config);
+        row.render(Rect::new(0, 0, 60, 6), &mut buf, &ctx);
 
         // Check that second box status line starts near position 27
         let line0 = (0..60).map(|x| buf[(x, 0)].symbol()).collect::<String>();
@@ -1467,8 +1647,18 @@ mod tests {
         // Row with minimum gap of 5
         let row = DocumentElement::row_with_gap(
             vec![
-                DocumentElement::score_box_element(1, score_box1.clone(), false),
-                DocumentElement::score_box_element(2, score_box2.clone(), false),
+                DocumentElement::score_box_element(
+                    1,
+                    score_box1.clone(),
+                    false,
+                    LinkTarget::Anchor("game_1".to_string()),
+                ),
+                DocumentElement::score_box_element(
+                    2,
+                    score_box2.clone(),
+                    false,
+                    LinkTarget::Anchor("game_2".to_string()),
+                ),
             ],
             5,
         );
@@ -1477,7 +1667,8 @@ mod tests {
         // But minimum gap is 5, so it should use 5
         let mut buf = Buffer::empty(Rect::new(0, 0, 52, 6));
         let config = DisplayConfig::default();
-        row.render(Rect::new(0, 0, 52, 6), &mut buf, &config);
+        let ctx = RenderContext::focused(&config);
+        row.render(Rect::new(0, 0, 52, 6), &mut buf, &ctx);
 
         // Second box should start at position 30 (25 + 5 minimum gap)
         let line0 = (0..52).map(|x| buf[(x, 0)].symbol()).collect::<String>();

@@ -12,10 +12,6 @@ use std::sync::Arc;
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 
-// Default Configuration Constants
-/// Default log level when not specified
-const DEFAULT_LOG_LEVEL: &str = "info";
-
 /// Default log file path (no logging to file)
 const DEFAULT_LOG_FILE: &str = "/dev/null";
 
@@ -26,13 +22,13 @@ const DEFAULT_LOG_FILE: &str = "/dev/null";
     long_about = "NHL stats and standings CLI\n\nIf no command is specified, the program starts in interactive mode."
 )]
 struct Cli {
-    /// Set log level (trace, debug, info, warn, error)
-    #[arg(short = 'L', long, global = true, default_value = DEFAULT_LOG_LEVEL)]
-    log_level: String,
+    /// Set log level (trace, debug, info, warn, error) [default: info, or config's log_level]
+    #[arg(short = 'L', long, global = true)]
+    log_level: Option<String>,
 
-    /// Log file path (default: /dev/null for no logging)
-    #[arg(short = 'F', long, global = true, default_value = DEFAULT_LOG_FILE)]
-    log_file: String,
+    /// Log file path [default: /dev/null (no logging), or config's log_file]
+    #[arg(short = 'F', long, global = true)]
+    log_file: Option<String>,
 
     /// Use mock data instead of real API calls (development feature only)
     #[cfg(feature = "development")]
@@ -102,8 +98,50 @@ enum Commands {
     },
     /// Display all NHL franchises
     Franchises,
+    /// Display player stats for the day
+    PlayerStats {
+        /// Player name to search for
+        player: String,
+
+        /// Date in YYYY-MM-DD format (optional, shows recent games if not specified)
+        #[arg(short, long)]
+        date: Option<String>,
+    },
     /// Display current configuration
     Config,
+    /// Display play-by-play events (like Unix tail)
+    Tail {
+        /// Game ID (e.g., 2024020001)
+        game_id: i64,
+
+        /// Number of plays to show
+        #[arg(short = 'n', long, default_value = "10")]
+        count: usize,
+
+        /// Follow mode - continuously stream new plays
+        #[arg(short = 'f', long)]
+        follow: bool,
+
+        /// Polling interval in seconds (for follow mode)
+        #[arg(long, default_value = "5")]
+        interval: u64,
+
+        /// Show verbose output with additional details
+        #[arg(short, long)]
+        verbose: bool,
+
+        /// Only show goals
+        #[arg(long)]
+        goals: bool,
+
+        /// Only show penalties
+        #[arg(long)]
+        penalties: bool,
+
+        /// Only show shots (includes goals)
+        #[arg(long)]
+        shots: bool,
+    },
 }
 
 fn create_client(#[allow(unused_variables)] mock_mode: bool) -> Arc<dyn NHLDataProvider> {
@@ -155,7 +193,6 @@ fn init_logging(log_level: &str, log_file: &str) {
     }
 }
 
-// TODO update this command, output is not up to date
 /// Handle the config command - display current configuration
 fn handle_config_command() {
     let cfg = config::read();
@@ -185,24 +222,23 @@ fn handle_config_command() {
     );
     println!("time_format: {}", cfg.time_format);
     println!();
-    println!("[theme]");
+    println!("[display]");
+    println!("use_unicode: {}", cfg.display.use_unicode);
+    println!(
+        "theme: {}",
+        cfg.display
+            .theme_name
+            .as_deref()
+            .unwrap_or("(none, using default)")
+    );
+    println!("error_fg: {:?}", cfg.display.error_fg);
 }
 
 /// Resolve log configuration from CLI args and config file
 /// CLI arguments take precedence over config file
 fn resolve_log_config<'a>(cli: &'a Cli, config: &'a config::Config) -> (&'a str, &'a str) {
-    let log_level = if cli.log_level != DEFAULT_LOG_LEVEL {
-        cli.log_level.as_str()
-    } else {
-        config.log_level.as_str()
-    };
-
-    let log_file = if cli.log_file != DEFAULT_LOG_FILE {
-        cli.log_file.as_str()
-    } else {
-        config.log_file.as_str()
-    };
-
+    let log_level = cli.log_level.as_deref().unwrap_or(&config.log_level);
+    let log_file = cli.log_file.as_deref().unwrap_or(&config.log_file);
     (log_level, log_file)
 }
 
@@ -229,6 +265,30 @@ async fn execute_command(
         Commands::Schedule { date } => commands::schedule::run(client, date).await,
         Commands::Scores { date } => commands::scores::run(client, date).await,
         Commands::Franchises => commands::franchises::run(client).await,
+        Commands::PlayerStats { player, date } => {
+            commands::player_stats::run(client, &player, date, config).await
+        }
+        Commands::Tail {
+            game_id,
+            count,
+            follow,
+            interval,
+            verbose,
+            goals,
+            penalties,
+            shots,
+        } => {
+            let filter = commands::tail::EventFilter {
+                goals,
+                penalties,
+                shots,
+            };
+            if follow {
+                commands::tail::follow(client, game_id, count, interval, &filter, verbose).await
+            } else {
+                commands::tail::run(client, game_id, count, &filter, verbose).await
+            }
+        }
     }
 }
 
@@ -250,15 +310,13 @@ async fn main() {
     let mock_mode = false;
 
     // If no subcommand, run TUI
-    if cli.command.is_none() {
+    let Some(command) = cli.command else {
         if let Err(e) = run_tui_mode(config, mock_mode).await {
             eprintln!("Error running TUI: {}", e);
             std::process::exit(1);
         }
         return;
-    }
-
-    let command = cli.command.unwrap();
+    };
 
     // Handle Config command separately (doesn't need a client)
     if let Commands::Config = command {
@@ -272,5 +330,50 @@ async fn main() {
         eprintln!("Error: {:#}", e);
         tracing::error!("Command failed: {:#}", e);
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_resolve_log_config_prefers_config_when_no_cli_flags() {
+        let cli = Cli::parse_from(["nhl"]);
+        let mut config = config::Config::default();
+        config.log_level = "debug".to_string();
+        config.log_file = "/tmp/nhl.log".to_string();
+
+        let (log_level, log_file) = resolve_log_config(&cli, &config);
+
+        assert_eq!(log_level, "debug");
+        assert_eq!(log_file, "/tmp/nhl.log");
+    }
+
+    #[test]
+    fn test_resolve_log_config_explicit_flag_wins_even_when_it_matches_the_default() {
+        // Regression test: passing `-L info` explicitly must take precedence over the config
+        // file's log_level, even though "info" also happens to be the flag's implicit default.
+        // The bug this guards against: inferring "was the flag set?" by comparing the parsed
+        // value against the default string, which can't distinguish "user typed the default
+        // value" from "user didn't pass the flag at all".
+        let cli = Cli::parse_from(["nhl", "-L", "info"]);
+        let mut config = config::Config::default();
+        config.log_level = "debug".to_string();
+
+        let (log_level, _) = resolve_log_config(&cli, &config);
+
+        assert_eq!(log_level, "info");
+    }
+
+    #[test]
+    fn test_resolve_log_config_explicit_log_file_wins() {
+        let cli = Cli::parse_from(["nhl", "-F", "/dev/null"]);
+        let mut config = config::Config::default();
+        config.log_file = "/tmp/nhl.log".to_string();
+
+        let (_, log_file) = resolve_log_config(&cli, &config);
+
+        assert_eq!(log_file, "/dev/null");
     }
 }

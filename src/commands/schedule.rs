@@ -1,11 +1,11 @@
-use crate::commands::parse_game_date;
+use crate::commands::{format_local_time, parse_game_date};
+use crate::config;
 use crate::data_provider::NHLDataProvider;
 use crate::layout_constants::{SCHEDULE_BOX_CONTENT_WIDTH, SCHEDULE_BOX_TOTAL_WIDTH};
 use anyhow::{Context, Result};
-use chrono::{DateTime, Local};
 use nhl_api::DailySchedule;
 
-pub fn format_schedule(schedule: &DailySchedule) -> String {
+pub fn format_schedule(schedule: &DailySchedule, time_format: &str) -> String {
     let mut output = String::new();
 
     // Display schedule header
@@ -31,6 +31,12 @@ pub fn format_schedule(schedule: &DailySchedule) -> String {
                 team_line,
                 width = SCHEDULE_BOX_CONTENT_WIDTH
             ));
+            let id_line = format!("Game ID: {}", game.id);
+            output.push_str(&format!(
+                "│ {:<width$} │\n",
+                id_line,
+                width = SCHEDULE_BOX_CONTENT_WIDTH
+            ));
             output.push_str(&format!(
                 "├{:─<width$}┤\n",
                 "",
@@ -43,13 +49,7 @@ pub fn format_schedule(schedule: &DailySchedule) -> String {
                 width = SCHEDULE_BOX_CONTENT_WIDTH
             ));
 
-            let time_display =
-                if let Ok(parsed) = DateTime::parse_from_rfc3339(&game.start_time_utc) {
-                    let local_time: DateTime<Local> = parsed.into();
-                    local_time.format("%I:%M %p").to_string()
-                } else {
-                    game.start_time_utc.clone()
-                };
+            let time_display = format_local_time(&game.start_time_utc, time_format);
             let time_line = format!("Time: {}", time_display);
             output.push_str(&format!(
                 "│ {:<width$} │\n",
@@ -87,12 +87,13 @@ pub fn format_schedule(schedule: &DailySchedule) -> String {
 
 pub async fn run(client: &dyn NHLDataProvider, date: Option<String>) -> Result<()> {
     let game_date = parse_game_date(date)?;
+    let config = config::read();
     let schedule = client
         .daily_schedule(Some(game_date))
         .await
         .context("Failed to fetch schedule")?;
 
-    print!("{}", format_schedule(&schedule));
+    print!("{}", format_schedule(&schedule, &config.time_format));
     display_navigation(&schedule);
     Ok(())
 }
@@ -120,20 +121,20 @@ mod tests {
         home_score: Option<i32>,
     ) -> ScheduleGame {
         ScheduleGame {
-            id: 2024020001,
+            id: 2024020001.into(),
             game_type: nhl_api::GameType::RegularSeason,
             game_date: Some("2024-11-03".to_string()),
             start_time_utc: start_time_utc.to_string(),
             game_state,
             away_team: ScheduleTeam {
-                id: 1,
+                id: 1.into(),
                 abbrev: away_abbrev.to_string(),
                 place_name: None,
                 logo: "".to_string(),
                 score: away_score,
             },
             home_team: ScheduleTeam {
-                id: 2,
+                id: 2.into(),
                 abbrev: home_abbrev.to_string(),
                 place_name: None,
                 logo: "".to_string(),
@@ -159,9 +160,9 @@ mod tests {
             )],
         };
 
-        let output = format_schedule(&schedule);
-        let lines: Vec<&str> = output.lines().skip(4).take(8).collect();
-        assert_eq!(lines.len(), 8, "Should be 8 lines of output");
+        let output = format_schedule(&schedule, "%I:%M %p");
+        let lines: Vec<&str> = output.lines().skip(4).take(9).collect();
+        assert_eq!(lines.len(), 9, "Should be 9 lines of output");
         assert_eq!(
             lines[0], "┌──────────────────────────────────────────────────────────────┐",
             "Top border line"
@@ -171,36 +172,69 @@ mod tests {
             "Team line"
         );
         assert_eq!(
-            lines[2], "├──────────────────────────────────────────────────────────────┤",
+            lines[2], "│ Game ID: 2024020001                                          │",
+            "Game ID line"
+        );
+        assert_eq!(
+            lines[3], "├──────────────────────────────────────────────────────────────┤",
             "Middle border line"
         );
         assert_eq!(
-            lines[3], "│ Status: LIVE                                                 │",
+            lines[4], "│ Status: LIVE                                                 │",
             "Status line"
         );
         // Time varies by timezone, so just check the format
         assert!(
-            lines[4].starts_with("│ Time: ") && lines[4].ends_with(" │"),
+            lines[5].starts_with("│ Time: ") && lines[5].ends_with(" │"),
             "Time line should have correct format, got: {}",
-            lines[4]
+            lines[5]
         );
         // Verify it contains a time pattern like "HH:MM AM/PM"
         assert!(
-            lines[4].contains(":00 AM") || lines[4].contains(":00 PM"),
+            lines[5].contains(":00 AM") || lines[5].contains(":00 PM"),
             "Time line should contain a time, got: {}",
-            lines[4]
+            lines[5]
         );
         assert_eq!(
-            lines[5], "├──────────────────────────────────────────────────────────────┤",
+            lines[6], "├──────────────────────────────────────────────────────────────┤",
             "Score border line"
         );
         assert_eq!(
-            lines[6], "│ CHI                      0  -  0                         SEA │",
+            lines[7], "│ CHI                      0  -  0                         SEA │",
             "Score line"
         );
         assert_eq!(
-            lines[7], "└──────────────────────────────────────────────────────────────┘",
+            lines[8], "└──────────────────────────────────────────────────────────────┘",
             "Bottom border line"
         );
+    }
+
+    #[test]
+    fn test_game_box_output_respects_custom_time_format() {
+        let schedule = DailySchedule {
+            date: "2024-11-03".to_string(),
+            number_of_games: 1,
+            previous_start_date: None,
+            next_start_date: None,
+            games: vec![create_test_game(
+                "CHI",
+                "SEA",
+                GameState::Live,
+                "2024-11-04T03:00:00Z",
+                Some(0),
+                Some(0),
+            )],
+        };
+
+        let output = format_schedule(&schedule, "%H:%M:%S");
+        let time_line = output
+            .lines()
+            .find(|line| line.contains("Time:"))
+            .expect("output should contain a Time line");
+
+        // 24-hour format should never contain AM/PM markers
+        assert!(!time_line.contains("AM") && !time_line.contains("PM"));
+        // "Time: HH:MM:SS" has 3 colons total: one from the "Time:" label and two from HH:MM:SS
+        assert_eq!(time_line.matches(':').count(), 3);
     }
 }

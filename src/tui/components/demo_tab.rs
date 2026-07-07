@@ -9,17 +9,15 @@
 
 use std::sync::Arc;
 
-use crossterm::event::{KeyCode, KeyEvent};
 use nhl_api::Standing;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 
 use crate::component_message_impl;
-use crate::config::DisplayConfig;
+use crate::config::RenderContext;
 use crate::tui::action::Action;
 use crate::tui::component::{Component, Effect, Element, ElementWidget};
 use crate::tui::components::create_standings_table_with_selection;
-use crate::tui::components::TableWidget;
 use crate::tui::document::{
     Document, DocumentBuilder, DocumentElement, DocumentView, FocusContext, LinkTarget,
 };
@@ -27,93 +25,12 @@ use crate::tui::document_nav::{DocumentNavMsg, DocumentNavState};
 use crate::tui::helpers::StandingsSorting;
 use crate::tui::tab_component::{handle_common_message, CommonTabMessage, TabMessage};
 use crate::tui::types::StackedDocument;
-use crate::tui::{Alignment, CellValue, ColumnDef};
-
-/// Demo player data for the sample player table
-#[derive(Clone)]
-struct DemoPlayer {
-    name: String,
-    player_id: i64,
-    team: String,
-    games: u32,
-    goals: u32,
-    assists: u32,
-}
-
-impl DemoPlayer {
-    fn new(name: &str, player_id: i64, team: &str, games: u32, goals: u32, assists: u32) -> Self {
-        Self {
-            name: name.to_string(),
-            player_id,
-            team: team.to_string(),
-            games,
-            goals,
-            assists,
-        }
-    }
-
-    fn points(&self) -> u32 {
-        self.goals + self.assists
-    }
-}
-
-/// Create sample forward player data for demo (top scorers)
-fn create_demo_forwards() -> Vec<DemoPlayer> {
-    vec![
-        DemoPlayer::new("Nathan MacKinnon", 8477492, "COL", 82, 51, 89),
-        DemoPlayer::new("Nikita Kucherov", 8476453, "TBL", 81, 44, 100),
-        DemoPlayer::new("Connor McDavid", 8478402, "EDM", 76, 32, 100),
-        DemoPlayer::new("Leon Draisaitl", 8477934, "EDM", 81, 41, 65),
-        DemoPlayer::new("Auston Matthews", 8479318, "TOR", 69, 69, 38),
-    ]
-}
-
-/// Create sample defenseman player data for demo (top scoring D)
-fn create_demo_defensemen() -> Vec<DemoPlayer> {
-    vec![
-        DemoPlayer::new("Quinn Hughes", 8480800, "VAN", 82, 17, 75),
-        DemoPlayer::new("Cale Makar", 8480069, "COL", 77, 21, 69),
-        DemoPlayer::new("Roman Josi", 8474600, "NSH", 82, 23, 62),
-        DemoPlayer::new("Evan Bouchard", 8480803, "EDM", 81, 18, 64),
-        DemoPlayer::new("Adam Fox", 8479323, "NYR", 74, 17, 56),
-    ]
-}
-
-/// Create a player stats table widget from given players
-fn create_player_table(players: Vec<DemoPlayer>, focused_row: Option<usize>) -> TableWidget {
-    let columns: Vec<ColumnDef<DemoPlayer>> = vec![
-        ColumnDef::new("Player", 18, Alignment::Left, |p: &DemoPlayer| {
-            CellValue::PlayerLink {
-                display: p.name.clone(),
-                player_id: p.player_id,
-            }
-        }),
-        // Team as Text (not TeamLink) so only Player column is focusable per row
-        ColumnDef::new("Team", 5, Alignment::Center, |p: &DemoPlayer| {
-            CellValue::Text(p.team.clone())
-        }),
-        ColumnDef::new("GP", 3, Alignment::Right, |p: &DemoPlayer| {
-            CellValue::Text(p.games.to_string())
-        }),
-        ColumnDef::new("G", 3, Alignment::Right, |p: &DemoPlayer| {
-            CellValue::Text(p.goals.to_string())
-        }),
-        ColumnDef::new("A", 3, Alignment::Right, |p: &DemoPlayer| {
-            CellValue::Text(p.assists.to_string())
-        }),
-        ColumnDef::new("PTS", 4, Alignment::Right, |p: &DemoPlayer| {
-            CellValue::Text(p.points().to_string())
-        }),
-    ];
-
-    TableWidget::from_data(&columns, players).with_focused_row(focused_row)
-}
 
 /// Props for the Demo tab
 #[derive(Clone)]
 pub struct DemoTabProps {
-    /// Whether the tab content is focused
-    pub content_focused: bool,
+    /// Whether this tab has focus
+    pub focused: bool,
     /// Standings data for demonstrating embedded tables
     pub standings: Arc<Option<Vec<Standing>>>,
 }
@@ -121,9 +38,6 @@ pub struct DemoTabProps {
 /// Messages that can be sent to the Demo tab
 #[derive(Clone, Debug)]
 pub enum DemoTabMsg {
-    /// Key event when this tab is focused
-    Key(KeyEvent),
-
     /// Navigate up request (ESC in browse mode, returns to tab bar otherwise)
     /// Returns Effect::Handled if consumed, Effect::None if should bubble up
     NavigateUp,
@@ -134,6 +48,10 @@ pub enum DemoTabMsg {
     UpdateViewportHeight(u16),
     /// Activate the currently focused link (team or player)
     ActivateLink,
+    /// Enter focus mode (from tab bar) - focuses first item and sets content focus
+    EnterFocus,
+    /// Exit focus mode (via Escape) - clears selection and returns to tab bar
+    ExitFocus,
 }
 
 impl TabMessage for DemoTabMsg {
@@ -164,15 +82,11 @@ impl Component for DemoTab {
     type Message = DemoTabMsg;
 
     fn init(props: &Self::Props) -> Self::State {
-        use crate::tui::document::Document;
         // Build initial state with focusable metadata from the document
         let standings = props.standings.as_ref().clone();
         let doc = DemoDocument::new(standings);
         crate::tui::document_nav::DocumentNavState {
-            focusable_positions: doc.focusable_positions(),
-            focusable_ids: doc.focusable_ids(),
-            focusable_row_positions: doc.focusable_row_positions(),
-            link_targets: doc.focusable_link_targets(),
+            focusables: doc.focusables(&FocusContext::default()),
             ..Default::default()
         }
     }
@@ -185,29 +99,21 @@ impl Component for DemoTab {
 
         // Handle tab-specific messages
         match msg {
-            DemoTabMsg::Key(key) => self.handle_key(key, state),
+            DemoTabMsg::ActivateLink => match state.focused_link_target() {
+                Some(LinkTarget::Push(doc)) => Effect::Action(Action::PushDocument(doc.clone())),
+                _ => Effect::None,
+            },
 
-            DemoTabMsg::ActivateLink => {
-                // Get the link target from the focused element
-                if let Some(LinkTarget::Action(action)) = state.focused_link_target() {
-                    // Parse "team:BOS" or "player:12345" format
-                    if let Some(abbrev) = action.strip_prefix("team:") {
-                        return Effect::Action(Action::PushDocument(StackedDocument::TeamDetail {
-                            abbrev: abbrev.to_string(),
-                        }));
-                    } else if let Some(player_id_str) = action.strip_prefix("player:") {
-                        if let Ok(player_id) = player_id_str.parse::<i64>() {
-                            return Effect::Action(Action::PushDocument(
-                                StackedDocument::PlayerDetail {
-                                    player_id,
-                                    sweater_number: None,
-                                    last_name: format!("Player {}", player_id),
-                                },
-                            ));
-                        }
-                    }
-                }
+            DemoTabMsg::EnterFocus => {
+                // Focus first item (global focus_in_content already set by reducer)
+                state.focus_first_item();
                 Effect::None
+            }
+
+            DemoTabMsg::ExitFocus => {
+                // Clear selection and return to tab bar
+                state.clear_item_focus();
+                Effect::Action(Action::ExitContentFocus)
             }
 
             // Common messages already handled above
@@ -221,55 +127,29 @@ impl Component for DemoTab {
 
     fn view(&self, props: &Self::Props, state: &Self::State) -> Element {
         Element::Widget(Box::new(DemoTabWidget {
-            content_focused: props.content_focused,
+            focused: props.focused,
             focus_index: state.focus_index,
             scroll_offset: state.scroll_offset,
             standings: props.standings.clone(),
+            tab_selections: state.doc_tab_selections.clone(),
         }))
     }
 }
 
-impl DemoTab {
-    /// Handle key events when this tab is focused
-    fn handle_key(
-        &mut self,
-        key: KeyEvent,
-        state: &mut crate::tui::document_nav::DocumentNavState,
-    ) -> Effect {
-        // DemoTab is always in "browse mode" when content is focused
-        // Arrow keys navigate focusable elements, Enter activates links
-        match key.code {
-            KeyCode::Up => {
-                crate::tui::document_nav::handle_message(state, &DocumentNavMsg::FocusPrev)
-            }
-            KeyCode::Down => {
-                crate::tui::document_nav::handle_message(state, &DocumentNavMsg::FocusNext)
-            }
-            KeyCode::Tab => {
-                crate::tui::document_nav::handle_message(state, &DocumentNavMsg::FocusNext)
-            }
-            KeyCode::BackTab => {
-                crate::tui::document_nav::handle_message(state, &DocumentNavMsg::FocusPrev)
-            }
-            KeyCode::Enter => {
-                // Activate the focused link
-                self.update(DemoTabMsg::ActivateLink, state)
-            }
-            _ => Effect::None,
-        }
-    }
-}
+/// ID for the tabs element in the demo document
+const DEMO_TABS_ID: &str = "demo_tabs";
 
 /// Widget for rendering the Demo tab
 struct DemoTabWidget {
-    content_focused: bool,
+    focused: bool,
     focus_index: Option<usize>,
     scroll_offset: u16,
     standings: Arc<Option<Vec<Standing>>>,
+    tab_selections: std::collections::HashMap<String, usize>,
 }
 
 impl ElementWidget for DemoTabWidget {
-    fn render(&self, area: Rect, buf: &mut Buffer, config: &DisplayConfig) {
+    fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
         // Create document view with state from AppState
         let standings = (*self.standings).clone();
         let doc = Arc::new(DemoDocument::new(standings));
@@ -283,15 +163,22 @@ impl ElementWidget for DemoTabWidget {
         // Apply scroll offset from AppState
         view.set_scroll_offset(self.scroll_offset);
 
-        view.render(area, buf, config);
+        // Create child RenderContext with our focus state
+        // Document is only focused when navigating items within the document
+        let has_item_focus = self.focus_index.is_some();
+        let child_ctx = RenderContext::new(ctx.config, self.focused && has_item_focus)
+            .with_tab_selections(self.tab_selections.clone());
+
+        view.render(area, buf, &child_ctx);
     }
 
     fn clone_box(&self) -> Box<dyn ElementWidget> {
         Box::new(DemoTabWidget {
-            content_focused: self.content_focused,
+            focused: self.focused,
             focus_index: self.focus_index,
             scroll_offset: self.scroll_offset,
             standings: self.standings.clone(),
+            tab_selections: self.tab_selections.clone(),
         })
     }
 
@@ -310,18 +197,14 @@ impl DemoDocument {
         Self { standings }
     }
 
-    /// Build standings table using the shared StandingsTable component
-    fn build_standings_section(
-        &self,
-        builder: DocumentBuilder,
-        focus: &FocusContext,
-    ) -> DocumentBuilder {
-        let builder = builder
+    /// Build the content for the Standings tab
+    fn build_standings_tab_content(&self, focus: &FocusContext) -> Vec<DocumentElement> {
+        const TABLE_NAME: &str = "standings";
+
+        let builder = DocumentBuilder::new()
             .heading(2, "League Standings")
             .spacer(1)
             .text("This demonstrates the shared standings table embedded in a document:");
-
-        const TABLE_NAME: &str = "standings";
 
         match &self.standings {
             Some(standings) if !standings.is_empty() => {
@@ -335,67 +218,58 @@ impl DemoDocument {
                     focus.focused_table_row(TABLE_NAME),
                 );
 
-                builder.spacer(1).table(TABLE_NAME, table)
+                builder.spacer(1).table(TABLE_NAME, table).build()
             }
-            _ => builder.text("(No standings data loaded - try refreshing)"),
+            _ => builder
+                .text("(No standings data loaded - try refreshing)")
+                .build(),
         }
     }
 
-    /// Build the player stats table section with two tables side by side
-    fn build_player_section(
-        &self,
-        builder: DocumentBuilder,
-        focus: &FocusContext,
-    ) -> DocumentBuilder {
-        const FORWARDS_TABLE: &str = "forwards";
-        const DEFENSEMEN_TABLE: &str = "defensemen";
-
-        let forwards_table = create_player_table(
-            create_demo_forwards(),
-            focus.focused_table_row(FORWARDS_TABLE),
-        );
-        let defensemen_table = create_player_table(
-            create_demo_defensemen(),
-            focus.focused_table_row(DEFENSEMEN_TABLE),
-        );
-
-        builder
-            .heading(2, "Top Scorers (2023-24)")
+    /// Build the content for the Players tab
+    fn build_players_tab_content(&self) -> Vec<DocumentElement> {
+        DocumentBuilder::new()
+            .heading(2, "Player Stats")
             .spacer(1)
-            .text("These tables demonstrate side-by-side layout with focusable player links:")
-            .spacer(1)
-            .row(vec![
-                DocumentElement::table(FORWARDS_TABLE, forwards_table),
-                DocumentElement::table(DEFENSEMEN_TABLE, defensemen_table),
-            ])
+            .text("TODO: Player statistics will be displayed here.")
+            .build()
     }
 }
 
 impl Document for DemoDocument {
     fn build(&self, focus: &FocusContext) -> Vec<DocumentElement> {
-        let builder = DocumentBuilder::new()
+        // Build the Standings tab content
+        let standings_content = self.build_standings_tab_content(focus);
+
+        // Build the Players tab content
+        let players_content = self.build_players_tab_content();
+
+        DocumentBuilder::new()
             .heading(1, "Document System Demo")
             .spacer(1)
             .text("This tab demonstrates the new document system for the NHL TUI.")
-            .text("Press Tab/Shift-Tab to navigate between focusable elements.")
+            .text("Press Tab/Shift-Tab to navigate, Left/Right to switch tabs.")
             .spacer(1)
             .separator()
-            .spacer(1);
-
-        // Add standings section first (showcases natural height rendering)
-        let builder = self.build_standings_section(builder, focus);
-
-        // Then add the rest of the demo content
-        let builder = builder
+            .spacer(1)
+            // Embedded tabs demonstrating tabs-within-documents
+            .tabs_with_focus(
+                DEMO_TABS_ID,
+                vec![
+                    ("standings", "Standings", standings_content),
+                    ("players", "Players", players_content),
+                ],
+                focus,
+            )
             .spacer(1)
             .separator()
             .spacer(1)
             .heading(2, "Features")
             .text("- Viewport-based scrolling for unlimited content height")
             .text("- Tab/Shift-Tab navigation cycles through focusable elements")
+            .text("- Left/Right arrows switch between embedded tabs")
             .text("- Autoscrolling keeps the focused element visible")
             .text("- Smart padding positions elements comfortably in view")
-            .text("- Focus wrapping scrolls to top/bottom automatically")
             .spacer(1)
             .heading(2, "Example Links")
             .text("These links demonstrate focusable elements:")
@@ -403,28 +277,36 @@ impl Document for DemoDocument {
             .link_with_focus(
                 "link_bos",
                 "Boston Bruins",
-                LinkTarget::Action("team:BOS".to_string()),
+                LinkTarget::Push(StackedDocument::TeamDetail {
+                    abbrev: "BOS".to_string(),
+                }),
                 focus,
             )
             .spacer(1)
             .link_with_focus(
                 "link_tor",
                 "Toronto Maple Leafs",
-                LinkTarget::Action("team:TOR".to_string()),
+                LinkTarget::Push(StackedDocument::TeamDetail {
+                    abbrev: "TOR".to_string(),
+                }),
                 focus,
             )
             .spacer(1)
             .link_with_focus(
                 "link_nyr",
                 "New York Rangers",
-                LinkTarget::Action("team:NYR".to_string()),
+                LinkTarget::Push(StackedDocument::TeamDetail {
+                    abbrev: "NYR".to_string(),
+                }),
                 focus,
             )
             .spacer(1)
             .link_with_focus(
                 "link_mtl",
                 "Montreal Canadiens",
-                LinkTarget::Action("team:MTL".to_string()),
+                LinkTarget::Push(StackedDocument::TeamDetail {
+                    abbrev: "MTL".to_string(),
+                }),
                 focus,
             )
             .spacer(1)
@@ -441,12 +323,10 @@ impl Document for DemoDocument {
             .spacer(1)
             .text("Each document implements the Document trait to define its")
             .text("content structure. DocumentView manages the viewport and")
-            .text("focus state for rendering and interaction.");
-
-        // Add player stats table at the bottom
-        let builder = self.build_player_section(builder, focus);
-
-        builder.spacer(1).text("End of demo document.").build()
+            .text("focus state for rendering and interaction.")
+            .spacer(1)
+            .text("End of demo document.")
+            .build()
     }
 
     fn title(&self) -> String {
@@ -461,6 +341,7 @@ impl Document for DemoDocument {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{DisplayConfig, RenderContext};
     use crate::tui::testing::assert_buffer;
 
     #[test]
@@ -484,7 +365,7 @@ mod tests {
     #[test]
     fn test_demo_tab_renders() {
         let props = DemoTabProps {
-            content_focused: false,
+            focused: false,
             standings: Arc::new(None),
         };
         let state = crate::tui::document_nav::DocumentNavState::default();
@@ -499,66 +380,54 @@ mod tests {
     #[test]
     fn test_demo_document_focusable_count_no_standings() {
         let doc = DemoDocument::new(None);
-        let doc_arc = Arc::new(doc);
-        let view = DocumentView::new(doc_arc, 20);
 
-        // Should have 14 focusable elements:
+        // Should have 4 focusable elements:
         // - 4 example links (BOS, TOR, NYR, MTL)
-        // - 10 player table cells (5 forwards + 5 defensemen, 1 link column each)
-        assert_eq!(view.focus_manager().len(), 14);
+        // - The tabs content (Standings tab with no data has no focusable elements)
+        assert_eq!(doc.focusables(&FocusContext::default()).len(), 4);
     }
 
     #[test]
     fn test_demo_tab_widget_render() {
         let widget = DemoTabWidget {
-            content_focused: true,
+            focused: true,
             focus_index: None,
             scroll_offset: 0,
             standings: Arc::new(None),
+            tab_selections: std::collections::HashMap::new(),
         };
 
         let mut buf = Buffer::empty(Rect::new(0, 0, 60, 5));
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        widget.render(buf.area, &mut buf, &config);
+        widget.render(buf.area, &mut buf, &ctx);
 
         // Should render the heading and first lines of content
         assert_buffer(
             &buf,
             &[
-                "Document System Demo",
-                "════════════════════",
+                " Document System Demo",
+                " ════════════════════",
                 "",
-                "This tab demonstrates the new document system for the NHL TU",
-                "Press Tab/Shift-Tab to navigate between focusable elements.",
+                " This tab demonstrates the new document system for the NHL",
+                " Press Tab/Shift-Tab to navigate, Left/Right to switch tabs",
             ],
         );
     }
 
-    #[test]
-    fn test_demo_tab_focus_navigation() {
-        let doc = Arc::new(DemoDocument::new(None));
-        let mut view = DocumentView::new(doc, 10);
-
-        // Initially no focus
-        assert!(view.focus_manager().current_index().is_none());
-
-        // First Tab focuses first link
-        view.focus_next();
-        assert_eq!(view.focus_manager().current_index(), Some(0));
-
-        // Second Tab focuses second link
-        view.focus_next();
-        assert_eq!(view.focus_manager().current_index(), Some(1));
-
-        // Shift-Tab goes back
-        view.focus_prev();
-        assert_eq!(view.focus_manager().current_index(), Some(0));
-    }
+    // Focus-order navigation (Tab/Shift-Tab advancing/wrapping through
+    // `DemoDocument`'s focusables) used to be tested here against
+    // `DocumentView::focus_next/prev` (Engine A). That engine never ran in
+    // production -- the render path only ever calls `DocumentView::focus_by_index`
+    // with an index computed by `document_nav.rs` (Engine B), whose own generic
+    // tests (`test_focus_next_advances`, `test_focus_prev_wraps_around`, etc. in
+    // document_nav.rs) already cover the same advance/wrap logic.
 
     #[test]
     fn test_activate_link_team() {
         use crate::tui::component::Component;
+        use crate::tui::document::{FocusableElement, FocusableId};
         use crate::tui::document_nav::DocumentNavState;
 
         let mut demo_tab = DemoTab;
@@ -567,11 +436,27 @@ mod tests {
         // Set up state with a focused team link
         // The first 4 focusable elements are team links (BOS, TOR, NYR, MTL)
         state.focus_index = Some(0); // BOS link
-        state.link_targets = vec![
-            Some(LinkTarget::Action("team:BOS".to_string())),
-            Some(LinkTarget::Action("team:TOR".to_string())),
-            Some(LinkTarget::Action("team:NYR".to_string())),
-            Some(LinkTarget::Action("team:MTL".to_string())),
+        state.focusables = vec![
+            FocusableElement::at(0, 1, FocusableId::team_link("BOS")).with_link_target(
+                LinkTarget::Push(StackedDocument::TeamDetail {
+                    abbrev: "BOS".to_string(),
+                }),
+            ),
+            FocusableElement::at(1, 1, FocusableId::team_link("TOR")).with_link_target(
+                LinkTarget::Push(StackedDocument::TeamDetail {
+                    abbrev: "TOR".to_string(),
+                }),
+            ),
+            FocusableElement::at(2, 1, FocusableId::team_link("NYR")).with_link_target(
+                LinkTarget::Push(StackedDocument::TeamDetail {
+                    abbrev: "NYR".to_string(),
+                }),
+            ),
+            FocusableElement::at(3, 1, FocusableId::team_link("MTL")).with_link_target(
+                LinkTarget::Push(StackedDocument::TeamDetail {
+                    abbrev: "MTL".to_string(),
+                }),
+            ),
         ];
 
         let effect = demo_tab.update(DemoTabMsg::ActivateLink, &mut state);
@@ -588,6 +473,7 @@ mod tests {
     #[test]
     fn test_activate_link_player() {
         use crate::tui::component::Component;
+        use crate::tui::document::{FocusableElement, FocusableId};
         use crate::tui::document_nav::DocumentNavState;
 
         let mut demo_tab = DemoTab;
@@ -595,7 +481,15 @@ mod tests {
 
         // Set up state with a focused player link
         state.focus_index = Some(0);
-        state.link_targets = vec![Some(LinkTarget::Action("player:8477492".to_string()))];
+        state.focusables = vec![
+            FocusableElement::at(0, 1, FocusableId::player_link(8477492)).with_link_target(
+                LinkTarget::Push(StackedDocument::PlayerDetail {
+                    player_id: 8477492,
+                    sweater_number: None,
+                    last_name: "Player 8477492".to_string(),
+                }),
+            ),
+        ];
 
         let effect = demo_tab.update(DemoTabMsg::ActivateLink, &mut state);
 
@@ -614,6 +508,7 @@ mod tests {
     #[test]
     fn test_activate_link_no_focus() {
         use crate::tui::component::Component;
+        use crate::tui::document::{FocusableElement, FocusableId};
         use crate::tui::document_nav::DocumentNavState;
 
         let mut demo_tab = DemoTab;
@@ -621,7 +516,10 @@ mod tests {
 
         // No focus index set
         state.focus_index = None;
-        state.link_targets = vec![Some(LinkTarget::Action("team:BOS".to_string()))];
+        state.focusables = vec![FocusableElement::at(0, 1, FocusableId::team_link("BOS"))
+            .with_link_target(LinkTarget::Push(StackedDocument::TeamDetail {
+                abbrev: "BOS".to_string(),
+            }))];
 
         let effect = demo_tab.update(DemoTabMsg::ActivateLink, &mut state);
 

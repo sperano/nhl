@@ -1,23 +1,27 @@
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Color, Style},
+    style::Color,
     text::{Line, Span},
     widgets::Paragraph,
 };
 use std::time::SystemTime;
 use unicode_width::UnicodeWidthStr;
 
-use crate::config::DisplayConfig;
+use crate::config::RenderContext;
 use crate::tui::{
     component::{Component, Element, ElementWidget},
     state::SystemState,
 };
 
-/// StatusBar component - renders status bar with refresh countdown and error messages
+/// If the data hasn't refreshed in this many multiples of `refresh_interval`,
+/// flag it as stale (auto-refresh is likely failing, e.g. repeated network errors).
+const STALE_THRESHOLD_MULTIPLIER: u32 = 3;
+
+/// StatusBar component - renders status bar with last-refresh indicator and error messages
 ///
 /// Left side: status/error messages
-/// Right side: refresh countdown
+/// Right side: time elapsed since the last data refresh (real timestamp, not a countdown)
 pub struct StatusBar;
 
 impl Component for StatusBar {
@@ -44,7 +48,7 @@ struct StatusBarWidget {
 }
 
 impl ElementWidget for StatusBarWidget {
-    fn render(&self, area: Rect, buf: &mut Buffer, config: &DisplayConfig) {
+    fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
         let mut lines = Vec::new();
 
         // Left side: status message (if any)
@@ -54,19 +58,24 @@ impl ElementWidget for StatusBarWidget {
             String::new()
         };
 
-        // Right side: countdown to next refresh
+        // Right side: how long ago data was actually refreshed (real timestamp, not a
+        // countdown to a promised refresh - see reducer::should_auto_refresh for the
+        // logic that actually triggers refreshes on a `Tick`).
         let right_text = if let Some(refresh_time) = self.last_refresh {
-            if let Ok(elapsed) = SystemTime::now().duration_since(refresh_time) {
-                let elapsed_secs = elapsed.as_secs();
-                let remaining_secs = self.refresh_interval.saturating_sub(elapsed_secs as u32);
+            match SystemTime::now().duration_since(refresh_time) {
+                Ok(elapsed) => {
+                    let elapsed_secs = elapsed.as_secs();
+                    let stale_threshold_secs =
+                        u64::from(self.refresh_interval) * u64::from(STALE_THRESHOLD_MULTIPLIER);
 
-                if remaining_secs > 0 {
-                    format!("Refresh in {}s", remaining_secs)
-                } else {
-                    "Refreshing...".to_string()
+                    if elapsed_secs > stale_threshold_secs {
+                        format!("Updated {}s ago (stale)", elapsed_secs)
+                    } else {
+                        format!("Updated {}s ago", elapsed_secs)
+                    }
                 }
-            } else {
-                "Refresh in ?s".to_string()
+                // Clock skew or a refresh timestamp from the future - can't compute elapsed time.
+                Err(_) => "Updated ?s ago".to_string(),
             }
         } else {
             "Loading...".to_string()
@@ -79,27 +88,27 @@ impl ElementWidget for StatusBarWidget {
             .saturating_sub(right_text_with_margin.width() as u16 + 1);
 
         // Determine styles based on theme
-        let separator_style = if let Some(theme) = &config.theme {
-            Style::default().fg(theme.fg3)
+        let separator_style = if let Some(theme) = ctx.theme() {
+            ctx.base_style().fg(theme.boxchar_fg)
         } else {
-            Style::default()
+            ctx.base_style()
         };
 
-        let text_style = if let Some(theme) = &config.theme {
-            Style::default().fg(theme.fg2)
+        let text_style = if let Some(theme) = ctx.theme() {
+            ctx.base_style().fg(theme.fg)
         } else {
-            Style::default()
+            ctx.base_style()
         };
 
         // First line: horizontal separator with connector
-        let left_part = config.box_chars.horizontal.repeat(bar_position as usize);
-        let right_part = config
-            .box_chars
+        let left_part = ctx.box_chars().horizontal.repeat(bar_position as usize);
+        let right_part = ctx
+            .box_chars()
             .horizontal
             .repeat((area.width.saturating_sub(bar_position + 1)) as usize);
         let line1 = Line::from(vec![
             Span::styled(left_part, separator_style),
-            Span::styled(&config.box_chars.connector3, separator_style),
+            Span::styled(ctx.box_chars().connector3, separator_style),
             Span::styled(right_part, separator_style),
         ]);
         lines.push(line1);
@@ -111,7 +120,7 @@ impl ElementWidget for StatusBarWidget {
         if !left_text.is_empty() {
             line2_spans.push(Span::raw(" "));
             if self.is_error {
-                line2_spans.push(Span::styled(&left_text, Style::default().fg(Color::Red)));
+                line2_spans.push(Span::styled(&left_text, ctx.base_style().fg(Color::Red)));
             } else {
                 line2_spans.push(Span::styled(&left_text, text_style));
             }
@@ -127,7 +136,7 @@ impl ElementWidget for StatusBarWidget {
         line2_spans.push(Span::raw(" ".repeat(padding_len)));
 
         // Right side: vertical bar + refresh text
-        line2_spans.push(Span::styled(&config.box_chars.vertical, separator_style));
+        line2_spans.push(Span::styled(ctx.box_chars().vertical, separator_style));
         line2_spans.push(Span::raw(" "));
         line2_spans.push(Span::styled(&right_text, text_style));
         line2_spans.push(Span::raw(" "));
@@ -155,7 +164,7 @@ impl ElementWidget for StatusBarWidget {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::Config;
+    use crate::config::{Config, DisplayConfig, RenderContext};
     use crate::tui::testing::{assert_buffer, RENDER_WIDTH};
     use ratatui::buffer::Buffer;
 
@@ -176,11 +185,9 @@ mod tests {
         match element {
             Element::Widget(widget) => {
                 let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
-                widget.render(
-                    Rect::new(0, 0, RENDER_WIDTH, 2),
-                    &mut buf,
-                    &DisplayConfig::default(),
-                );
+                let config = DisplayConfig::default();
+                let ctx = RenderContext::focused(&config);
+                widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
                 assert_buffer(&buf, &[
                     "────────────────────────────────────────────────────────────────────┬───────────",
                     "                                                                    │ Loading...",
@@ -207,14 +214,12 @@ mod tests {
         match element {
             Element::Widget(widget) => {
                 let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
-                widget.render(
-                    Rect::new(0, 0, RENDER_WIDTH, 2),
-                    &mut buf,
-                    &DisplayConfig::default(),
-                );
+                let config = DisplayConfig::default();
+                let ctx = RenderContext::focused(&config);
+                widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
                 assert_buffer(&buf, &[
                     "────────────────────────────────────────────────────────────────┬───────────────",
-                    "                                                                │ Refresh in 55s",
+                    "                                                                │ Updated 5s ago",
                 ]);
             }
             _ => panic!("Expected widget element"),
@@ -231,11 +236,9 @@ mod tests {
         };
 
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
-        widget.render(
-            Rect::new(0, 0, RENDER_WIDTH, 2),
-            &mut buf,
-            &DisplayConfig::default(),
-        );
+        let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
+        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
 
         // Error message should appear on left side
         let line2 = (0..RENDER_WIDTH)
@@ -250,7 +253,9 @@ mod tests {
     }
 
     #[test]
-    fn test_status_bar_refreshing_state() {
+    fn test_status_bar_shows_elapsed_time_at_refresh_interval_boundary() {
+        // Elapsed time exactly equal to the interval is not yet stale
+        // (stale threshold is a multiple of the interval, see STALE_THRESHOLD_MULTIPLIER).
         let widget = StatusBarWidget {
             last_refresh: Some(SystemTime::now() - std::time::Duration::from_secs(60)),
             refresh_interval: 60,
@@ -259,20 +264,46 @@ mod tests {
         };
 
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
-        widget.render(
-            Rect::new(0, 0, RENDER_WIDTH, 2),
-            &mut buf,
-            &DisplayConfig::default(),
-        );
+        let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
+        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
 
-        // Should show "Refreshing..." when time has elapsed
         let line2 = (0..RENDER_WIDTH)
             .map(|x| buf.cell((x, 1)).map(|c| c.symbol()).unwrap_or(""))
             .collect::<String>();
 
         assert!(
-            line2.contains("Refreshing..."),
-            "Refreshing message not found in: {}",
+            line2.contains("Updated 60s ago") && !line2.contains("stale"),
+            "Expected non-stale elapsed indicator in: {}",
+            line2
+        );
+    }
+
+    #[test]
+    fn test_status_bar_flags_stale_data_past_threshold() {
+        // Regression test: previously the status bar showed a "Refresh in Ns"
+        // countdown that implied an imminent refresh even though `Tick` never
+        // re-dispatched `RefreshData`, so scores froze silently. Now the bar
+        // reflects the real last-refresh timestamp and flags stale data.
+        let widget = StatusBarWidget {
+            last_refresh: Some(SystemTime::now() - std::time::Duration::from_secs(200)),
+            refresh_interval: 60,
+            status_message: None,
+            is_error: false,
+        };
+
+        let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
+        let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
+        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
+
+        let line2 = (0..RENDER_WIDTH)
+            .map(|x| buf.cell((x, 1)).map(|c| c.symbol()).unwrap_or(""))
+            .collect::<String>();
+
+        assert!(
+            line2.contains("Updated 200s ago (stale)"),
+            "Stale indicator not found in: {}",
             line2
         );
     }
@@ -288,19 +319,17 @@ mod tests {
         };
 
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
-        widget.render(
-            Rect::new(0, 0, RENDER_WIDTH, 2),
-            &mut buf,
-            &DisplayConfig::default(),
-        );
+        let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
+        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
 
-        // Should show "Refresh in ?s" when duration_since fails
+        // Should show "Updated ?s ago" when duration_since fails
         let line2 = (0..RENDER_WIDTH)
             .map(|x| buf.cell((x, 1)).map(|c| c.symbol()).unwrap_or(""))
             .collect::<String>();
 
         assert!(
-            line2.contains("Refresh in ?s"),
+            line2.contains("Updated ?s ago"),
             "Error fallback not found in: {}",
             line2
         );
@@ -341,17 +370,15 @@ mod tests {
         };
 
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
-        widget.render(
-            Rect::new(0, 0, RENDER_WIDTH, 2),
-            &mut buf,
-            &DisplayConfig::default(),
-        );
+        let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
+        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
 
         assert_buffer(
             &buf,
             &[
                 "────────────────────────────────────────────────────────────────┬───────────────",
-                " Configuration saved                                            │ Refresh in 55s",
+                " Configuration saved                                            │ Updated 5s ago",
             ],
         );
 
@@ -371,17 +398,15 @@ mod tests {
         };
 
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
-        widget.render(
-            Rect::new(0, 0, RENDER_WIDTH, 2),
-            &mut buf,
-            &DisplayConfig::default(),
-        );
+        let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
+        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
 
         assert_buffer(
             &buf,
             &[
                 "────────────────────────────────────────────────────────────────┬───────────────",
-                " Failed to save config                                          │ Refresh in 55s",
+                " Failed to save config                                          │ Updated 5s ago",
             ],
         );
 
@@ -401,17 +426,15 @@ mod tests {
         };
 
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
-        widget.render(
-            Rect::new(0, 0, RENDER_WIDTH, 2),
-            &mut buf,
-            &DisplayConfig::default(),
-        );
+        let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
+        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
 
         assert_buffer(
             &buf,
             &[
                 "────────────────────────────────────────────────────────────────┬───────────────",
-                "                                                                │ Refresh in 55s",
+                "                                                                │ Updated 5s ago",
             ],
         );
     }
@@ -429,28 +452,32 @@ mod tests {
 
         let mut config = DisplayConfig::default();
         config.theme = Some(THEME_ORANGE.clone());
+        let ctx = RenderContext::focused(&config);
 
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
-        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &config);
+        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
 
         // Verify separator characters are styled with fg3
         // Check horizontal line character on line 1
         if let Some(cell) = buf.cell((0, 0)) {
             assert_eq!(
-                cell.fg, THEME_ORANGE.fg3,
+                cell.fg, THEME_ORANGE.boxchar_fg,
                 "Horizontal separator should use theme fg3"
             );
         }
 
         // Check connector character (┬) on line 1
         if let Some(cell) = buf.cell((64, 0)) {
-            assert_eq!(cell.fg, THEME_ORANGE.fg3, "Connector should use theme fg3");
+            assert_eq!(
+                cell.fg, THEME_ORANGE.boxchar_fg,
+                "Connector should use theme fg3"
+            );
         }
 
         // Check vertical bar character (│) on line 2
         if let Some(cell) = buf.cell((64, 1)) {
             assert_eq!(
-                cell.fg, THEME_ORANGE.fg3,
+                cell.fg, THEME_ORANGE.boxchar_fg,
                 "Vertical bar should use theme fg3"
             );
         }
@@ -466,9 +493,10 @@ mod tests {
         };
 
         let config = DisplayConfig::default(); // No theme set
+        let ctx = RenderContext::focused(&config);
 
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
-        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &config);
+        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
 
         // Verify separator characters use default color (Reset)
         // Check horizontal line character on line 1
@@ -503,14 +531,15 @@ mod tests {
 
         let mut config = DisplayConfig::default();
         config.theme = Some(THEME_ORANGE.clone());
+        let ctx = RenderContext::focused(&config);
 
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
-        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &config);
+        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
 
         // Verify success message uses fg2
         if let Some(cell) = buf.cell((1, 1)) {
             assert_eq!(
-                cell.fg, THEME_ORANGE.fg2,
+                cell.fg, THEME_ORANGE.fg,
                 "Success message should use theme fg2"
             );
         }
@@ -519,7 +548,7 @@ mod tests {
         // Find the refresh text (right side of the vertical bar)
         if let Some(cell) = buf.cell((66, 1)) {
             assert_eq!(
-                cell.fg, THEME_ORANGE.fg2,
+                cell.fg, THEME_ORANGE.fg,
                 "Refresh text should use theme fg2"
             );
         }
@@ -538,9 +567,10 @@ mod tests {
 
         let mut config = DisplayConfig::default();
         config.theme = Some(THEME_ORANGE.clone());
+        let ctx = RenderContext::focused(&config);
 
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
-        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &config);
+        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
 
         // Verify error message still uses Color::Red, not theme fg2
         if let Some(cell) = buf.cell((1, 1)) {
@@ -550,7 +580,7 @@ mod tests {
                 "Error message should use Color::Red even with theme set"
             );
             assert_ne!(
-                cell.fg, THEME_ORANGE.fg2,
+                cell.fg, THEME_ORANGE.fg,
                 "Error message should NOT use theme fg2"
             );
         }
@@ -566,9 +596,10 @@ mod tests {
         };
 
         let config = DisplayConfig::default(); // No theme set
+        let ctx = RenderContext::focused(&config);
 
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
-        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &config);
+        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
 
         // Verify success message uses default color when no theme
         if let Some(cell) = buf.cell((1, 1)) {
@@ -599,11 +630,9 @@ mod tests {
         };
 
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
-        widget.render(
-            Rect::new(0, 0, RENDER_WIDTH, 2),
-            &mut buf,
-            &DisplayConfig::default(),
-        );
+        let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
+        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
 
         // Should render without panic
         // The vertical bar should still be positioned correctly
@@ -628,11 +657,9 @@ mod tests {
         };
 
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
-        widget.render(
-            Rect::new(0, 0, RENDER_WIDTH, 2),
-            &mut buf,
-            &DisplayConfig::default(),
-        );
+        let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
+        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
 
         // Should render without panic or incorrect layout
         let line1 = (0..RENDER_WIDTH)
@@ -644,7 +671,7 @@ mod tests {
             "Vertical separator should be present despite CJK characters"
         );
         assert!(
-            line1.contains("Refresh in"),
+            line1.contains("Updated") && line1.contains("ago"),
             "Refresh text should still be visible"
         );
     }
@@ -659,11 +686,9 @@ mod tests {
         };
 
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
-        widget.render(
-            Rect::new(0, 0, RENDER_WIDTH, 2),
-            &mut buf,
-            &DisplayConfig::default(),
-        );
+        let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
+        widget.render(Rect::new(0, 0, RENDER_WIDTH, 2), &mut buf, &ctx);
 
         // Should render without panic
         // Layout should still be functional

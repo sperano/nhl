@@ -50,8 +50,9 @@ impl PeriodScores {
 }
 
 /// Format period text (e.g., "1st Period", "Overtime", "Shootout")
-pub fn format_period_text(period_type: PeriodType, period_number: i32) -> String {
-    match period_type {
+/// Missing period type (historical data) is treated as regulation.
+pub fn format_period_text(period_type: Option<PeriodType>, period_number: i32) -> String {
+    match period_type.unwrap_or(PeriodType::Regulation) {
         PeriodType::Regulation => {
             let ordinal = match period_number {
                 1 => "1st",
@@ -135,13 +136,13 @@ fn calculate_padding(total_cols: usize, max_width: usize) -> usize {
 /// Build top border for the score table
 fn build_top_border(total_cols: usize, max_width: usize, box_chars: &BoxChars) -> String {
     let mut border = String::new();
-    border.push_str(&box_chars.top_left);
+    border.push_str(box_chars.top_left);
     border.push_str(&box_chars.horizontal.repeat(TEAM_ABBREV_COL_WIDTH)); // team name column
     for _ in 1..total_cols {
-        border.push_str(&box_chars.top_junction);
+        border.push_str(box_chars.top_junction);
         border.push_str(&box_chars.horizontal.repeat(PERIOD_COL_WIDTH));
     }
-    border.push_str(&box_chars.top_right);
+    border.push_str(box_chars.top_right);
 
     let padding = calculate_padding(total_cols, max_width);
     if padding > 0 {
@@ -154,13 +155,13 @@ fn build_top_border(total_cols: usize, max_width: usize, box_chars: &BoxChars) -
 /// Build middle border for the score table
 fn build_middle_border(total_cols: usize, max_width: usize, box_chars: &BoxChars) -> String {
     let mut border = String::new();
-    border.push_str(&box_chars.left_junction);
+    border.push_str(box_chars.left_junction);
     border.push_str(&box_chars.horizontal.repeat(TEAM_ABBREV_COL_WIDTH));
     for _ in 1..total_cols {
-        border.push_str(&box_chars.cross);
+        border.push_str(box_chars.cross);
         border.push_str(&box_chars.horizontal.repeat(PERIOD_COL_WIDTH));
     }
-    border.push_str(&box_chars.right_junction);
+    border.push_str(box_chars.right_junction);
 
     let padding = calculate_padding(total_cols, max_width);
     if padding > 0 {
@@ -173,13 +174,13 @@ fn build_middle_border(total_cols: usize, max_width: usize, box_chars: &BoxChars
 /// Build bottom border for the score table
 fn build_bottom_border(total_cols: usize, max_width: usize, box_chars: &BoxChars) -> String {
     let mut border = String::new();
-    border.push_str(&box_chars.bottom_left);
+    border.push_str(box_chars.bottom_left);
     border.push_str(&box_chars.horizontal.repeat(TEAM_ABBREV_COL_WIDTH));
     for _ in 1..total_cols {
-        border.push_str(&box_chars.bottom_junction);
+        border.push_str(box_chars.bottom_junction);
         border.push_str(&box_chars.horizontal.repeat(PERIOD_COL_WIDTH));
     }
-    border.push_str(&box_chars.bottom_right);
+    border.push_str(box_chars.bottom_right);
 
     let padding = calculate_padding(total_cols, max_width);
     if padding > 0 {
@@ -198,28 +199,28 @@ fn build_header_row(
     box_chars: &BoxChars,
 ) -> String {
     let mut row = String::new();
-    row.push_str(&box_chars.vertical);
+    row.push_str(box_chars.vertical);
     row.push_str(&format!("{:^5}", ""));
-    row.push_str(&box_chars.vertical);
+    row.push_str(box_chars.vertical);
     row.push_str(&format!("{:^4}", "1"));
-    row.push_str(&box_chars.vertical);
+    row.push_str(box_chars.vertical);
     row.push_str(&format!("{:^4}", "2"));
-    row.push_str(&box_chars.vertical);
+    row.push_str(box_chars.vertical);
     row.push_str(&format!("{:^4}", "3"));
 
     if has_ot {
-        row.push_str(&box_chars.vertical);
+        row.push_str(box_chars.vertical);
         row.push_str(&format!("{:^4}", "OT"));
     }
 
     if has_so {
-        row.push_str(&box_chars.vertical);
+        row.push_str(box_chars.vertical);
         row.push_str(&format!("{:^4}", "SO"));
     }
 
-    row.push_str(&box_chars.vertical);
+    row.push_str(box_chars.vertical);
     row.push_str(&format!("{:^4}", "T"));
-    row.push_str(&box_chars.vertical);
+    row.push_str(box_chars.vertical);
 
     let padding = calculate_padding(total_cols, max_width);
     if padding > 0 {
@@ -249,7 +250,7 @@ fn render_team_periods(
             "-".to_string()
         };
         output.push_str(&format!("{:^width$}", p1_value, width = PERIOD_COL_WIDTH));
-        output.push_str(&box_chars.vertical);
+        output.push_str(box_chars.vertical);
 
         // Period 2
         let p2_value = if should_show_period(2) {
@@ -261,7 +262,7 @@ fn render_team_periods(
             "-".to_string()
         };
         output.push_str(&format!("{:^width$}", p2_value, width = PERIOD_COL_WIDTH));
-        output.push_str(&box_chars.vertical);
+        output.push_str(box_chars.vertical);
 
         // Period 3
         let p3_value = if should_show_period(3) {
@@ -275,7 +276,7 @@ fn render_team_periods(
         output.push_str(&format!("{:^width$}", p3_value, width = PERIOD_COL_WIDTH));
 
         if has_ot {
-            output.push_str(&box_chars.vertical);
+            output.push_str(box_chars.vertical);
             let ot_value = if should_show_period(OVERTIME_PERIOD_NUM) {
                 periods
                     .get(OVERTIME_INDEX)
@@ -288,7 +289,7 @@ fn render_team_periods(
         }
 
         if has_so {
-            output.push_str(&box_chars.vertical);
+            output.push_str(box_chars.vertical);
             let so_value = if should_show_period(SHOOTOUT_PERIOD_NUM) {
                 periods
                     .get(SHOOTOUT_INDEX)
@@ -301,19 +302,19 @@ fn render_team_periods(
         }
     } else {
         output.push_str(&format!("{:^width$}", "-", width = PERIOD_COL_WIDTH)); // P1
-        output.push_str(&box_chars.vertical);
+        output.push_str(box_chars.vertical);
         output.push_str(&format!("{:^width$}", "-", width = PERIOD_COL_WIDTH)); // P2
-        output.push_str(&box_chars.vertical);
+        output.push_str(box_chars.vertical);
         output.push_str(&format!("{:^width$}", "-", width = PERIOD_COL_WIDTH)); // P3
 
         if has_ot {
-            output.push_str(&box_chars.vertical);
+            output.push_str(box_chars.vertical);
             output.push_str(&format!("{:^width$}", "-", width = PERIOD_COL_WIDTH));
             // OT
         }
 
         if has_so {
-            output.push_str(&box_chars.vertical);
+            output.push_str(box_chars.vertical);
             output.push_str(&format!("{:^width$}", "-", width = PERIOD_COL_WIDTH));
             // SO
         }
@@ -334,9 +335,9 @@ fn build_team_row(
     box_chars: &BoxChars,
 ) -> String {
     let mut row = String::new();
-    row.push_str(&box_chars.vertical);
+    row.push_str(box_chars.vertical);
     row.push_str(&format!("{:^5}", team_abbrev));
-    row.push_str(&box_chars.vertical);
+    row.push_str(box_chars.vertical);
 
     render_team_periods(
         &mut row,
@@ -347,14 +348,14 @@ fn build_team_row(
         box_chars,
     );
 
-    row.push_str(&box_chars.vertical);
+    row.push_str(box_chars.vertical);
     row.push_str(&format!(
         "{:^4}",
         team_score
             .map(|s| s.to_string())
             .unwrap_or_else(|| "-".to_string())
     ));
-    row.push_str(&box_chars.vertical);
+    row.push_str(box_chars.vertical);
 
     let padding = calculate_padding(total_cols, max_width);
     if padding > 0 {
@@ -378,14 +379,14 @@ pub fn extract_period_scores(summary: &GameSummary) -> PeriodScores {
         let period_num = period.period_descriptor.number as usize;
 
         // Determine if this is OT or SO
-        if period.period_descriptor.period_type == PeriodType::Overtime {
+        if period.period_descriptor.period_type == Some(PeriodType::Overtime) {
             has_ot = true;
             // Ensure we have enough slots (up to OVERTIME_INDEX + 1)
             if away_periods.len() < OVERTIME_INDEX + 1 {
                 away_periods.push(0);
                 home_periods.push(0);
             }
-        } else if period.period_descriptor.period_type == PeriodType::Shootout {
+        } else if period.period_descriptor.period_type == Some(PeriodType::Shootout) {
             has_so = true;
             // Ensure we have enough slots (up to SHOOTOUT_INDEX + 1)
             while away_periods.len() < SHOOTOUT_INDEX + 1 {
@@ -405,9 +406,10 @@ pub fn extract_period_scores(summary: &GameSummary) -> PeriodScores {
 
             // Store in the appropriate slot
             let idx = match period.period_descriptor.period_type {
-                PeriodType::Regulation => (period_num - 1).min(PERIOD_3_INDEX), // P1=0, P2=1, P3=2
-                PeriodType::Overtime => OVERTIME_INDEX,
-                PeriodType::Shootout => SHOOTOUT_INDEX,
+                // Missing period type (historical data) is treated as regulation
+                Some(PeriodType::Regulation) | None => (period_num - 1).min(PERIOD_3_INDEX), // P1=0, P2=1, P3=2
+                Some(PeriodType::Overtime) => OVERTIME_INDEX,
+                Some(PeriodType::Shootout) => SHOOTOUT_INDEX,
             };
 
             if idx < away_periods.len() {
@@ -599,19 +601,20 @@ mod tests {
 
     #[test]
     fn test_format_period_text_regular() {
-        assert_eq!(format_period_text(PeriodType::Regulation, 1), "1st Period");
-        assert_eq!(format_period_text(PeriodType::Regulation, 2), "2nd Period");
-        assert_eq!(format_period_text(PeriodType::Regulation, 3), "3rd Period");
-        assert_eq!(format_period_text(PeriodType::Regulation, 4), "4th Period");
+        assert_eq!(format_period_text(Some(PeriodType::Regulation), 1), "1st Period");
+        assert_eq!(format_period_text(Some(PeriodType::Regulation), 2), "2nd Period");
+        assert_eq!(format_period_text(Some(PeriodType::Regulation), 3), "3rd Period");
+        assert_eq!(format_period_text(Some(PeriodType::Regulation), 4), "4th Period");
+        assert_eq!(format_period_text(None, 1), "1st Period");
     }
 
     #[test]
     fn test_format_period_text_overtime() {
-        assert_eq!(format_period_text(PeriodType::Overtime, 4), "Overtime");
+        assert_eq!(format_period_text(Some(PeriodType::Overtime), 4), "Overtime");
     }
 
     #[test]
     fn test_format_period_text_shootout() {
-        assert_eq!(format_period_text(PeriodType::Shootout, 5), "Shootout");
+        assert_eq!(format_period_text(Some(PeriodType::Shootout), 5), "Shootout");
     }
 }

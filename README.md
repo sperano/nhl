@@ -26,6 +26,21 @@ cargo run -- boxscore 2024020001
 
 ⚠️ **Under active development** - Features and APIs may change.
 
+## Development
+
+```bash
+# Build (use the development feature for local work - enables mock mode, screenshots, etc.)
+cargo build --features development
+
+# Run tests
+cargo test --features development
+
+# TUI with mock data (no network calls, useful for UI iteration/screenshots)
+cargo run --features development -- --mock
+```
+
+See `docs/` for architecture, component patterns, navigation, and the document system.
+
 ## Configuration
 
 Optional config file: `~/.config/nhl/config.toml`

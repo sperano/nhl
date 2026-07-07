@@ -30,12 +30,19 @@ use super::{standings_columns, TableWidget};
 /// 3. Wildcard section with remaining teams sorted by points
 pub struct WildcardStandingsDocument {
     standings: Arc<Vec<Standing>>,
-    config: Config,
+    config: Arc<Config>,
 }
 
 impl WildcardStandingsDocument {
-    pub fn new(standings: Arc<Vec<Standing>>, config: Config) -> Self {
-        Self { standings, config }
+    /// `config` accepts anything convertible to `Arc<Config>`: an owned `Config`
+    /// (allocates a fresh Arc, used by the reducer's occasional focusable-metadata
+    /// rebuild) or an existing `Arc<Config>` (zero-cost, used by the per-frame
+    /// render path).
+    pub fn new(standings: Arc<Vec<Standing>>, config: impl Into<Arc<Config>>) -> Self {
+        Self {
+            standings,
+            config: config.into(),
+        }
     }
 
     /// Group standings by division and return sorted teams for each division
@@ -168,9 +175,13 @@ impl Document for WildcardStandingsDocument {
             (eastern, western)
         };
 
-        // Use Row element to place columns side-by-side
+        // Use Row element to place columns side-by-side with center alignment
+        const GAP: u16 = 4;
         DocumentBuilder::new()
-            .row(vec![left_group, right_group])
+            .element(DocumentElement::row_center_with_gap(
+                vec![left_group, right_group],
+                GAP,
+            ))
             .build()
     }
 

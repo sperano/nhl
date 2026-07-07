@@ -223,7 +223,9 @@ impl DocumentBuilder {
     /// let doc = DocumentBuilder::new()
     ///     .heading(1, "Teams")
     ///     .for_each(teams.iter(), |b, team| {
-    ///         b.link(&team.name, LinkTarget::Document(DocumentLink::team(&team.abbrev)))
+    ///         b.link(&team.name, LinkTarget::Push(StackedDocument::TeamDetail {
+    ///             abbrev: team.abbrev.clone(),
+    ///         }))
     ///     })
     ///     .build();
     /// ```
@@ -235,6 +237,88 @@ impl DocumentBuilder {
         for item in iter {
             self = f(self, item);
         }
+        self
+    }
+
+    /// Add a tabbed panel element
+    ///
+    /// # Arguments
+    /// - `id`: Unique identifier for this tabs element (used for state tracking)
+    /// - `tabs`: Vec of (key, title, content) tuples
+    /// - `active_index`: Index of the initially active tab
+    ///
+    /// # Example
+    /// ```ignore
+    /// let doc = DocumentBuilder::new()
+    ///     .heading(1, "Demo")
+    ///     .tabs(
+    ///         "demo_tabs",
+    ///         vec![
+    ///             ("tab1", "First Tab", vec![DocumentElement::text("Content 1")]),
+    ///             ("tab2", "Second Tab", vec![DocumentElement::text("Content 2")]),
+    ///         ],
+    ///         0, // Start with first tab active
+    ///     )
+    ///     .build();
+    /// ```
+    pub fn tabs(
+        mut self,
+        id: impl Into<String>,
+        tabs: Vec<(impl Into<String>, impl Into<String>, Vec<DocumentElement>)>,
+        active_index: usize,
+    ) -> Self {
+        let tab_defs: Vec<super::elements::DocTabDef> = tabs
+            .into_iter()
+            .map(|(key, title, content)| {
+                super::elements::DocTabDef::new(key.into(), title.into(), content)
+            })
+            .collect();
+        self.elements
+            .push(DocumentElement::tabs(id, tab_defs, active_index));
+        self
+    }
+
+    /// Add a tabbed panel element using focus context for active tab selection
+    ///
+    /// This is the preferred way to add tabs when building documents,
+    /// as it reads the active tab from the FocusContext (which gets it
+    /// from DocumentNavState).
+    ///
+    /// # Arguments
+    /// - `id`: Unique identifier for this tabs element
+    /// - `tabs`: Vec of (key, title, content) tuples
+    /// - `focus`: Focus context containing tab selections
+    ///
+    /// # Example
+    /// ```ignore
+    /// fn build(&self, focus: &FocusContext) -> Vec<DocumentElement> {
+    ///     DocumentBuilder::new()
+    ///         .heading(1, "Demo")
+    ///         .tabs_with_focus(
+    ///             "demo_tabs",
+    ///             vec![
+    ///                 ("tab1", "First Tab", vec![DocumentElement::text("Content 1")]),
+    ///                 ("tab2", "Second Tab", vec![DocumentElement::text("Content 2")]),
+    ///             ],
+    ///             focus,
+    ///         )
+    ///         .build()
+    /// }
+    /// ```
+    pub fn tabs_with_focus(
+        mut self,
+        id: impl Into<String>,
+        tabs: Vec<(impl Into<String>, impl Into<String>, Vec<DocumentElement>)>,
+        focus: &super::FocusContext,
+    ) -> Self {
+        let tab_defs: Vec<super::elements::DocTabDef> = tabs
+            .into_iter()
+            .map(|(key, title, content)| {
+                super::elements::DocTabDef::new(key.into(), title.into(), content)
+            })
+            .collect();
+        self.elements
+            .push(DocumentElement::tabs_from_context(id, tab_defs, focus));
         self
     }
 
@@ -257,7 +341,7 @@ impl DocumentBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tui::document::link::DocumentLink;
+    use crate::tui::types::StackedDocument;
 
     #[test]
     fn test_builder_new() {
@@ -298,7 +382,9 @@ mod tests {
 
     #[test]
     fn test_builder_link() {
-        let target = LinkTarget::Document(DocumentLink::team("BOS"));
+        let target = LinkTarget::Push(StackedDocument::TeamDetail {
+            abbrev: "BOS".to_string(),
+        });
         let elements = DocumentBuilder::new().link("Boston Bruins", target).build();
 
         assert_eq!(elements.len(), 1);
@@ -306,7 +392,7 @@ mod tests {
 
     #[test]
     fn test_builder_link_with_id() {
-        let target = LinkTarget::Action("test".to_string());
+        let target = LinkTarget::Anchor("test".to_string());
         let elements = DocumentBuilder::new()
             .link_with_id("custom_id", "Click me", target)
             .build();
@@ -464,7 +550,12 @@ mod tests {
             .heading(1, "NHL Teams")
             .spacer(1)
             .for_each(teams.iter(), |b, (abbrev, name)| {
-                b.link(*name, LinkTarget::Document(DocumentLink::team(*abbrev)))
+                b.link(
+                    *name,
+                    LinkTarget::Push(StackedDocument::TeamDetail {
+                        abbrev: abbrev.to_string(),
+                    }),
+                )
             })
             .separator()
             .text("Click a team for details")

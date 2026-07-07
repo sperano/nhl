@@ -14,7 +14,7 @@ pub enum Tab {
 }
 
 /// Document types for drill-down views (pushed onto document stack)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum StackedDocument {
     Boxscore {
         game_id: i64,
@@ -22,6 +22,8 @@ pub enum StackedDocument {
         home_abbrev: String,
         away_score: i32,
         home_score: i32,
+        /// Game date formatted for breadcrumb display (e.g., "12/24")
+        game_date: String,
     },
     TeamDetail {
         abbrev: String,

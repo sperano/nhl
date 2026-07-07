@@ -1,7 +1,8 @@
 //! Settings document - displays settings in a document-based layout
 //!
-//! This module provides the document-based implementation for settings display,
-//! replacing the old SettingsListWidget approach with the modern document system.
+//! This module provides the document-based implementation for settings display.
+
+use std::sync::Arc;
 
 use crate::config::Config;
 use crate::tui::document::{Document, DocumentBuilder, DocumentElement, FocusContext, LinkTarget};
@@ -10,12 +11,19 @@ use crate::tui::SettingsCategory;
 /// Settings document for a specific category
 pub struct SettingsDocument {
     category: SettingsCategory,
-    config: Config,
+    config: Arc<Config>,
 }
 
 impl SettingsDocument {
-    pub fn new(category: SettingsCategory, config: Config) -> Self {
-        Self { category, config }
+    /// `config` accepts anything convertible to `Arc<Config>`: an owned `Config`
+    /// (allocates a fresh Arc, used by the reducer's occasional category-switch
+    /// rebuild) or an existing `Arc<Config>` (zero-cost, used by the per-frame
+    /// render path).
+    pub fn new(category: SettingsCategory, config: impl Into<Arc<Config>>) -> Self {
+        Self {
+            category,
+            config: config.into(),
+        }
     }
 
     /// Build the logging settings section
@@ -24,22 +32,30 @@ impl SettingsDocument {
         builder: DocumentBuilder,
         focus: &FocusContext,
     ) -> DocumentBuilder {
+        // Align labels: "Log Level:" is 10 chars (longest)
+        const LABEL_WIDTH: usize = 10;
+
         builder
-            .heading(2, "Logging Settings")
             .spacer(1)
             .link_with_focus(
                 "log_level",
-                format!("Log Level: {}", self.config.log_level),
-                LinkTarget::Action("edit:log_level".to_string()),
+                format!(
+                    "{:width$}   {}",
+                    "Log Level:",
+                    self.config.log_level,
+                    width = LABEL_WIDTH
+                ),
+                LinkTarget::EditSetting("log_level".to_string()),
                 focus,
             )
             .spacer(1)
-            .link_with_focus(
-                "log_file",
-                format!("Log File: {}", self.config.log_file),
-                LinkTarget::Action("edit:log_file".to_string()),
-                focus,
-            )
+            // Not editable via the UI yet, so this is display-only (not focusable).
+            .text(format!(
+                "{:width$}   {}",
+                "Log File:",
+                self.config.log_file,
+                width = LABEL_WIDTH
+            ))
     }
 
     /// Build the display settings section
@@ -48,6 +64,9 @@ impl SettingsDocument {
         builder: DocumentBuilder,
         focus: &FocusContext,
     ) -> DocumentBuilder {
+        // Align labels: "Use Unicode:" and "Error Color:" are 12 chars (longest)
+        const LABEL_WIDTH: usize = 12;
+
         let theme_name = self
             .config
             .display
@@ -57,25 +76,31 @@ impl SettingsDocument {
             .unwrap_or_else(|| "none".to_string());
 
         builder
-            .heading(2, "Display Settings")
             .spacer(1)
             .link_with_focus(
                 "theme",
-                format!("Theme: {}", theme_name),
-                LinkTarget::Action("edit:theme".to_string()),
+                format!("{:width$}   {}", "Theme:", theme_name, width = LABEL_WIDTH),
+                LinkTarget::EditSetting("theme".to_string()),
                 focus,
             )
             .spacer(1)
             .link_with_focus(
                 "use_unicode",
-                format!("Use Unicode: {}", self.config.display.use_unicode),
-                LinkTarget::Action("toggle:use_unicode".to_string()),
+                format!(
+                    "{:width$}   {}",
+                    "Use Unicode:",
+                    self.config.display.use_unicode,
+                    width = LABEL_WIDTH
+                ),
+                LinkTarget::ToggleSetting("use_unicode".to_string()),
                 focus,
             )
             .spacer(1)
             .text(format!(
-                "Error Color: {}",
-                format_color(&self.config.display.error_fg)
+                "{:width$}   {}",
+                "Error Color:",
+                format_color(&self.config.display.error_fg),
+                width = LABEL_WIDTH
             ))
     }
 
@@ -85,32 +110,38 @@ impl SettingsDocument {
         builder: DocumentBuilder,
         focus: &FocusContext,
     ) -> DocumentBuilder {
+        // Align labels: "Western Teams First:" is 20 chars (longest)
+        const LABEL_WIDTH: usize = 20;
+
         builder
-            .heading(2, "Data Settings")
             .spacer(1)
-            .link_with_focus(
-                "refresh_interval",
-                format!("Refresh Interval: {} seconds", self.config.refresh_interval),
-                LinkTarget::Action("edit:refresh_interval".to_string()),
-                focus,
-            )
+            // Not editable via the UI yet, so this is display-only (not focusable).
+            .text(format!(
+                "{:width$}   {} seconds",
+                "Refresh Interval:",
+                self.config.refresh_interval,
+                width = LABEL_WIDTH
+            ))
             .spacer(1)
             .link_with_focus(
                 "western_teams_first",
                 format!(
-                    "Western Teams First: {}",
-                    self.config.display_standings_western_first
+                    "{:width$}   {}",
+                    "Western Teams First:",
+                    self.config.display_standings_western_first,
+                    width = LABEL_WIDTH
                 ),
-                LinkTarget::Action("toggle:western_teams_first".to_string()),
+                LinkTarget::ToggleSetting("western_teams_first".to_string()),
                 focus,
             )
             .spacer(1)
-            .link_with_focus(
-                "time_format",
-                format!("Time Format: {}", self.config.time_format),
-                LinkTarget::Action("edit:time_format".to_string()),
-                focus,
-            )
+            // Not editable via the UI yet, so this is display-only (not focusable).
+            .text(format!(
+                "{:width$}   {}",
+                "Time Format:",
+                self.config.time_format,
+                width = LABEL_WIDTH
+            ))
     }
 }
 
@@ -172,10 +203,11 @@ fn format_color(color: &ratatui::style::Color) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tui::document::FocusableId;
 
     #[test]
     fn test_logging_document_builds() {
-        let config = Config::default();
+        let config = Arc::new(Config::default());
         let doc = SettingsDocument::new(SettingsCategory::Logging, config);
         let elements = doc.build(&FocusContext::default());
 
@@ -185,7 +217,7 @@ mod tests {
 
     #[test]
     fn test_display_document_builds() {
-        let config = Config::default();
+        let config = Arc::new(Config::default());
         let doc = SettingsDocument::new(SettingsCategory::Display, config);
         let elements = doc.build(&FocusContext::default());
 
@@ -194,8 +226,36 @@ mod tests {
     }
 
     #[test]
+    fn test_logging_focusable_ids_exclude_log_file() {
+        // "log_file" is display-only (not editable via the UI), so it must
+        // not be reachable through keyboard navigation.
+        let doc = SettingsDocument::new(SettingsCategory::Logging, Arc::new(Config::default()));
+        let ids: Vec<_> = doc
+            .focusables(&FocusContext::default())
+            .into_iter()
+            .map(|f| f.id)
+            .collect();
+
+        assert_eq!(ids, vec![FocusableId::link("log_level")]);
+    }
+
+    #[test]
+    fn test_data_focusable_ids_exclude_refresh_interval_and_time_format() {
+        // "refresh_interval" and "time_format" are display-only (not editable
+        // via the UI), so only "western_teams_first" should be focusable.
+        let doc = SettingsDocument::new(SettingsCategory::Data, Arc::new(Config::default()));
+        let ids: Vec<_> = doc
+            .focusables(&FocusContext::default())
+            .into_iter()
+            .map(|f| f.id)
+            .collect();
+
+        assert_eq!(ids, vec![FocusableId::link("western_teams_first")]);
+    }
+
+    #[test]
     fn test_data_document_builds() {
-        let config = Config::default();
+        let config = Arc::new(Config::default());
         let doc = SettingsDocument::new(SettingsCategory::Data, config);
         let elements = doc.build(&FocusContext::default());
 
@@ -205,7 +265,7 @@ mod tests {
 
     #[test]
     fn test_document_titles() {
-        let config = Config::default();
+        let config = Arc::new(Config::default());
 
         let logging_doc = SettingsDocument::new(SettingsCategory::Logging, config.clone());
         assert_eq!(logging_doc.title(), "Logging Settings");

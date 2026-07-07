@@ -14,12 +14,19 @@ use super::{standings_columns, TableWidget};
 /// Conference standings document - two tables side-by-side in a Row element
 pub struct ConferenceStandingsDocument {
     standings: Arc<Vec<Standing>>,
-    config: Config,
+    config: Arc<Config>,
 }
 
 impl ConferenceStandingsDocument {
-    pub fn new(standings: Arc<Vec<Standing>>, config: Config) -> Self {
-        Self { standings, config }
+    /// `config` accepts anything convertible to `Arc<Config>`: an owned `Config`
+    /// (allocates a fresh Arc, used by the reducer's occasional focusable-metadata
+    /// rebuild) or an existing `Arc<Config>` (zero-cost, used by the per-frame
+    /// render path).
+    pub fn new(standings: Arc<Vec<Standing>>, config: impl Into<Arc<Config>>) -> Self {
+        Self {
+            standings,
+            config: config.into(),
+        }
     }
 
     /// Group standings by conference and return (Eastern, Western) sorted by points
@@ -75,23 +82,27 @@ impl Document for ConferenceStandingsDocument {
         // Use Row element to place tables side-by-side with section titles
         // Section titles are indented by 2 to align with table content (after selector space)
         const MARGIN: u16 = 2;
+        const GAP: u16 = 4;
         DocumentBuilder::new()
-            .row(vec![
-                DocumentElement::group(vec![
-                    DocumentElement::indented(
-                        DocumentElement::section_title(left_header, false),
-                        MARGIN,
-                    ),
-                    DocumentElement::table(LEFT_TABLE, left_table),
-                ]),
-                DocumentElement::group(vec![
-                    DocumentElement::indented(
-                        DocumentElement::section_title(right_header, false),
-                        MARGIN,
-                    ),
-                    DocumentElement::table(RIGHT_TABLE, right_table),
-                ]),
-            ])
+            .element(DocumentElement::row_center_with_gap(
+                vec![
+                    DocumentElement::group(vec![
+                        DocumentElement::indented(
+                            DocumentElement::section_title(left_header, false),
+                            MARGIN,
+                        ),
+                        DocumentElement::table(LEFT_TABLE, left_table),
+                    ]),
+                    DocumentElement::group(vec![
+                        DocumentElement::indented(
+                            DocumentElement::section_title(right_header, false),
+                            MARGIN,
+                        ),
+                        DocumentElement::table(RIGHT_TABLE, right_table),
+                    ]),
+                ],
+                GAP,
+            ))
             .build()
     }
 

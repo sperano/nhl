@@ -5,7 +5,7 @@ use ratatui::{buffer::Buffer, layout::Rect};
 use nhl_api::{PlayerLanding, Position, SeasonTotal};
 
 use super::table::TableWidget;
-use crate::config::DisplayConfig;
+use crate::config::RenderContext;
 use crate::team_abbrev::common_name_to_abbrev;
 use crate::tui::component::{Component, Element, ElementWidget};
 use crate::tui::document::{
@@ -18,12 +18,18 @@ use crate::tui::{Alignment, CellValue, ColumnDef};
 /// Props for PlayerDetailDocument component
 #[derive(Clone)]
 pub struct PlayerDetailDocumentProps {
-    pub player_id: i64,
-    pub player_data: Option<PlayerLanding>,
+    /// Pre-built content document, or `None` while player data hasn't
+    /// arrived yet (rendered as a loading spinner). Built by
+    /// `document::build_stacked_document`, the single production
+    /// construction site shared with the input-handling path.
+    pub document: Option<Arc<dyn Document>>,
     pub loading: bool,
     pub selected_index: Option<usize>,
     pub scroll_offset: u16,
     pub animation_frame: u8,
+    /// Whether this document has focus (affects dim/bright rendering)
+    /// Stacked documents are always focused
+    pub focused: bool,
 }
 
 /// PlayerDetailDocument component - renders player info and career stats
@@ -36,12 +42,12 @@ impl Component for PlayerDetailDocument {
 
     fn view(&self, props: &Self::Props, _state: &Self::State) -> Element {
         Element::Widget(Box::new(PlayerDetailDocumentWidget {
-            player_id: props.player_id,
-            player_data: props.player_data.clone(),
+            document: props.document.clone(),
             loading: props.loading,
             focus_index: props.selected_index,
             scroll_offset: props.scroll_offset,
             animation_frame: props.animation_frame,
+            focused: props.focused,
         }))
     }
 }
@@ -161,7 +167,7 @@ impl PlayerDetailDocumentContent {
         let career = player.career_totals.as_ref()?;
         let rs = &career.regular_season;
 
-        Some(if player.position == Position::Goalie {
+        Some(if player.position == Some(Position::Goalie) {
             format!(
                 "GP: {} | W: {} | L: {} | OTL: {} | GAA: {:.2} | SV%: {:.3} | SO: {}",
                 rs.games_played.unwrap_or(0),
@@ -210,14 +216,18 @@ impl Document for PlayerDetailDocumentContent {
             .sweater_number
             .map(|n| format!("#{} | ", n))
             .unwrap_or_default();
-        let hand_label = if player.position == Position::Goalie {
+        let hand_label = if player.position == Some(Position::Goalie) {
             "Catches"
         } else {
             "Shoots"
         };
         let details1 = format!(
             "{}{}{} | {}/{}",
-            team_info, sweater, player.position, player.shoots_catches, hand_label
+            team_info,
+            sweater,
+            player.position.map_or("N/A", |p| p.code()),
+            player.shoots_catches.map_or("N/A", |h| h.code()),
+            hand_label
         );
         builder = builder.text(details1);
 
@@ -251,7 +261,7 @@ impl Document for PlayerDetailDocumentContent {
         // Season-by-season table
         let seasons = Self::get_nhl_regular_seasons(player);
         if !seasons.is_empty() {
-            let columns = if player.position == Position::Goalie {
+            let columns = if player.position == Some(Position::Goalie) {
                 Self::goalie_season_columns()
             } else {
                 Self::skater_season_columns()
@@ -289,35 +299,36 @@ impl Document for PlayerDetailDocumentContent {
 /// with proper scrolling and focus support.
 #[derive(Clone)]
 pub struct PlayerDetailDocumentWidget {
-    player_id: i64,
-    player_data: Option<PlayerLanding>,
+    document: Option<Arc<dyn Document>>,
     loading: bool,
     focus_index: Option<usize>,
     scroll_offset: u16,
     animation_frame: u8,
+    /// Whether this widget has focus (affects dim/bright rendering)
+    focused: bool,
 }
 
 impl ElementWidget for PlayerDetailDocumentWidget {
-    fn render(&self, area: Rect, buf: &mut Buffer, config: &DisplayConfig) {
+    fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
+        // Create child RenderContext with our focus state
+        let child_ctx = RenderContext::new(ctx.config, self.focused);
+
         // Handle loading state - show animation if loading or data hasn't arrived yet
-        if self.loading || self.player_data.is_none() {
-            LoadingAnimation::new(self.animation_frame).render(area, buf, config);
+        if self.loading || self.document.is_none() {
+            LoadingAnimation::new(self.animation_frame).render(area, buf, &child_ctx);
             return;
         }
 
-        // Create document
-        let doc = Arc::new(PlayerDetailDocumentContent::new(
-            self.player_data.clone(),
-            self.player_id,
-        ));
+        // Safe to unwrap since we checked is_none() above
+        let document = self.document.clone().unwrap();
 
-        // Create DocumentView and render
-        let mut view = DocumentView::new(doc, area.height);
+        // Create DocumentView and render the pre-built document
+        let mut view = DocumentView::new(document, area.height);
         if let Some(idx) = self.focus_index {
             view.focus_by_index(idx);
         }
         view.set_scroll_offset(self.scroll_offset);
-        view.render(area, buf, config);
+        view.render(area, buf, &child_ctx);
     }
 
     fn clone_box(&self) -> Box<dyn ElementWidget> {
@@ -328,15 +339,16 @@ impl ElementWidget for PlayerDetailDocumentWidget {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{DisplayConfig, RenderContext};
     use crate::tui::document::FocusableId;
-    use nhl_api::{Handedness, LocalizedString, SeasonTotal};
+    use nhl_api::{Handedness, LocalizedString, Season, SeasonTotal};
     use ratatui::buffer::Buffer;
 
     fn create_test_player(player_id: i64, position: Position) -> PlayerLanding {
         PlayerLanding {
-            player_id,
+            player_id: player_id.into(),
             is_active: true,
-            current_team_id: Some(10),
+            current_team_id: Some(10.into()),
             current_team_abbrev: Some("TOR".to_string()),
             first_name: LocalizedString {
                 default: "Test".to_string(),
@@ -345,7 +357,7 @@ mod tests {
                 default: "Player".to_string(),
             },
             sweater_number: Some(34),
-            position,
+            position: Some(position),
             headshot: String::new(),
             hero_image: None,
             height_in_inches: 73,
@@ -358,14 +370,14 @@ mod tests {
                 default: "ON".to_string(),
             }),
             birth_country: Some("CAN".to_string()),
-            shoots_catches: Handedness::Left,
+            shoots_catches: Some(Handedness::Left),
             draft_details: None,
             player_slug: None,
             featured_stats: None,
             career_totals: None,
             season_totals: Some(vec![
                 SeasonTotal {
-                    season: 20232024,
+                    season: Season::new(2023),
                     game_type: nhl_api::GameType::RegularSeason,
                     league_abbrev: "NHL".to_string(),
                     team_name: LocalizedString {
@@ -383,7 +395,7 @@ mod tests {
                     pim: Some(20),
                 },
                 SeasonTotal {
-                    season: 20222023,
+                    season: Season::new(2022),
                     game_type: nhl_api::GameType::RegularSeason,
                     league_abbrev: "NHL".to_string(),
                     team_name: LocalizedString {
@@ -470,7 +482,7 @@ mod tests {
         let player = create_test_player(8479318, Position::Center);
         let doc = PlayerDetailDocumentContent::new(Some(player), 8479318);
 
-        let positions = doc.focusable_positions();
+        let positions = doc.focusables(&FocusContext::default());
 
         // Should have 2 focusable positions (one per season with TableCell)
         assert_eq!(positions.len(), 2);
@@ -481,7 +493,11 @@ mod tests {
         let player = create_test_player(8479318, Position::Center);
         let doc = PlayerDetailDocumentContent::new(Some(player), 8479318);
 
-        let ids = doc.focusable_ids();
+        let ids: Vec<_> = doc
+            .focusables(&FocusContext::default())
+            .into_iter()
+            .map(|f| f.id)
+            .collect();
 
         // Should have 2 focusable IDs (one per season with TableCell)
         // TableCell IDs enable row highlighting via focused_table_row()
@@ -522,24 +538,29 @@ mod tests {
 
     // === Widget tests ===
 
+    fn test_document(player: Option<PlayerLanding>) -> Arc<dyn Document> {
+        Arc::new(PlayerDetailDocumentContent::new(player, 8479318))
+    }
+
     #[test]
     fn test_widget_renders_with_data() {
         let player = create_test_player(8479318, Position::Center);
 
         let widget = PlayerDetailDocumentWidget {
-            player_id: 8479318,
-            player_data: Some(player),
+            document: Some(test_document(Some(player))),
             loading: false,
             focus_index: None,
             scroll_offset: 0,
             animation_frame: 0,
+            focused: true,
         };
 
         let area = Rect::new(0, 0, 80, 30);
         let mut buf = Buffer::empty(area);
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        widget.render(area, &mut buf, &config);
+        widget.render(area, &mut buf, &ctx);
 
         // Verify rendering completed without panic
         assert_eq!(*buf.area(), area);
@@ -548,19 +569,20 @@ mod tests {
     #[test]
     fn test_widget_shows_loading() {
         let widget = PlayerDetailDocumentWidget {
-            player_id: 8479318,
-            player_data: None,
+            document: None,
             loading: true,
             focus_index: None,
             scroll_offset: 0,
             animation_frame: 0,
+            focused: true,
         };
 
         let area = Rect::new(0, 0, 80, 10);
         let mut buf = Buffer::empty(area);
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        widget.render(area, &mut buf, &config);
+        widget.render(area, &mut buf, &ctx);
 
         assert_eq!(*buf.area(), area);
     }
@@ -568,19 +590,20 @@ mod tests {
     #[test]
     fn test_widget_handles_no_data() {
         let widget = PlayerDetailDocumentWidget {
-            player_id: 8479318,
-            player_data: None,
+            document: None,
             loading: false,
             focus_index: None,
             scroll_offset: 0,
             animation_frame: 0,
+            focused: true,
         };
 
         let area = Rect::new(0, 0, 80, 10);
         let mut buf = Buffer::empty(area);
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        widget.render(area, &mut buf, &config);
+        widget.render(area, &mut buf, &ctx);
 
         assert_eq!(*buf.area(), area);
     }
@@ -590,19 +613,20 @@ mod tests {
         let player = create_test_player(8479318, Position::Center);
 
         let widget = PlayerDetailDocumentWidget {
-            player_id: 8479318,
-            player_data: Some(player),
+            document: Some(test_document(Some(player))),
             loading: false,
             focus_index: Some(0), // Focus on first focusable element
             scroll_offset: 0,
             animation_frame: 0,
+            focused: true,
         };
 
         let area = Rect::new(0, 0, 80, 30);
         let mut buf = Buffer::empty(area);
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        widget.render(area, &mut buf, &config);
+        widget.render(area, &mut buf, &ctx);
 
         // Should render without panic
         assert_eq!(*buf.area(), area);
@@ -613,19 +637,20 @@ mod tests {
         let player = create_test_player(8479318, Position::Center);
 
         let widget = PlayerDetailDocumentWidget {
-            player_id: 8479318,
-            player_data: Some(player),
+            document: Some(test_document(Some(player))),
             loading: false,
             focus_index: None,
             scroll_offset: 5, // Scroll down 5 lines
             animation_frame: 0,
+            focused: true,
         };
 
         let area = Rect::new(0, 0, 80, 30);
         let mut buf = Buffer::empty(area);
         let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
 
-        widget.render(area, &mut buf, &config);
+        widget.render(area, &mut buf, &ctx);
 
         // Should render without panic
         assert_eq!(*buf.area(), area);

@@ -1,4 +1,3 @@
-use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{buffer::Buffer, layout::Rect};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -7,12 +6,15 @@ use nhl_api::{DailySchedule, GameDate, GameMatchup};
 
 use crate::commands::scores_format::PeriodScores;
 use crate::component_message_impl;
-use crate::config::DisplayConfig;
+use crate::config::RenderContext;
 use crate::tui::action::Action;
 use crate::tui::component::{Component, Effect, Element, ElementWidget};
-use crate::tui::document::DocumentView;
+use crate::tui::document::{DocumentView, LinkTarget};
 use crate::tui::document_nav::{DocumentNavMsg, DocumentNavState};
-use crate::tui::tab_component::{handle_common_message, CommonTabMessage, TabMessage, TabState};
+use crate::tui::tab_component::{
+    handle_common_message, CommonTabMessage, TabMessage, TabState, BASE_CHROME_LINES,
+    SUBTAB_CHROME_LINES,
+};
 
 use super::score_boxes_document::ScoreBoxesDocument;
 use super::{TabItem, TabbedPanel, TabbedPanelProps};
@@ -46,14 +48,16 @@ impl TabState for ScoresTabState {
     fn doc_nav_mut(&mut self) -> &mut DocumentNavState {
         &mut self.doc_nav
     }
+
+    /// Scores has a nested date-selector subtab bar above its document viewport.
+    fn chrome_lines() -> u16 {
+        BASE_CHROME_LINES + SUBTAB_CHROME_LINES
+    }
 }
 
 /// Messages handled by ScoresTab component
 #[derive(Clone, Debug)]
 pub enum ScoresTabMsg {
-    /// Key event when this tab is focused
-    Key(KeyEvent),
-
     /// Navigate up request (ESC in browse mode, returns to tab bar otherwise)
     /// Returns Effect::Handled if consumed, Effect::None if should bubble up
     NavigateUp,
@@ -130,8 +134,6 @@ impl Component for ScoresTab {
 
         // Handle tab-specific messages
         match msg {
-            ScoresTabMsg::Key(key) => self.handle_key(key, state),
-
             ScoresTabMsg::NavigateLeft => {
                 // Navigate left in the date window
                 if state.selected_date_index > 0 {
@@ -162,37 +164,22 @@ impl Component for ScoresTab {
                 Effect::Action(Action::RefreshSchedule(state.game_date.clone()))
             }
             ScoresTabMsg::EnterBoxSelection => {
-                state.enter_browse_mode();
+                state.focus_first_item();
                 Effect::None
             }
             ScoresTabMsg::ExitBoxSelection => {
-                state.exit_browse_mode();
+                state.clear_item_focus();
                 Effect::None
             }
 
-            // Game activation
-            ScoresTabMsg::ActivateGame => {
-                if let Some(focus_idx) = state.doc_nav().focus_index {
-                    if let Some(crate::tui::document::FocusableId::GameLink(game_id)) =
-                        state.doc_nav().focusable_ids.get(focus_idx)
-                    {
-                        return Effect::Action(Action::SelectGame(*game_id));
-                    }
-                    // Fallback for Link IDs (legacy format)
-                    if let Some(crate::tui::document::FocusableId::Link(link_id)) =
-                        state.doc_nav().focusable_ids.get(focus_idx)
-                    {
-                        // Parse "game_12345" -> 12345
-                        if let Some(game_id) = link_id
-                            .strip_prefix("game_")
-                            .and_then(|s| s.parse::<i64>().ok())
-                        {
-                            return Effect::Action(Action::SelectGame(game_id));
-                        }
-                    }
-                }
-                Effect::None
-            }
+            // Game activation: the focused score box carries its own
+            // `LinkTarget::Push(Boxscore { .. })`, attached when the document
+            // was built (see `ScoreBoxesDocument::build_link_target`), so
+            // there's no need to re-derive the game's abbrevs/scores here.
+            ScoresTabMsg::ActivateGame => match state.doc_nav().focused_link_target() {
+                Some(LinkTarget::Push(doc)) => Effect::Action(Action::PushDocument(doc.clone())),
+                _ => Effect::None,
+            },
 
             // Common messages already handled above
             ScoresTabMsg::DocNav(_)
@@ -240,7 +227,8 @@ impl ScoresTab {
             &TabbedPanelProps {
                 active_key,
                 tabs,
-                focused: props.focused && !state.is_browse_mode(),
+                focused: props.focused && !state.has_item_focus(),
+                content_has_focus: props.focused && state.has_item_focus(),
             },
             &(),
         )
@@ -273,6 +261,7 @@ impl ScoresTab {
         _date: &GameDate,
     ) -> Element {
         // Wrap in ScoreBoxesDocumentWidget which calculates boxes_per_row at render time
+        // Document is only focused when in browse mode (navigating within the document)
         Element::Widget(Box::new(ScoreBoxesDocumentWidget {
             schedule: props.schedule.clone(),
             game_info: props.game_info.clone(),
@@ -280,51 +269,8 @@ impl ScoresTab {
             focus_index: state.doc_nav.focus_index,
             scroll_offset: state.doc_nav.scroll_offset,
             animation_frame: props.animation_frame,
+            focused: props.focused && state.has_item_focus(),
         }))
-    }
-
-    /// Handle key events when this tab is focused
-    ///
-    /// This method handles all key logic that was previously in keys.rs.
-    /// Returns an Effect which may be an Action to dispatch.
-    fn handle_key(&mut self, key: KeyEvent, state: &mut ScoresTabState) -> Effect {
-        if state.is_browse_mode() {
-            // Box selection mode - arrow keys navigate games
-            match key.code {
-                KeyCode::Up => crate::tui::document_nav::handle_message(
-                    &mut state.doc_nav,
-                    &DocumentNavMsg::FocusPrev,
-                ),
-                KeyCode::Down => crate::tui::document_nav::handle_message(
-                    &mut state.doc_nav,
-                    &DocumentNavMsg::FocusNext,
-                ),
-                KeyCode::Left => crate::tui::document_nav::handle_message(
-                    &mut state.doc_nav,
-                    &DocumentNavMsg::FocusLeft,
-                ),
-                KeyCode::Right => crate::tui::document_nav::handle_message(
-                    &mut state.doc_nav,
-                    &DocumentNavMsg::FocusRight,
-                ),
-                KeyCode::Enter => {
-                    // Activate the focused game
-                    self.update(ScoresTabMsg::ActivateGame, state)
-                }
-                _ => Effect::None,
-            }
-        } else {
-            // Date navigation mode - arrow keys navigate dates
-            match key.code {
-                KeyCode::Left => self.update(ScoresTabMsg::NavigateLeft, state),
-                KeyCode::Right => self.update(ScoresTabMsg::NavigateRight, state),
-                KeyCode::Down | KeyCode::Enter => {
-                    // Enter box selection mode
-                    self.update(ScoresTabMsg::EnterBoxSelection, state)
-                }
-                _ => Effect::None,
-            }
-        }
     }
 }
 
@@ -339,10 +285,12 @@ struct ScoreBoxesDocumentWidget {
     focus_index: Option<usize>,
     scroll_offset: u16,
     animation_frame: u8,
+    /// Whether this widget has focus (affects dim/bright rendering)
+    focused: bool,
 }
 
 impl ElementWidget for ScoreBoxesDocumentWidget {
-    fn render(&self, area: Rect, buf: &mut Buffer, display_config: &DisplayConfig) {
+    fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
         // Calculate boxes_per_row based on actual viewport width
         let boxes_per_row = ScoreBoxesDocument::boxes_per_row_for_width(area.width);
 
@@ -366,8 +314,11 @@ impl ElementWidget for ScoreBoxesDocumentWidget {
         // Apply scroll offset
         view.set_scroll_offset(self.scroll_offset);
 
+        // Create child RenderContext with our focus state
+        let child_ctx = RenderContext::new(ctx.config, self.focused);
+
         // Render the document
-        view.render(area, buf, display_config);
+        view.render(area, buf, &child_ctx);
     }
 
     fn clone_box(&self) -> Box<dyn ElementWidget> {
@@ -378,6 +329,7 @@ impl ElementWidget for ScoreBoxesDocumentWidget {
             focus_index: self.focus_index,
             scroll_offset: self.scroll_offset,
             animation_frame: self.animation_frame,
+            focused: self.focused,
         })
     }
 
@@ -411,5 +363,48 @@ mod tests {
             _ => panic!("Expected container element"),
         }
     }
-    //
+
+    #[test]
+    fn test_activate_game_pushes_boxscore_document() {
+        use crate::tui::component::Component;
+        use crate::tui::document::{FocusableElement, FocusableId};
+        use crate::tui::types::StackedDocument;
+
+        let mut scores_tab = ScoresTab;
+        let mut state = ScoresTabState::default();
+
+        let doc = StackedDocument::Boxscore {
+            game_id: 2024020001,
+            away_abbrev: "TOR".to_string(),
+            home_abbrev: "MTL".to_string(),
+            away_score: 3,
+            home_score: 2,
+            game_date: "10/04".to_string(),
+        };
+        state.doc_nav.focusables =
+            vec![
+                FocusableElement::at(0, 1, FocusableId::game_link(2024020001))
+                    .with_link_target(LinkTarget::Push(doc.clone())),
+            ];
+        state.doc_nav.focus_index = Some(0);
+
+        let effect = scores_tab.update(ScoresTabMsg::ActivateGame, &mut state);
+
+        match effect {
+            Effect::Action(Action::PushDocument(pushed)) => assert_eq!(pushed, doc),
+            _ => panic!("Expected PushDocument action, got {:?}", effect),
+        }
+    }
+
+    #[test]
+    fn test_activate_game_without_focus_does_nothing() {
+        use crate::tui::component::Component;
+
+        let mut scores_tab = ScoresTab;
+        let mut state = ScoresTabState::default();
+
+        let effect = scores_tab.update(ScoresTabMsg::ActivateGame, &mut state);
+
+        assert!(matches!(effect, Effect::None));
+    }
 }

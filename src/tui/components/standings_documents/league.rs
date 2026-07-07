@@ -13,12 +13,19 @@ use super::{standings_columns, TableWidget};
 pub struct LeagueStandingsDocument {
     standings: Arc<Vec<Standing>>,
     #[allow(dead_code)] // Will be used for other standings views
-    config: Config,
+    config: Arc<Config>,
 }
 
 impl LeagueStandingsDocument {
-    pub fn new(standings: Arc<Vec<Standing>>, config: Config) -> Self {
-        Self { standings, config }
+    /// `config` accepts anything convertible to `Arc<Config>`: an owned `Config`
+    /// (allocates a fresh Arc, used by the reducer's occasional focusable-metadata
+    /// rebuild) or an existing `Arc<Config>` (zero-cost, used by the per-frame
+    /// render path).
+    pub fn new(standings: Arc<Vec<Standing>>, config: impl Into<Arc<Config>>) -> Self {
+        Self {
+            standings,
+            config: config.into(),
+        }
     }
 }
 
