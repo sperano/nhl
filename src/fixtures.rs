@@ -11,7 +11,7 @@ use nhl_api::{
     GameMatchup, GameOutcome, GameScheduleState, GameState, GameType, Handedness, HomeRoad,
     LocalizedString, PeriodDescriptor, PeriodType, PlayByPlay, PlayEvent, PlayEventDetails,
     PlayEventType, PlayerByGameStats, PlayerGameLog, PlayerLanding, PlayerSearchResult, Position,
-    RosterSpot, ScheduleGame, ScheduleTeam, Standing, TeamPlayerStats, ZoneCode,
+    RosterSpot, ScheduleGame, ScheduleTeam, Season, Standing, TeamPlayerStats, ZoneCode,
 };
 
 /// Create mock standings data - reusing the test data structure
@@ -48,13 +48,13 @@ fn create_mock_game(
     status: GameState,
 ) -> ScheduleGame {
     ScheduleGame {
-        id,
+        id: id.into(),
         game_type: nhl_api::GameType::RegularSeason,
         game_date: Some("2024-11-20".to_string()),
         start_time_utc: "2024-11-21T00:00:00Z".to_string(),
         game_state: status,
         away_team: ScheduleTeam {
-            id: away_abbrev.chars().map(|c| c as i32).sum::<i32>() as i64,
+            id: (away_abbrev.chars().map(|c| c as i32).sum::<i32>() as i64).into(),
             abbrev: away_abbrev.to_string(),
             score: if status == GameState::Live || status == GameState::Final {
                 Some(2)
@@ -68,7 +68,7 @@ fn create_mock_game(
             place_name: None,
         },
         home_team: ScheduleTeam {
-            id: home_abbrev.chars().map(|c| c as i32).sum::<i32>() as i64,
+            id: (home_abbrev.chars().map(|c| c as i32).sum::<i32>() as i64).into(),
             abbrev: home_abbrev.to_string(),
             score: if status == GameState::Live || status == GameState::Final {
                 Some(3)
@@ -99,8 +99,8 @@ pub fn create_mock_game_matchup(game_id: i64) -> GameMatchup {
 
 fn create_game_matchup_not_started() -> GameMatchup {
     GameMatchup {
-        id: 2024020001,
-        season: 20242025,
+        id: 2024020001.into(),
+        season: Season::new(2024),
         game_type: nhl_api::GameType::RegularSeason,
         limited_scoring: false,
         game_date: "2024-11-20".to_string(),
@@ -116,7 +116,7 @@ fn create_game_matchup_not_started() -> GameMatchup {
         venue_timezone: "America/New_York".to_string(),
         period_descriptor: nhl_api::PeriodDescriptor {
             number: 0,
-            period_type: PeriodType::Regulation,
+            period_type: Some(PeriodType::Regulation),
             max_regulation_periods: 3,
         },
         tv_broadcasts: vec![],
@@ -144,8 +144,8 @@ fn create_game_matchup_in_progress(period: i32) -> GameMatchup {
     };
 
     GameMatchup {
-        id: 2024020002 + (period - 1) as i64,
-        season: 20242025,
+        id: (2024020002 + (period - 1) as i64).into(),
+        season: Season::new(2024),
         game_type: nhl_api::GameType::RegularSeason,
         limited_scoring: false,
         game_date: "2024-11-20".to_string(),
@@ -161,7 +161,7 @@ fn create_game_matchup_in_progress(period: i32) -> GameMatchup {
         venue_timezone: "America/Toronto".to_string(),
         period_descriptor: nhl_api::PeriodDescriptor {
             number: period,
-            period_type: PeriodType::Regulation,
+            period_type: Some(PeriodType::Regulation),
             max_regulation_periods: 3,
         },
         tv_broadcasts: vec![],
@@ -204,8 +204,8 @@ fn create_game_matchup_final(overtime: bool) -> GameMatchup {
     };
 
     GameMatchup {
-        id: if overtime { 2024020006 } else { 2024020005 },
-        season: 20242025,
+        id: if overtime { 2024020006.into() } else { 2024020005.into() },
+        season: Season::new(2024),
         game_type: nhl_api::GameType::RegularSeason,
         limited_scoring: false,
         game_date: "2024-11-20".to_string(),
@@ -237,9 +237,9 @@ fn create_game_matchup_final(overtime: bool) -> GameMatchup {
         period_descriptor: nhl_api::PeriodDescriptor {
             number: if overtime { 4 } else { 3 },
             period_type: if overtime {
-                PeriodType::Overtime
+                Some(PeriodType::Overtime)
             } else {
-                PeriodType::Regulation
+                Some(PeriodType::Regulation)
             },
             max_regulation_periods: 3,
         },
@@ -293,7 +293,7 @@ fn create_matchup_team(
     sog: i32,
 ) -> nhl_api::MatchupTeam {
     nhl_api::MatchupTeam {
-        id: abbrev.chars().map(|c| c as i32).sum::<i32>() as i64,
+        id: (abbrev.chars().map(|c| c as i32).sum::<i32>() as i64).into(),
         common_name: nhl_api::LocalizedString {
             default: name.to_string(),
         },
@@ -314,8 +314,8 @@ fn create_matchup_team(
 fn create_game_summary(_period: i32, _away_score: i32, _home_score: i32) -> nhl_api::GameSummary {
     nhl_api::GameSummary {
         scoring: vec![],
-        shootout: None,
-        three_stars: None,
+        shootout: vec![],
+        three_stars: vec![],
         penalties: vec![],
     }
 }
@@ -332,8 +332,8 @@ pub fn create_mock_boxscore(game_id: i64) -> Boxscore {
     };
 
     Boxscore {
-        id: game_id,
-        season: 20242025,
+        id: game_id.into(),
+        season: Season::new(2024),
         game_type: nhl_api::GameType::RegularSeason,
         limited_scoring: false,
         game_date: "2024-11-20".to_string(),
@@ -367,15 +367,15 @@ pub fn create_mock_boxscore(game_id: i64) -> Boxscore {
         } else {
             GameState::Final
         },
-        game_schedule_state: "OK".to_string(),
+        game_schedule_state: GameScheduleState::Ok,
         period_descriptor: PeriodDescriptor {
             number: period,
-            period_type: PeriodType::Regulation,
+            period_type: Some(PeriodType::Regulation),
             max_regulation_periods: 3,
         },
         special_event: None,
         away_team: BoxscoreTeam {
-            id: 10,
+            id: 10.into(),
             common_name: LocalizedString {
                 default: "Maple Leafs".to_string(),
             },
@@ -392,7 +392,7 @@ pub fn create_mock_boxscore(game_id: i64) -> Boxscore {
             },
         },
         home_team: BoxscoreTeam {
-            id: 9,
+            id: 9.into(),
             common_name: LocalizedString {
                 default: "Senators".to_string(),
             },
@@ -481,7 +481,7 @@ pub fn create_mock_club_stats(
     game_type: nhl_api::GameType,
 ) -> nhl_api::ClubStats {
     nhl_api::ClubStats {
-        season: season.to_string(),
+        season: season.try_into().expect("valid mock season id"),
         game_type,
         skaters: vec![],
         goalies: vec![],
@@ -491,9 +491,9 @@ pub fn create_mock_club_stats(
 /// Create mock player landing
 pub fn create_mock_player_landing(player_id: i64) -> PlayerLanding {
     PlayerLanding {
-        player_id,
+        player_id: player_id.into(),
         is_active: true,
-        current_team_id: Some(22),
+        current_team_id: Some(22.into()),
         current_team_abbrev: Some("EDM".to_string()),
         first_name: LocalizedString {
             default: "Connor".to_string(),
@@ -502,7 +502,7 @@ pub fn create_mock_player_landing(player_id: i64) -> PlayerLanding {
             default: "McDavid".to_string(),
         },
         sweater_number: Some(97),
-        position: Position::Center,
+        position: Some(Position::Center),
         headshot: "https://assets.nhle.com/mugs/nhl/20242025/EDM/8478402.png".to_string(),
         hero_image: None,
         height_in_inches: 73,
@@ -515,7 +515,7 @@ pub fn create_mock_player_landing(player_id: i64) -> PlayerLanding {
             default: "ON".to_string(),
         }),
         birth_country: Some("CAN".to_string()),
-        shoots_catches: Handedness::Left,
+        shoots_catches: Some(Handedness::Left),
         draft_details: None,
         player_slug: Some("connor-mcdavid-8478402".to_string()),
         featured_stats: None,
@@ -524,7 +524,7 @@ pub fn create_mock_player_landing(player_id: i64) -> PlayerLanding {
         awards: None,
         last_five_games: Some(vec![
             GameLog {
-                game_id: 2024020500,
+                game_id: 2024020500.into(),
                 game_date: "2024-12-28".to_string(),
                 team_abbrev: "EDM".to_string(),
                 home_road_flag: HomeRoad::Home,
@@ -543,7 +543,7 @@ pub fn create_mock_player_landing(player_id: i64) -> PlayerLanding {
                 pim: Some(0),
             },
             GameLog {
-                game_id: 2024020480,
+                game_id: 2024020480.into(),
                 game_date: "2024-12-26".to_string(),
                 team_abbrev: "EDM".to_string(),
                 home_road_flag: HomeRoad::Road,
@@ -562,7 +562,7 @@ pub fn create_mock_player_landing(player_id: i64) -> PlayerLanding {
                 pim: Some(2),
             },
             GameLog {
-                game_id: 2024020460,
+                game_id: 2024020460.into(),
                 game_date: "2024-12-23".to_string(),
                 team_abbrev: "EDM".to_string(),
                 home_road_flag: HomeRoad::Home,
@@ -581,7 +581,7 @@ pub fn create_mock_player_landing(player_id: i64) -> PlayerLanding {
                 pim: Some(0),
             },
             GameLog {
-                game_id: 2024020440,
+                game_id: 2024020440.into(),
                 game_date: "2024-12-21".to_string(),
                 team_abbrev: "EDM".to_string(),
                 home_road_flag: HomeRoad::Road,
@@ -600,7 +600,7 @@ pub fn create_mock_player_landing(player_id: i64) -> PlayerLanding {
                 pim: Some(0),
             },
             GameLog {
-                game_id: 2024020420,
+                game_id: 2024020420.into(),
                 game_date: "2024-12-19".to_string(),
                 team_abbrev: "EDM".to_string(),
                 home_road_flag: HomeRoad::Home,
@@ -626,10 +626,10 @@ pub fn create_mock_player_landing(player_id: i64) -> PlayerLanding {
 pub fn create_mock_player_search(query: &str, limit: Option<i32>) -> Vec<PlayerSearchResult> {
     let all_players = vec![
         PlayerSearchResult {
-            player_id: "8478402".to_string(),
+            player_id: 8478402.into(),
             name: "Connor McDavid".to_string(),
-            position: Position::Center,
-            team_id: Some("22".to_string()),
+            position: Some(Position::Center),
+            team_id: Some(22.into()),
             team_abbrev: Some("EDM".to_string()),
             sweater_number: Some(97),
             active: true,
@@ -639,10 +639,10 @@ pub fn create_mock_player_search(query: &str, limit: Option<i32>) -> Vec<PlayerS
             birth_country: Some("CAN".to_string()),
         },
         PlayerSearchResult {
-            player_id: "8478483".to_string(),
+            player_id: 8478483.into(),
             name: "Auston Matthews".to_string(),
-            position: Position::Center,
-            team_id: Some("10".to_string()),
+            position: Some(Position::Center),
+            team_id: Some(10.into()),
             team_abbrev: Some("TOR".to_string()),
             sweater_number: Some(34),
             active: true,
@@ -652,10 +652,10 @@ pub fn create_mock_player_search(query: &str, limit: Option<i32>) -> Vec<PlayerS
             birth_country: Some("USA".to_string()),
         },
         PlayerSearchResult {
-            player_id: "8477492".to_string(),
+            player_id: 8477492.into(),
             name: "Nathan MacKinnon".to_string(),
-            position: Position::Center,
-            team_id: Some("21".to_string()),
+            position: Some(Position::Center),
+            team_id: Some(21.into()),
             team_abbrev: Some("COL".to_string()),
             sweater_number: Some(29),
             active: true,
@@ -684,12 +684,12 @@ pub fn create_mock_player_game_log(
     game_type: GameType,
 ) -> PlayerGameLog {
     PlayerGameLog {
-        player_id,
-        season,
+        player_id: player_id.into(),
+        season: season.try_into().expect("valid mock season id"),
         game_type,
         game_log: vec![
             GameLog {
-                game_id: 2024020500,
+                game_id: 2024020500.into(),
                 game_date: "2024-12-28".to_string(),
                 team_abbrev: "EDM".to_string(),
                 home_road_flag: HomeRoad::Home,
@@ -708,7 +708,7 @@ pub fn create_mock_player_game_log(
                 pim: Some(0),
             },
             GameLog {
-                game_id: 2024020480,
+                game_id: 2024020480.into(),
                 game_date: "2024-12-26".to_string(),
                 team_abbrev: "EDM".to_string(),
                 home_road_flag: HomeRoad::Road,
@@ -727,7 +727,7 @@ pub fn create_mock_player_game_log(
                 pim: Some(2),
             },
             GameLog {
-                game_id: 2024020460,
+                game_id: 2024020460.into(),
                 game_date: "2024-12-23".to_string(),
                 team_abbrev: "EDM".to_string(),
                 home_road_flag: HomeRoad::Home,
@@ -746,7 +746,7 @@ pub fn create_mock_player_game_log(
                 pim: Some(0),
             },
             GameLog {
-                game_id: 2024020440,
+                game_id: 2024020440.into(),
                 game_date: "2024-12-21".to_string(),
                 team_abbrev: "EDM".to_string(),
                 home_road_flag: HomeRoad::Road,
@@ -765,7 +765,7 @@ pub fn create_mock_player_game_log(
                 pim: Some(0),
             },
             GameLog {
-                game_id: 2024020420,
+                game_id: 2024020420.into(),
                 game_date: "2024-12-19".to_string(),
                 team_abbrev: "EDM".to_string(),
                 home_road_flag: HomeRoad::Home,
@@ -801,8 +801,8 @@ pub fn create_mock_play_by_play(game_id: i64) -> PlayByPlay {
     let (away_score, home_score) = if is_live { (2, 3) } else { (3, 4) };
 
     PlayByPlay {
-        id: game_id,
-        season: 20242025,
+        id: game_id.into(),
+        season: Season::new(2024),
         game_type: nhl_api::GameType::RegularSeason,
         limited_scoring: false,
         game_date: "2024-11-20".to_string(),
@@ -824,12 +824,12 @@ pub fn create_mock_play_by_play(game_id: i64) -> PlayByPlay {
         game_schedule_state: GameScheduleState::Ok,
         period_descriptor: PeriodDescriptor {
             number: period,
-            period_type: PeriodType::Regulation,
+            period_type: Some(PeriodType::Regulation),
             max_regulation_periods: 3,
         },
         special_event: None,
         away_team: BoxscoreTeam {
-            id: 10,
+            id: 10.into(),
             common_name: LocalizedString {
                 default: "Maple Leafs".to_string(),
             },
@@ -846,7 +846,7 @@ pub fn create_mock_play_by_play(game_id: i64) -> PlayByPlay {
             },
         },
         home_team: BoxscoreTeam {
-            id: 9,
+            id: 9.into(),
             common_name: LocalizedString {
                 default: "Senators".to_string(),
             },
@@ -882,11 +882,11 @@ pub fn create_mock_play_by_play(game_id: i64) -> PlayByPlay {
         display_period: period,
         max_periods: 5,
         game_outcome: Some(GameOutcome {
-            last_period_type: PeriodType::Regulation,
+            last_period_type: Some(PeriodType::Regulation),
         }),
         plays: create_mock_plays(period, away_score, home_score),
         roster_spots: create_mock_roster_spots(),
-        reg_periods: Some(3),
+        reg_periods: 3,
         summary: None,
     }
 }
@@ -952,8 +952,8 @@ fn create_mock_plays(period: i32, away_score: i32, home_score: i32) -> Vec<PlayE
         "20:00",
         PlayEventType::Faceoff,
         Some(PlayEventDetails {
-            winning_player_id: Some(8478483), // Matthews
-            losing_player_id: Some(8478469),  // Stutzle
+            winning_player_id: Some(8478483.into()), // Matthews
+            losing_player_id: Some(8478469.into()),  // Stutzle
             zone_code: Some(ZoneCode::Neutral),
             x_coord: Some(0),
             y_coord: Some(0),
@@ -970,8 +970,8 @@ fn create_mock_plays(period: i32, away_score: i32, home_score: i32) -> Vec<PlayE
         "18:37",
         PlayEventType::ShotOnGoal,
         Some(PlayEventDetails {
-            shooting_player_id: Some(8478483), // Matthews
-            goalie_in_net_id: Some(8476341),   // Forsberg
+            shooting_player_id: Some(8478483.into()), // Matthews
+            goalie_in_net_id: Some(8476341.into()),   // Forsberg
             shot_type: Some("wrist".to_string()),
             zone_code: Some(ZoneCode::Offensive),
             x_coord: Some(75),
@@ -991,8 +991,8 @@ fn create_mock_plays(period: i32, away_score: i32, home_score: i32) -> Vec<PlayE
         "17:15",
         PlayEventType::Hit,
         Some(PlayEventDetails {
-            hitting_player_id: Some(8479325), // Chabot
-            hittee_player_id: Some(8478483),  // Matthews
+            hitting_player_id: Some(8479325.into()), // Chabot
+            hittee_player_id: Some(8478483.into()),  // Matthews
             zone_code: Some(ZoneCode::Neutral),
             x_coord: Some(-25),
             y_coord: Some(35),
@@ -1009,15 +1009,15 @@ fn create_mock_plays(period: i32, away_score: i32, home_score: i32) -> Vec<PlayE
         "14:30",
         PlayEventType::Penalty,
         Some(PlayEventDetails {
-            committed_by_player_id: Some(8479325), // Chabot
-            drawn_by_player_id: Some(8478483),     // Matthews
+            committed_by_player_id: Some(8479325.into()), // Chabot
+            drawn_by_player_id: Some(8478483.into()),     // Matthews
             desc_key: Some("tripping".to_string()),
             type_code: Some("MIN".to_string()),
             duration: Some(2),
             zone_code: Some(ZoneCode::Neutral),
             x_coord: Some(-30),
             y_coord: Some(0),
-            event_owner_team_id: Some(9),
+            event_owner_team_id: Some(9.into()),
             ..empty_details()
         }),
     ));
@@ -1031,11 +1031,11 @@ fn create_mock_plays(period: i32, away_score: i32, home_score: i32) -> Vec<PlayE
         "13:45",
         PlayEventType::Goal,
         Some(PlayEventDetails {
-            scoring_player_id: Some(8478483), // Matthews
+            scoring_player_id: Some(8478483.into()), // Matthews
             scoring_player_total: Some(15),
-            assist1_player_id: Some(8478444), // Marner
+            assist1_player_id: Some(8478444.into()), // Marner
             assist1_player_total: Some(25),
-            assist2_player_id: Some(8478858), // Nylander
+            assist2_player_id: Some(8478858.into()), // Nylander
             assist2_player_total: Some(18),
             shot_type: Some("slap".to_string()),
             zone_code: Some(ZoneCode::Offensive),
@@ -1043,8 +1043,8 @@ fn create_mock_plays(period: i32, away_score: i32, home_score: i32) -> Vec<PlayE
             y_coord: Some(5),
             away_score: Some(1),
             home_score: Some(0),
-            goalie_in_net_id: Some(8476341),
-            event_owner_team_id: Some(10),
+            goalie_in_net_id: Some(8476341.into()),
+            event_owner_team_id: Some(10.into()),
             ..empty_details()
         }),
     ));
@@ -1058,8 +1058,8 @@ fn create_mock_plays(period: i32, away_score: i32, home_score: i32) -> Vec<PlayE
         "12:00",
         PlayEventType::ShotOnGoal,
         Some(PlayEventDetails {
-            shooting_player_id: Some(8479325), // Chabot
-            goalie_in_net_id: Some(8477970),   // Woll
+            shooting_player_id: Some(8479325.into()), // Chabot
+            goalie_in_net_id: Some(8477970.into()),   // Woll
             shot_type: Some("slap".to_string()),
             zone_code: Some(ZoneCode::Offensive),
             x_coord: Some(-72),
@@ -1079,8 +1079,8 @@ fn create_mock_plays(period: i32, away_score: i32, home_score: i32) -> Vec<PlayE
         "10:30",
         PlayEventType::BlockedShot,
         Some(PlayEventDetails {
-            shooting_player_id: Some(8479469), // Stutzle
-            blocking_player_id: Some(8479318), // Rielly
+            shooting_player_id: Some(8479469.into()), // Stutzle
+            blocking_player_id: Some(8479318.into()), // Rielly
             zone_code: Some(ZoneCode::Defensive),
             x_coord: Some(65),
             y_coord: Some(-20),
@@ -1097,9 +1097,9 @@ fn create_mock_plays(period: i32, away_score: i32, home_score: i32) -> Vec<PlayE
         "07:26",
         PlayEventType::Goal,
         Some(PlayEventDetails {
-            scoring_player_id: Some(8479469), // Stutzle
+            scoring_player_id: Some(8479469.into()), // Stutzle
             scoring_player_total: Some(12),
-            assist1_player_id: Some(8480801), // Batherson
+            assist1_player_id: Some(8480801.into()), // Batherson
             assist1_player_total: Some(20),
             shot_type: Some("wrist".to_string()),
             zone_code: Some(ZoneCode::Offensive),
@@ -1107,8 +1107,8 @@ fn create_mock_plays(period: i32, away_score: i32, home_score: i32) -> Vec<PlayE
             y_coord: Some(0),
             away_score: Some(away_score - 1),
             home_score: Some(home_score - 2),
-            goalie_in_net_id: Some(8477970),
-            event_owner_team_id: Some(9),
+            goalie_in_net_id: Some(8477970.into()),
+            event_owner_team_id: Some(9.into()),
             ..empty_details()
         }),
     ));
@@ -1122,11 +1122,11 @@ fn create_mock_plays(period: i32, away_score: i32, home_score: i32) -> Vec<PlayE
         "06:00",
         PlayEventType::Takeaway,
         Some(PlayEventDetails {
-            player_id: Some(8478483), // Matthews
+            player_id: Some(8478483.into()), // Matthews
             zone_code: Some(ZoneCode::Neutral),
             x_coord: Some(10),
             y_coord: Some(-15),
-            event_owner_team_id: Some(10),
+            event_owner_team_id: Some(10.into()),
             ..empty_details()
         }),
     ));
@@ -1140,11 +1140,11 @@ fn create_mock_plays(period: i32, away_score: i32, home_score: i32) -> Vec<PlayE
         "04:30",
         PlayEventType::Giveaway,
         Some(PlayEventDetails {
-            player_id: Some(8479469), // Stutzle
+            player_id: Some(8479469.into()), // Stutzle
             zone_code: Some(ZoneCode::Defensive),
             x_coord: Some(-60),
             y_coord: Some(25),
-            event_owner_team_id: Some(9),
+            event_owner_team_id: Some(9.into()),
             ..empty_details()
         }),
     ));
@@ -1164,13 +1164,13 @@ fn create_play_event(
         event_id,
         period_descriptor: PeriodDescriptor {
             number: period,
-            period_type: PeriodType::Regulation,
+            period_type: Some(PeriodType::Regulation),
             max_regulation_periods: 3,
         },
         time_in_period: time_in_period.to_string(),
         time_remaining: time_remaining.to_string(),
         situation_code: "1551".to_string(),
-        home_team_defending_side: DefendingSide::Right,
+        home_team_defending_side: Some(DefendingSide::Right),
         type_code: match event_type {
             PlayEventType::Goal => 505,
             PlayEventType::ShotOnGoal => 506,
@@ -1193,8 +1193,8 @@ fn create_mock_roster_spots() -> Vec<RosterSpot> {
     vec![
         // Toronto Maple Leafs
         RosterSpot {
-            team_id: 10,
-            player_id: 8478483,
+            team_id: 10.into(),
+            player_id: 8478483.into(),
             first_name: LocalizedString {
                 default: "Auston".to_string(),
             },
@@ -1202,12 +1202,12 @@ fn create_mock_roster_spots() -> Vec<RosterSpot> {
                 default: "Matthews".to_string(),
             },
             sweater_number: 34,
-            position: Position::Center,
+            position: Some(Position::Center),
             headshot: "https://assets.nhle.com/mugs/nhl/20242025/TOR/8478483.png".to_string(),
         },
         RosterSpot {
-            team_id: 10,
-            player_id: 8478444,
+            team_id: 10.into(),
+            player_id: 8478444.into(),
             first_name: LocalizedString {
                 default: "Mitch".to_string(),
             },
@@ -1215,12 +1215,12 @@ fn create_mock_roster_spots() -> Vec<RosterSpot> {
                 default: "Marner".to_string(),
             },
             sweater_number: 16,
-            position: Position::RightWing,
+            position: Some(Position::RightWing),
             headshot: "https://assets.nhle.com/mugs/nhl/20242025/TOR/8478444.png".to_string(),
         },
         RosterSpot {
-            team_id: 10,
-            player_id: 8478858,
+            team_id: 10.into(),
+            player_id: 8478858.into(),
             first_name: LocalizedString {
                 default: "William".to_string(),
             },
@@ -1228,12 +1228,12 @@ fn create_mock_roster_spots() -> Vec<RosterSpot> {
                 default: "Nylander".to_string(),
             },
             sweater_number: 88,
-            position: Position::RightWing,
+            position: Some(Position::RightWing),
             headshot: "https://assets.nhle.com/mugs/nhl/20242025/TOR/8478858.png".to_string(),
         },
         RosterSpot {
-            team_id: 10,
-            player_id: 8479318,
+            team_id: 10.into(),
+            player_id: 8479318.into(),
             first_name: LocalizedString {
                 default: "Morgan".to_string(),
             },
@@ -1241,12 +1241,12 @@ fn create_mock_roster_spots() -> Vec<RosterSpot> {
                 default: "Rielly".to_string(),
             },
             sweater_number: 44,
-            position: Position::Defense,
+            position: Some(Position::Defense),
             headshot: "https://assets.nhle.com/mugs/nhl/20242025/TOR/8479318.png".to_string(),
         },
         RosterSpot {
-            team_id: 10,
-            player_id: 8477970,
+            team_id: 10.into(),
+            player_id: 8477970.into(),
             first_name: LocalizedString {
                 default: "Joseph".to_string(),
             },
@@ -1254,13 +1254,13 @@ fn create_mock_roster_spots() -> Vec<RosterSpot> {
                 default: "Woll".to_string(),
             },
             sweater_number: 60,
-            position: Position::Goalie,
+            position: Some(Position::Goalie),
             headshot: "https://assets.nhle.com/mugs/nhl/20242025/TOR/8477970.png".to_string(),
         },
         // Ottawa Senators
         RosterSpot {
-            team_id: 9,
-            player_id: 8479469,
+            team_id: 9.into(),
+            player_id: 8479469.into(),
             first_name: LocalizedString {
                 default: "Tim".to_string(),
             },
@@ -1268,12 +1268,12 @@ fn create_mock_roster_spots() -> Vec<RosterSpot> {
                 default: "Stutzle".to_string(),
             },
             sweater_number: 18,
-            position: Position::Center,
+            position: Some(Position::Center),
             headshot: "https://assets.nhle.com/mugs/nhl/20242025/OTT/8479469.png".to_string(),
         },
         RosterSpot {
-            team_id: 9,
-            player_id: 8480801,
+            team_id: 9.into(),
+            player_id: 8480801.into(),
             first_name: LocalizedString {
                 default: "Drake".to_string(),
             },
@@ -1281,12 +1281,12 @@ fn create_mock_roster_spots() -> Vec<RosterSpot> {
                 default: "Batherson".to_string(),
             },
             sweater_number: 19,
-            position: Position::RightWing,
+            position: Some(Position::RightWing),
             headshot: "https://assets.nhle.com/mugs/nhl/20242025/OTT/8480801.png".to_string(),
         },
         RosterSpot {
-            team_id: 9,
-            player_id: 8479325,
+            team_id: 9.into(),
+            player_id: 8479325.into(),
             first_name: LocalizedString {
                 default: "Thomas".to_string(),
             },
@@ -1294,12 +1294,12 @@ fn create_mock_roster_spots() -> Vec<RosterSpot> {
                 default: "Chabot".to_string(),
             },
             sweater_number: 72,
-            position: Position::Defense,
+            position: Some(Position::Defense),
             headshot: "https://assets.nhle.com/mugs/nhl/20242025/OTT/8479325.png".to_string(),
         },
         RosterSpot {
-            team_id: 9,
-            player_id: 8476341,
+            team_id: 9.into(),
+            player_id: 8476341.into(),
             first_name: LocalizedString {
                 default: "Anton".to_string(),
             },
@@ -1307,7 +1307,7 @@ fn create_mock_roster_spots() -> Vec<RosterSpot> {
                 default: "Forsberg".to_string(),
             },
             sweater_number: 31,
-            position: Position::Goalie,
+            position: Some(Position::Goalie),
             headshot: "https://assets.nhle.com/mugs/nhl/20242025/OTT/8476341.png".to_string(),
         },
     ]

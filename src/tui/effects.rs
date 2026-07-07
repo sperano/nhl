@@ -40,7 +40,7 @@ impl DataEffects {
                 if game.game_state != nhl_api::GameState::Future
                     && game.game_state != nhl_api::GameState::PreGame
                 {
-                    effects.push(self.fetch_game_details(game.id));
+                    effects.push(self.fetch_game_details(game.id.into()));
                 }
             }
         }
@@ -75,7 +75,7 @@ impl DataEffects {
     pub fn fetch_game_details(&self, game_id: i64) -> Effect {
         let client = self.client.clone();
         Effect::Async(Box::pin(async move {
-            let result = cache::fetch_game_cached(client.as_ref(), game_id).await;
+            let result = cache::fetch_game_cached(client.as_ref(), game_id.into()).await;
             Action::GameDetailsLoaded(game_id, result.map_err(Arc::new))
         }))
     }
@@ -97,7 +97,7 @@ impl DataEffects {
                     let current_season = seasons
                         .iter()
                         .filter(|s| s.game_types.contains(&REGULAR_SEASON))
-                        .max_by_key(|s| s.season);
+                        .max_by_key(|s| s.season.id());
 
                     match current_season {
                         Some(season_info) => {
@@ -105,7 +105,7 @@ impl DataEffects {
                             cache::fetch_club_stats_cached(
                                 client.as_ref(),
                                 &abbrev,
-                                season_info.season,
+                                season_info.season.id(),
                             )
                             .await
                         }
@@ -126,7 +126,7 @@ impl DataEffects {
     pub fn fetch_player_stats(&self, player_id: i64) -> Effect {
         let client = self.client.clone();
         Effect::Async(Box::pin(async move {
-            let result = cache::fetch_player_landing_cached(client.as_ref(), player_id).await;
+            let result = cache::fetch_player_landing_cached(client.as_ref(), player_id.into()).await;
             Action::PlayerStatsLoaded(player_id, result.map_err(Arc::new))
         }))
     }
@@ -135,7 +135,7 @@ impl DataEffects {
     pub fn fetch_boxscore(&self, game_id: i64) -> Effect {
         let client = self.client.clone();
         Effect::Async(Box::pin(async move {
-            let result = cache::fetch_boxscore_cached(client.as_ref(), game_id).await;
+            let result = cache::fetch_boxscore_cached(client.as_ref(), game_id.into()).await;
             Action::BoxscoreLoaded(game_id, result.map_err(Arc::new))
         }))
     }

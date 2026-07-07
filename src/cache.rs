@@ -1,6 +1,6 @@
 use crate::data_provider::NHLDataProvider;
 use cached::proc_macro::cached;
-use nhl_api::{DailySchedule, GameDate, GameMatchup, NHLApiError, Standing};
+use nhl_api::{DailySchedule, GameDate, GameId, GameMatchup, NHLApiError, PlayerId, Standing};
 
 pub use cached::Cached;
 
@@ -67,28 +67,28 @@ pub async fn fetch_schedule_cached(
 
 #[cached(
     name = "GAME_CACHE",
-    type = "cached::TimedSizedCache<i64, GameMatchup>",
+    type = "cached::TimedSizedCache<GameId, GameMatchup>",
     create = "{ cached::TimedSizedCache::with_size_and_lifespan(100, 30) }",
     convert = r#"{ game_id }"#,
     result = true
 )]
 pub async fn fetch_game_cached(
     client: &dyn NHLDataProvider,
-    game_id: i64,
+    game_id: GameId,
 ) -> Result<GameMatchup, NHLApiError> {
     client.landing(game_id).await
 }
 
 #[cached(
     name = "BOXSCORE_CACHE",
-    type = "cached::TimedSizedCache<i64, nhl_api::Boxscore>",
+    type = "cached::TimedSizedCache<GameId, nhl_api::Boxscore>",
     create = "{ cached::TimedSizedCache::with_size_and_lifespan(40, 1800) }",
     convert = r#"{ game_id }"#,
     result = true
 )]
 pub async fn fetch_boxscore_cached(
     client: &dyn NHLDataProvider,
-    game_id: i64,
+    game_id: GameId,
 ) -> Result<nhl_api::Boxscore, NHLApiError> {
     client.boxscore(game_id).await
 }
@@ -112,14 +112,14 @@ pub async fn fetch_club_stats_cached(
 
 #[cached(
     name = "PLAYER_INFO_CACHE",
-    type = "cached::TimedSizedCache<i64, nhl_api::PlayerLanding>",
+    type = "cached::TimedSizedCache<PlayerId, nhl_api::PlayerLanding>",
     create = "{ cached::TimedSizedCache::with_size_and_lifespan(100, 86400) }",
     convert = r#"{ player_id }"#,
     result = true
 )]
 pub async fn fetch_player_landing_cached(
     client: &dyn NHLDataProvider,
-    player_id: i64,
+    player_id: PlayerId,
 ) -> Result<nhl_api::PlayerLanding, NHLApiError> {
     client.player_landing(player_id).await
 }
@@ -131,7 +131,7 @@ pub async fn refresh_standings(client: &dyn NHLDataProvider) -> Result<Vec<Stand
 
 pub async fn refresh_game(
     client: &dyn NHLDataProvider,
-    game_id: i64,
+    game_id: GameId,
 ) -> Result<GameMatchup, NHLApiError> {
     GAME_CACHE.lock().await.cache_remove(&game_id);
     fetch_game_cached(client, game_id).await
@@ -241,8 +241,8 @@ mod tests {
         clear_all_caches().await;
         let client = MockClient::new();
 
-        let _ = fetch_game_cached(&client, 2024020001).await;
-        let _ = fetch_game_cached(&client, 2024020002).await;
+        let _ = fetch_game_cached(&client, 2024020001.into()).await;
+        let _ = fetch_game_cached(&client, 2024020002.into()).await;
 
         let stats = cache_stats().await;
         assert!(stats.game_entries <= 2);

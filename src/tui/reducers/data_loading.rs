@@ -208,7 +208,7 @@ fn handle_schedule_loaded(
                         "DATA: Requesting game details fetch for game_id={}",
                         game.id
                     );
-                    effects.push(Effect::FetchGameDetails(game.id));
+                    effects.push(Effect::FetchGameDetails(game.id.into()));
                 }
             }
 
@@ -454,7 +454,7 @@ mod tests {
             matches!(
                 first_link_target,
                 Some(LinkTarget::Push(StackedDocument::Boxscore { game_id, .. }))
-                    if *game_id == expected_game_id
+                    if *game_id == expected_game_id.as_i64()
             ),
             "first game box must carry a Push(Boxscore) target, got {:?}",
             first_link_target

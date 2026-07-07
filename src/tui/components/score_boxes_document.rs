@@ -81,11 +81,11 @@ impl ScoreBoxesDocument {
     /// Create a ScoreBox widget for a given game
     fn create_score_box(&self, game: &nhl_api::ScheduleGame) -> ScoreBox {
         // Get team names (prefer common_name from game_info, fall back to common name lookup)
-        let away_team = self.get_team_name(game.id, true, &game.away_team.abbrev);
-        let home_team = self.get_team_name(game.id, false, &game.home_team.abbrev);
+        let away_team = self.get_team_name(game.id.into(), true, &game.away_team.abbrev);
+        let home_team = self.get_team_name(game.id.into(), false, &game.home_team.abbrev);
 
         // Get scores from schedule or game_info
-        let (away_score, home_score) = if let Some(info) = self.game_info.get(&game.id) {
+        let (away_score, home_score) = if let Some(info) = self.game_info.get(&game.id.into()) {
             (Some(info.away_team.score), Some(info.home_team.score))
         } else {
             (game.away_team.score, game.home_team.score)
@@ -94,10 +94,10 @@ impl ScoreBoxesDocument {
         // Determine game status
         let status = if game.game_state.is_final() {
             // Check for OT/SO from game_info
-            let (overtime, shootout) = if let Some(info) = self.game_info.get(&game.id) {
+            let (overtime, shootout) = if let Some(info) = self.game_info.get(&game.id.into()) {
                 let is_ot = info.period_descriptor.number > 3
-                    || info.period_descriptor.period_type == nhl_api::PeriodType::Overtime;
-                let is_so = info.period_descriptor.period_type == nhl_api::PeriodType::Shootout;
+                    || info.period_descriptor.period_type == Some(nhl_api::PeriodType::Overtime);
+                let is_so = info.period_descriptor.period_type == Some(nhl_api::PeriodType::Shootout);
                 (is_ot && !is_so, is_so)
             } else {
                 (false, false)
@@ -105,7 +105,7 @@ impl ScoreBoxesDocument {
             ScoreBoxStatus::Final { overtime, shootout }
         } else if game.game_state.has_started() {
             // Get period text and time from game_info
-            if let Some(info) = self.game_info.get(&game.id) {
+            if let Some(info) = self.game_info.get(&game.id.into()) {
                 let period = format_period_text(
                     info.period_descriptor.period_type,
                     info.period_descriptor.number,
@@ -151,7 +151,7 @@ impl ScoreBoxesDocument {
     /// uses for display, so the pushed `StackedDocument::Boxscore` always
     /// matches what's on screen.
     fn build_link_target(&self, game: &nhl_api::ScheduleGame) -> LinkTarget {
-        let (away_score, home_score) = if let Some(info) = self.game_info.get(&game.id) {
+        let (away_score, home_score) = if let Some(info) = self.game_info.get(&game.id.into()) {
             (info.away_team.score, info.home_team.score)
         } else {
             (
@@ -161,7 +161,7 @@ impl ScoreBoxesDocument {
         };
 
         LinkTarget::Push(StackedDocument::Boxscore {
-            game_id: game.id,
+            game_id: game.id.into(),
             away_abbrev: game.away_team.abbrev.clone(),
             home_abbrev: game.home_team.abbrev.clone(),
             away_score,
@@ -202,14 +202,14 @@ impl Document for ScoreBoxesDocument {
                 .iter()
                 .map(|game| {
                     // ScoreBoxElement uses FocusableId::GameLink(game_id)
-                    let focused = focus.focused_id == Some(FocusableId::GameLink(game.id));
+                    let focused = focus.focused_id == Some(FocusableId::GameLink(game.id.into()));
 
                     // Create the ScoreBox widget
                     let score_box = self.create_score_box(game);
                     let link_target = self.build_link_target(game);
 
                     // Use the ScoreBoxElement variant
-                    DocumentElement::score_box_element(game.id, score_box, focused, link_target)
+                    DocumentElement::score_box_element(game.id.into(), score_box, focused, link_target)
                 })
                 .collect();
 
@@ -236,20 +236,20 @@ mod tests {
 
     fn create_test_game(id: i64, away: &str, home: &str) -> ScheduleGame {
         ScheduleGame {
-            id,
+            id: id.into(),
             game_type: nhl_api::GameType::RegularSeason,
             game_date: Some("2024-01-15".to_string()),
             start_time_utc: "2024-01-15T20:00:00Z".to_string(),
             game_state: ApiGameState::Final,
             away_team: ScheduleTeam {
-                id: 1,
+                id: 1.into(),
                 abbrev: away.to_string(),
                 score: Some(2),
                 logo: String::new(),
                 place_name: None,
             },
             home_team: ScheduleTeam {
-                id: 2,
+                id: 2.into(),
                 abbrev: home.to_string(),
                 score: Some(3),
                 logo: String::new(),

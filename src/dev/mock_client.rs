@@ -2,8 +2,9 @@
 use crate::data_provider::NHLDataProvider;
 use async_trait::async_trait;
 use nhl_api::{
-    Boxscore, ClubStats, DailySchedule, Franchise, GameDate, GameMatchup, GameType, NHLApiError,
-    PlayByPlay, PlayerGameLog, PlayerLanding, PlayerSearchResult, SeasonGameTypes, Standing,
+    Boxscore, ClubStats, DailySchedule, Franchise, GameDate, GameId, GameMatchup, GameType,
+    NHLApiError, PlayByPlay, PlayerGameLog, PlayerId, PlayerLanding, PlayerSearchResult, Season,
+    SeasonGameTypes, Standing,
 };
 use tracing::info;
 
@@ -38,25 +39,25 @@ impl NHLDataProvider for MockClient {
         Ok(fixtures::create_mock_schedule(date))
     }
 
-    async fn landing(&self, game_id: i64) -> Result<GameMatchup, NHLApiError> {
+    async fn landing(&self, game_id: GameId) -> Result<GameMatchup, NHLApiError> {
         info!(
             "MockClient: Returning mock game matchup for game {}",
             game_id
         );
-        Ok(fixtures::create_mock_game_matchup(game_id))
+        Ok(fixtures::create_mock_game_matchup(game_id.into()))
     }
 
-    async fn boxscore(&self, game_id: i64) -> Result<Boxscore, NHLApiError> {
+    async fn boxscore(&self, game_id: GameId) -> Result<Boxscore, NHLApiError> {
         info!("MockClient: Returning mock boxscore for game {}", game_id);
-        Ok(fixtures::create_mock_boxscore(game_id))
+        Ok(fixtures::create_mock_boxscore(game_id.into()))
     }
 
-    async fn play_by_play(&self, game_id: i64) -> Result<PlayByPlay, NHLApiError> {
+    async fn play_by_play(&self, game_id: GameId) -> Result<PlayByPlay, NHLApiError> {
         info!(
             "MockClient: Returning mock play-by-play for game {}",
             game_id
         );
-        Ok(fixtures::create_mock_play_by_play(game_id))
+        Ok(fixtures::create_mock_play_by_play(game_id.into()))
     }
 
     async fn club_stats(
@@ -83,22 +84,22 @@ impl NHLDataProvider for MockClient {
         info!("MockClient: Returning mock seasons for {}", team_abbr);
         Ok(vec![
             SeasonGameTypes {
-                season: 20242025,
+                season: Season::new(2024),
                 game_types: vec![GameType::RegularSeason],
             },
             SeasonGameTypes {
-                season: 20232024,
+                season: Season::new(2023),
                 game_types: vec![GameType::RegularSeason, GameType::Playoffs],
             },
         ])
     }
 
-    async fn player_landing(&self, player_id: i64) -> Result<PlayerLanding, NHLApiError> {
+    async fn player_landing(&self, player_id: PlayerId) -> Result<PlayerLanding, NHLApiError> {
         info!(
             "MockClient: Returning mock player landing for {}",
             player_id
         );
-        Ok(fixtures::create_mock_player_landing(player_id))
+        Ok(fixtures::create_mock_player_landing(player_id.into()))
     }
 
     async fn franchises(&self) -> Result<Vec<Franchise>, NHLApiError> {
@@ -120,7 +121,7 @@ impl NHLDataProvider for MockClient {
 
     async fn player_game_log(
         &self,
-        player_id: i64,
+        player_id: PlayerId,
         season: i32,
         game_type: GameType,
     ) -> Result<PlayerGameLog, NHLApiError> {
@@ -129,7 +130,9 @@ impl NHLDataProvider for MockClient {
             player_id, season, game_type
         );
         Ok(fixtures::create_mock_player_game_log(
-            player_id, season, game_type,
+            player_id.into(),
+            season,
+            game_type,
         ))
     }
 

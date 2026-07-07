@@ -28,7 +28,7 @@ fn format_skater_stats(
             "{:<3} {:<20} {:<4} {:>3} {:>3} {:>3} {:>4} {:>6}\n",
             player.sweater_number,
             player.name.default,
-            player.position,
+            player.position.map_or("-", |p| p.code()),
             player.goals,
             player.assists,
             player.points,
@@ -139,18 +139,18 @@ pub fn format_game_stats_table(
         bar_w = bar_width
     ));
 
-    // Power Play %
-    let away_pp_pct = away_stats.power_play_percentage();
-    let home_pp_pct = home_stats.power_play_percentage();
+    // Power Play Goals (nhl-api 0.8 removed power_play_opportunities: boxscore
+    // data has no valid source for it, so a percentage can't be computed)
     output.push_str(&format!(
-        "{:<label_w$} {:>score_w$.1}%  {:^bar_w$}  {:<score_w$.1}%\n",
-        "Power Play %",
-        away_pp_pct,
-        format!(
-            "{}/{}",
-            away_stats.power_play_goals, away_stats.power_play_opportunities
+        "{:<label_w$} {:>score_w$}  {:^bar_w$}  {:<score_w$}\n",
+        "Power Play Goals",
+        away_stats.power_play_goals,
+        format_stat_bar(
+            away_stats.power_play_goals,
+            home_stats.power_play_goals,
+            bar_width
         ),
-        home_pp_pct,
+        home_stats.power_play_goals,
         label_w = BOXSCORE_LABEL_WIDTH,
         score_w = BOXSCORE_SCORE_WIDTH,
         bar_w = bar_width
@@ -333,7 +333,7 @@ pub fn format_boxscore(boxscore: &Boxscore, display: &DisplayConfig) -> String {
 
 pub async fn run(client: &dyn NHLDataProvider, game_id: i64, config: &Config) -> Result<()> {
     let boxscore = client
-        .boxscore(game_id)
+        .boxscore(game_id.into())
         .await
         .context("Failed to fetch boxscore")?;
     print!("{}", format_boxscore(&boxscore, &config.display));

@@ -177,14 +177,14 @@ fn skater_columns() -> Vec<ColumnDef<ClubSkaterStats>> {
         ColumnDef::new("Player", 20, Alignment::Left, |s: &ClubSkaterStats| {
             CellValue::PlayerLink {
                 display: format!("{} {}", s.first_name.default, s.last_name.default),
-                player_id: s.player_id,
+                player_id: s.player_id.into(),
                 // ClubSkaterStats doesn't carry a sweater number.
                 sweater_number: None,
                 last_name: s.last_name.default.clone(),
             }
         }),
         ColumnDef::new("Pos", 3, Alignment::Left, |s: &ClubSkaterStats| {
-            CellValue::Text(s.position.to_string())
+            CellValue::Text(s.position.map_or_else(String::new, |p| p.code().to_string()))
         }),
         ColumnDef::new("GP", 4, Alignment::Right, |s: &ClubSkaterStats| {
             CellValue::Text(s.games_played.to_string())
@@ -213,7 +213,7 @@ fn goalie_columns() -> Vec<ColumnDef<ClubGoalieStats>> {
         ColumnDef::new("Player", 20, Alignment::Left, |g: &ClubGoalieStats| {
             CellValue::PlayerLink {
                 display: format!("{} {}", g.first_name.default, g.last_name.default),
-                player_id: g.player_id,
+                player_id: g.player_id.into(),
                 // ClubGoalieStats doesn't carry a sweater number.
                 sweater_number: None,
                 last_name: g.last_name.default.clone(),
@@ -304,7 +304,7 @@ mod tests {
     use super::*;
     use crate::config::{DisplayConfig, RenderContext};
     use crate::tui::document::FocusContext;
-    use nhl_api::{ClubGoalieStats, ClubSkaterStats, LocalizedString, Position};
+    use nhl_api::{ClubGoalieStats, ClubSkaterStats, LocalizedString, Position, Season};
     use ratatui::{buffer::Buffer, layout::Rect};
 
     fn create_test_skater(
@@ -318,7 +318,7 @@ mod tests {
         points: i32,
     ) -> ClubSkaterStats {
         ClubSkaterStats {
-            player_id,
+            player_id: player_id.into(),
             headshot: String::new(),
             first_name: LocalizedString {
                 default: first_name.to_string(),
@@ -326,7 +326,7 @@ mod tests {
             last_name: LocalizedString {
                 default: last_name.to_string(),
             },
-            position,
+            position: Some(position),
             games_played: gp,
             goals,
             assists,
@@ -353,7 +353,7 @@ mod tests {
         wins: i32,
     ) -> ClubGoalieStats {
         ClubGoalieStats {
-            player_id,
+            player_id: player_id.into(),
             headshot: String::new(),
             first_name: LocalizedString {
                 default: first_name.to_string(),
@@ -411,7 +411,7 @@ mod tests {
         let goalies = vec![create_test_goalie(3, "Bob", "Johnson", 15, 8)];
 
         ClubStats {
-            season: "20242025".to_string(),
+            season: Season::new(2024),
             game_type: nhl_api::GameType::RegularSeason,
             skaters,
             goalies,
@@ -507,7 +507,7 @@ mod tests {
         }
 
         let club_stats = ClubStats {
-            season: "20242025".to_string(),
+            season: Season::new(2024),
             game_type: nhl_api::GameType::RegularSeason,
             skaters,
             goalies,
@@ -556,7 +556,7 @@ mod tests {
         let goalies = vec![create_test_goalie(2, "Jane", "Smith", 15, 8)];
 
         let club_stats = ClubStats {
-            season: "20242025".to_string(),
+            season: Season::new(2024),
             game_type: nhl_api::GameType::RegularSeason,
             skaters,
             goalies,

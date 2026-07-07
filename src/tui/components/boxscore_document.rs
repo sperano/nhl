@@ -217,13 +217,13 @@ fn game_skater_columns() -> Vec<ColumnDef<SkaterStats>> {
         ColumnDef::new("Player", 20, Alignment::Left, |s: &SkaterStats| {
             CellValue::PlayerLink {
                 display: s.name.default.clone(),
-                player_id: s.player_id,
+                player_id: s.player_id.into(),
                 sweater_number: Some(s.sweater_number),
                 last_name: s.name.default.clone(),
             }
         }),
         ColumnDef::new("Pos", 3, Alignment::Center, |s: &SkaterStats| {
-            CellValue::Text(s.position.to_string())
+            CellValue::Text(s.position.map_or_else(String::new, |p| p.code().to_string()))
         }),
         ColumnDef::new("G", 2, Alignment::Right, |s: &SkaterStats| {
             CellValue::Text(s.goals.to_string())
@@ -284,7 +284,7 @@ fn game_goalie_columns(box_chars: &crate::formatting::BoxChars) -> Vec<ColumnDef
         ColumnDef::new("Player", 20, Alignment::Left, |g: &GoalieStats| {
             CellValue::PlayerLink {
                 display: g.name.default.clone(),
-                player_id: g.player_id,
+                player_id: g.player_id.into(),
                 sweater_number: Some(g.sweater_number),
                 last_name: g.name.default.clone(),
             }
@@ -341,8 +341,9 @@ fn game_goalie_columns(box_chars: &crate::formatting::BoxChars) -> Vec<ColumnDef
     ]
 }
 
-fn format_period_text(number: &i32, period_type: nhl_api::PeriodType) -> String {
-    match period_type {
+/// Missing period type (historical data) is treated as regulation.
+fn format_period_text(number: &i32, period_type: Option<nhl_api::PeriodType>) -> String {
+    match period_type.unwrap_or(nhl_api::PeriodType::Regulation) {
         nhl_api::PeriodType::Regulation => format!("{}", number),
         nhl_api::PeriodType::Overtime => "OT".to_string(),
         nhl_api::PeriodType::Shootout => "SO".to_string(),
@@ -371,8 +372,8 @@ fn boxscore_to_status(boxscore: &Boxscore) -> ScoreBoxStatus {
             }
         }
         nhl_api::GameState::Final | nhl_api::GameState::Off => ScoreBoxStatus::Final {
-            overtime: boxscore.period_descriptor.period_type == nhl_api::PeriodType::Overtime,
-            shootout: boxscore.period_descriptor.period_type == nhl_api::PeriodType::Shootout,
+            overtime: boxscore.period_descriptor.period_type == Some(nhl_api::PeriodType::Overtime),
+            shootout: boxscore.period_descriptor.period_type == Some(nhl_api::PeriodType::Shootout),
         },
         nhl_api::GameState::Postponed | nhl_api::GameState::Suspended => {
             ScoreBoxStatus::Scheduled {
@@ -443,19 +444,20 @@ mod tests {
     use crate::config::{DisplayConfig, RenderContext};
     use crate::tui::document::FocusContext;
     use nhl_api::{
-        Boxscore, BoxscoreTeam, GameClock, GameState, GoalieDecision, GoalieStats, LocalizedString,
-        PeriodDescriptor, PeriodType, PlayerByGameStats, Position, SkaterStats, TeamPlayerStats,
+        Boxscore, BoxscoreTeam, GameClock, GameScheduleState, GameState, GoalieDecision,
+        GoalieStats, LocalizedString, PeriodDescriptor, PeriodType, PlayerByGameStats, Position,
+        Season, SkaterStats, TeamPlayerStats,
     };
 
     /// Create a test skater with minimal data
     fn create_test_skater(name: &str, sweater_number: i32, position: Position) -> SkaterStats {
         SkaterStats {
-            player_id: sweater_number as i64,
+            player_id: (sweater_number as i64).into(),
             name: LocalizedString {
                 default: name.to_string(),
             },
             sweater_number,
-            position,
+            position: Some(position),
             goals: 1,
             assists: 2,
             points: 3,
@@ -476,12 +478,12 @@ mod tests {
     /// Create a test goalie with minimal data
     fn create_test_goalie(name: &str, sweater_number: i32) -> GoalieStats {
         GoalieStats {
-            player_id: sweater_number as i64,
+            player_id: (sweater_number as i64).into(),
             name: LocalizedString {
                 default: name.to_string(),
             },
             sweater_number,
-            position: Position::Goalie,
+            position: Some(Position::Goalie),
             even_strength_shots_against: "20".to_string(),
             power_play_shots_against: "5".to_string(),
             shorthanded_shots_against: "0".to_string(),
@@ -516,8 +518,8 @@ mod tests {
         let home_goalies = vec![create_test_goalie("H. Goalie", 31)];
 
         Boxscore {
-            id: 2024020001,
-            season: 20242025,
+            id: 2024020001.into(),
+            season: Season::new(2024),
             game_type: nhl_api::GameType::RegularSeason,
             limited_scoring: false,
             game_date: "2024-10-04".to_string(),
@@ -532,15 +534,15 @@ mod tests {
             venue_utc_offset: "-04:00".to_string(),
             tv_broadcasts: vec![],
             game_state: GameState::Final,
-            game_schedule_state: "OK".to_string(),
+            game_schedule_state: GameScheduleState::Ok,
             period_descriptor: PeriodDescriptor {
                 number: 3,
-                period_type: PeriodType::Regulation,
+                period_type: Some(PeriodType::Regulation),
                 max_regulation_periods: 3,
             },
             special_event: None,
             away_team: BoxscoreTeam {
-                id: 1,
+                id: 1.into(),
                 common_name: LocalizedString {
                     default: "Devils".to_string(),
                 },
@@ -557,7 +559,7 @@ mod tests {
                 },
             },
             home_team: BoxscoreTeam {
-                id: 7,
+                id: 7.into(),
                 common_name: LocalizedString {
                     default: "Sabres".to_string(),
                 },

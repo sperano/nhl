@@ -121,20 +121,20 @@ mod tests {
         home_score: Option<i32>,
     ) -> ScheduleGame {
         ScheduleGame {
-            id: 2024020001,
+            id: 2024020001.into(),
             game_type: nhl_api::GameType::RegularSeason,
             game_date: Some("2024-11-03".to_string()),
             start_time_utc: start_time_utc.to_string(),
             game_state,
             away_team: ScheduleTeam {
-                id: 1,
+                id: 1.into(),
                 abbrev: away_abbrev.to_string(),
                 place_name: None,
                 logo: "".to_string(),
                 score: away_score,
             },
             home_team: ScheduleTeam {
-                id: 2,
+                id: 2.into(),
                 abbrev: home_abbrev.to_string(),
                 place_name: None,
                 logo: "".to_string(),

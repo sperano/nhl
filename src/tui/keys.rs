@@ -211,7 +211,7 @@ fn handle_scores_tab_keys(
                 // Look up game_id from component state and schedule (first game)
                 if let Some(schedule) = state.data.schedule.as_ref().as_ref() {
                     if let Some(game) = schedule.games.first() {
-                        return Some(Action::SelectGame(game.id));
+                        return Some(Action::SelectGame(game.id.into()));
                     }
                 }
                 None

@@ -167,7 +167,7 @@ impl PlayerDetailDocumentContent {
         let career = player.career_totals.as_ref()?;
         let rs = &career.regular_season;
 
-        Some(if player.position == Position::Goalie {
+        Some(if player.position == Some(Position::Goalie) {
             format!(
                 "GP: {} | W: {} | L: {} | OTL: {} | GAA: {:.2} | SV%: {:.3} | SO: {}",
                 rs.games_played.unwrap_or(0),
@@ -216,14 +216,18 @@ impl Document for PlayerDetailDocumentContent {
             .sweater_number
             .map(|n| format!("#{} | ", n))
             .unwrap_or_default();
-        let hand_label = if player.position == Position::Goalie {
+        let hand_label = if player.position == Some(Position::Goalie) {
             "Catches"
         } else {
             "Shoots"
         };
         let details1 = format!(
             "{}{}{} | {}/{}",
-            team_info, sweater, player.position, player.shoots_catches, hand_label
+            team_info,
+            sweater,
+            player.position.map_or("N/A", |p| p.code()),
+            player.shoots_catches.map_or("N/A", |h| h.code()),
+            hand_label
         );
         builder = builder.text(details1);
 
@@ -257,7 +261,7 @@ impl Document for PlayerDetailDocumentContent {
         // Season-by-season table
         let seasons = Self::get_nhl_regular_seasons(player);
         if !seasons.is_empty() {
-            let columns = if player.position == Position::Goalie {
+            let columns = if player.position == Some(Position::Goalie) {
                 Self::goalie_season_columns()
             } else {
                 Self::skater_season_columns()
@@ -337,14 +341,14 @@ mod tests {
     use super::*;
     use crate::config::{DisplayConfig, RenderContext};
     use crate::tui::document::FocusableId;
-    use nhl_api::{Handedness, LocalizedString, SeasonTotal};
+    use nhl_api::{Handedness, LocalizedString, Season, SeasonTotal};
     use ratatui::buffer::Buffer;
 
     fn create_test_player(player_id: i64, position: Position) -> PlayerLanding {
         PlayerLanding {
-            player_id,
+            player_id: player_id.into(),
             is_active: true,
-            current_team_id: Some(10),
+            current_team_id: Some(10.into()),
             current_team_abbrev: Some("TOR".to_string()),
             first_name: LocalizedString {
                 default: "Test".to_string(),
@@ -353,7 +357,7 @@ mod tests {
                 default: "Player".to_string(),
             },
             sweater_number: Some(34),
-            position,
+            position: Some(position),
             headshot: String::new(),
             hero_image: None,
             height_in_inches: 73,
@@ -366,14 +370,14 @@ mod tests {
                 default: "ON".to_string(),
             }),
             birth_country: Some("CAN".to_string()),
-            shoots_catches: Handedness::Left,
+            shoots_catches: Some(Handedness::Left),
             draft_details: None,
             player_slug: None,
             featured_stats: None,
             career_totals: None,
             season_totals: Some(vec![
                 SeasonTotal {
-                    season: 20232024,
+                    season: Season::new(2023),
                     game_type: nhl_api::GameType::RegularSeason,
                     league_abbrev: "NHL".to_string(),
                     team_name: LocalizedString {
@@ -391,7 +395,7 @@ mod tests {
                     pim: Some(20),
                 },
                 SeasonTotal {
-                    season: 20222023,
+                    season: Season::new(2022),
                     game_type: nhl_api::GameType::RegularSeason,
                     league_abbrev: "NHL".to_string(),
                     team_name: LocalizedString {

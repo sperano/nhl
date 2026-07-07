@@ -74,20 +74,21 @@ mod tests {
     use crate::tui::document::{FocusContext, LinkTarget};
     use crate::tui::document_nav::DocumentNavState;
     use nhl_api::{
-        Boxscore, BoxscoreTeam, ClubGoalieStats, ClubSkaterStats, ClubStats, GameClock, GameState,
-        GameType, GoalieStats, LocalizedString, PeriodDescriptor, PeriodType, PlayerByGameStats,
-        PlayerLanding, Position, SeasonTotal, SkaterStats, Standing, TeamPlayerStats,
+        Boxscore, BoxscoreTeam, ClubGoalieStats, ClubSkaterStats, ClubStats, GameClock,
+        GameScheduleState, GameState, GameType, GoalieStats, LocalizedString, PeriodDescriptor,
+        PeriodType, PlayerByGameStats, PlayerLanding, Position, Season, SeasonTotal, SkaterStats,
+        Standing, TeamPlayerStats,
     };
     use std::collections::HashMap;
 
     fn test_skater(player_id: i64, name: &str, sweater_number: i32) -> SkaterStats {
         SkaterStats {
-            player_id,
+            player_id: player_id.into(),
             sweater_number,
             name: LocalizedString {
                 default: name.to_string(),
             },
-            position: Position::Center,
+            position: Some(Position::Center),
             goals: 1,
             assists: 2,
             points: 3,
@@ -107,12 +108,12 @@ mod tests {
 
     fn test_goalie(player_id: i64, name: &str, sweater_number: i32) -> GoalieStats {
         GoalieStats {
-            player_id,
+            player_id: player_id.into(),
             sweater_number,
             name: LocalizedString {
                 default: name.to_string(),
             },
-            position: Position::Goalie,
+            position: Some(Position::Goalie),
             even_strength_shots_against: "20".to_string(),
             power_play_shots_against: "5".to_string(),
             shorthanded_shots_against: "0".to_string(),
@@ -133,8 +134,8 @@ mod tests {
 
     fn test_boxscore(game_id: i64) -> Boxscore {
         Boxscore {
-            id: game_id,
-            season: 20242025,
+            id: game_id.into(),
+            season: Season::new(2024),
             game_type: GameType::RegularSeason,
             limited_scoring: false,
             game_date: "2024-10-04".to_string(),
@@ -149,15 +150,15 @@ mod tests {
             venue_utc_offset: "-04:00".to_string(),
             tv_broadcasts: vec![],
             game_state: GameState::Final,
-            game_schedule_state: "OK".to_string(),
+            game_schedule_state: GameScheduleState::Ok,
             period_descriptor: PeriodDescriptor {
                 number: 3,
-                period_type: PeriodType::Regulation,
+                period_type: Some(PeriodType::Regulation),
                 max_regulation_periods: 3,
             },
             special_event: None,
             away_team: BoxscoreTeam {
-                id: 1,
+                id: 1.into(),
                 common_name: LocalizedString {
                     default: "Devils".to_string(),
                 },
@@ -174,7 +175,7 @@ mod tests {
                 },
             },
             home_team: BoxscoreTeam {
-                id: 7,
+                id: 7.into(),
                 common_name: LocalizedString {
                     default: "Sabres".to_string(),
                 },
@@ -213,7 +214,7 @@ mod tests {
 
     fn test_club_skater(player_id: i64, last_name: &str, points: i32) -> ClubSkaterStats {
         ClubSkaterStats {
-            player_id,
+            player_id: player_id.into(),
             headshot: String::new(),
             first_name: LocalizedString {
                 default: "Test".to_string(),
@@ -221,7 +222,7 @@ mod tests {
             last_name: LocalizedString {
                 default: last_name.to_string(),
             },
-            position: Position::Center,
+            position: Some(Position::Center),
             games_played: 40,
             goals: points / 2,
             assists: points - points / 2,
@@ -242,7 +243,7 @@ mod tests {
 
     fn test_club_goalie(player_id: i64, last_name: &str, games_played: i32) -> ClubGoalieStats {
         ClubGoalieStats {
-            player_id,
+            player_id: player_id.into(),
             headshot: String::new(),
             first_name: LocalizedString {
                 default: "Test".to_string(),
@@ -294,7 +295,7 @@ mod tests {
 
     fn test_season_total(team_common_name: &str) -> SeasonTotal {
         SeasonTotal {
-            season: 20232024,
+            season: Season::new(2023),
             game_type: GameType::RegularSeason,
             league_abbrev: "NHL".to_string(),
             team_name: LocalizedString {
@@ -315,9 +316,9 @@ mod tests {
 
     fn test_player(player_id: i64) -> PlayerLanding {
         PlayerLanding {
-            player_id,
+            player_id: player_id.into(),
             is_active: true,
-            current_team_id: Some(10),
+            current_team_id: Some(10.into()),
             current_team_abbrev: Some("TOR".to_string()),
             first_name: LocalizedString {
                 default: "Test".to_string(),
@@ -326,7 +327,7 @@ mod tests {
                 default: "Player".to_string(),
             },
             sweater_number: Some(34),
-            position: Position::Center,
+            position: Some(Position::Center),
             headshot: String::new(),
             hero_image: None,
             height_in_inches: 73,
@@ -335,7 +336,7 @@ mod tests {
             birth_city: None,
             birth_state_province: None,
             birth_country: None,
-            shoots_catches: nhl_api::Handedness::Left,
+            shoots_catches: Some(nhl_api::Handedness::Left),
             draft_details: None,
             player_slug: None,
             featured_stats: None,
@@ -428,7 +429,7 @@ mod tests {
         roster.insert(
             abbrev.to_string(),
             ClubStats {
-                season: "20242025".to_string(),
+                season: Season::new(2024),
                 game_type: GameType::RegularSeason,
                 skaters: vec![test_club_skater(200, "High", 30)],
                 goalies: vec![test_club_goalie(500, "GoalieHigh", 30)],

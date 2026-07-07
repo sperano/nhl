@@ -223,6 +223,21 @@ forgot-a-field sync bugs) are now structurally unrepresentable.
       cross-frame buffer cache would invalidate on exactly the events that cause redraws
       (focus is baked into built elements) — all invalidation risk, near-zero win.
 
+## F6 — DONE (committed 179abbd, user-approved behavior change + TTY-checked)
+All four divergences converged on key_to_nav_msg: Settings BackTab → FocusPrev; Demo
+Shift+Left/Right → scroll; Scores box-selection gains Tab/BackTab/Page/Home/End/Shift-scroll;
+step-6 Up special case removed (Shift+Up scrolls). 14 new table rows. Dead
+DemoTabMsg::Key/handle_key landmine deleted (carried the old quirk). navigation.md down to one
+documented exception (Settings Left/Right = category semantics).
+A12 committed as 98da0e4. E1/E2 committed as ac7302b (user confirmed fetch errors visible).
+
+## BOTH PLANS FULLY CLOSED. Remaining backlog = feature work only:
+- U4/U5 (help overlay, vim keys) — needs design discussion
+- Demo doc's internal tab bar has no live switching binding (next_tab/prev_tab zero production
+  callers — pre-existing, exposed by the landmine deletion; dev-only cosmetics)
+- component-patterns.md staleness; FocusableId::Link removal (design decision);
+  FocusableId::team_link/player_link/display_name orphan check
+
 ## Flagged for future work (from F5 report)
 - docs/component-patterns.md has the same class of staleness (old five-Vec example,
   DocumentView-with-nav description) — not in F5's file list, needs a small pass.

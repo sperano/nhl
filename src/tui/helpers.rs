@@ -49,13 +49,13 @@ pub trait SeasonSorting {
 
 impl SeasonSorting for Vec<SeasonTotal> {
     fn sort_by_season_desc(&mut self) {
-        self.sort_by(|a, b| b.season.cmp(&a.season));
+        self.sort_by(|a, b| b.season.id().cmp(&a.season.id()));
     }
 }
 
 impl SeasonSorting for Vec<&SeasonTotal> {
     fn sort_by_season_desc(&mut self) {
-        self.sort_by(|a, b| b.season.cmp(&a.season));
+        self.sort_by(|a, b| b.season.id().cmp(&a.season.id()));
     }
 }
 
@@ -120,9 +120,9 @@ mod tests {
 
         seasons.sort_by_season_desc();
 
-        assert_eq!(seasons[0].season, 20232024);
-        assert_eq!(seasons[1].season, 20222023);
-        assert_eq!(seasons[2].season, 20212022);
+        assert_eq!(seasons[0].season.id(), 20232024);
+        assert_eq!(seasons[1].season.id(), 20222023);
+        assert_eq!(seasons[2].season.id(), 20212022);
     }
 
     #[test]
@@ -135,9 +135,9 @@ mod tests {
 
         seasons.sort_by_season_desc();
 
-        assert_eq!(seasons[0].season, 20232024);
-        assert_eq!(seasons[1].season, 20222023);
-        assert_eq!(seasons[2].season, 20212022);
+        assert_eq!(seasons[0].season.id(), 20232024);
+        assert_eq!(seasons[1].season.id(), 20222023);
+        assert_eq!(seasons[2].season.id(), 20212022);
     }
 
     // Minimal test data construction helpers
@@ -166,7 +166,7 @@ mod tests {
 
     fn create_minimal_skater(player_id: i64, points: i32) -> ClubSkaterStats {
         ClubSkaterStats {
-            player_id,
+            player_id: player_id.into(),
             points,
             goals: points / 2,
             assists: points - (points / 2),
@@ -177,7 +177,7 @@ mod tests {
             last_name: LocalizedString {
                 default: "Player".to_string(),
             },
-            position: Position::Center,
+            position: Some(Position::Center),
             games_played: 10,
             plus_minus: 0,
             penalty_minutes: 0,
@@ -195,7 +195,7 @@ mod tests {
 
     fn create_minimal_goalie(player_id: i64, games_played: i32) -> ClubGoalieStats {
         ClubGoalieStats {
-            player_id,
+            player_id: player_id.into(),
             games_played,
             headshot: String::new(),
             first_name: LocalizedString {
@@ -224,7 +224,7 @@ mod tests {
 
     fn create_minimal_season(season: i32) -> SeasonTotal {
         SeasonTotal {
-            season,
+            season: season.try_into().expect("valid test season id"),
             game_type: nhl_api::GameType::RegularSeason,
             league_abbrev: "NHL".to_string(),
             team_name: LocalizedString {

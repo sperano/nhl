@@ -60,7 +60,10 @@ pub async fn run(
                 .unwrap_or_default();
             println!(
                 "  {} {} - {} {}",
-                player.name, number, team, player.position
+                player.name,
+                number,
+                team,
+                player.position.map_or("N/A", |p| p.code())
             );
         }
         println!();
@@ -69,7 +72,7 @@ pub async fn run(
     }
 
     let player = matching[0];
-    let player_id: i64 = player.player_id.parse().context("Invalid player ID")?;
+    let player_id = player.player_id;
     let player_team = player.team_abbrev.as_deref().unwrap_or("");
 
     // Get the player's game log for the season
@@ -168,7 +171,13 @@ fn print_player_game_stats(
         .sweater_number
         .map(|n| format!("#{}", n))
         .unwrap_or_default();
-    let content = format!("{} {} - {} {}", player.name, number, team, player.position);
+    let content = format!(
+        "{} {} - {} {}",
+        player.name,
+        number,
+        team,
+        player.position.map_or("N/A", |p| p.code())
+    );
 
     // Player header
     println!(

@@ -376,12 +376,12 @@ mod tests {
     use super::*;
     use nhl_api::{
         AssistSummary, DefendingSide, GameScheduleState, GameSummary, GoalSummary, LocalizedString,
-        MatchupTeam, PeriodDescriptor, PeriodScoring, PeriodType,
+        MatchupTeam, PeriodDescriptor, PeriodScoring, PeriodType, Season,
     };
 
     fn make_matchup_team(abbrev: &str, score: i32) -> MatchupTeam {
         MatchupTeam {
-            id: 1,
+            id: 1.into(),
             common_name: LocalizedString {
                 default: abbrev.to_string(),
             },
@@ -404,7 +404,7 @@ mod tests {
             situation_code: "1551".to_string(),
             event_id: 1,
             strength: "ev".to_string(),
-            player_id: 1,
+            player_id: 1.into(),
             first_name: LocalizedString {
                 default: "Test".to_string(),
             },
@@ -429,7 +429,7 @@ mod tests {
             shot_type: "wrist".to_string(),
             goal_modifier: "none".to_string(),
             assists: Vec::<AssistSummary>::new(),
-            home_team_defending_side: DefendingSide::Left,
+            home_team_defending_side: Some(DefendingSide::Left),
             is_home,
         }
     }
@@ -444,8 +444,8 @@ mod tests {
         clock: Option<GameClock>,
     ) -> GameMatchup {
         GameMatchup {
-            id: 1,
-            season: 20242025,
+            id: 1.into(),
+            season: Season::new(2024),
             game_type: nhl_api::GameType::RegularSeason,
             limited_scoring: false,
             game_date: "2024-11-20".to_string(),
@@ -461,7 +461,7 @@ mod tests {
             venue_timezone: "America/New_York".to_string(),
             period_descriptor: PeriodDescriptor {
                 number: period_number,
-                period_type,
+                period_type: Some(period_type),
                 max_regulation_periods: 3,
             },
             tv_broadcasts: vec![],
@@ -488,20 +488,20 @@ mod tests {
         home_score: Option<i32>,
     ) -> ScheduleGame {
         ScheduleGame {
-            id: 2024020001,
+            id: 2024020001.into(),
             game_type: nhl_api::GameType::RegularSeason,
             game_date: Some("2024-11-20".to_string()),
             start_time_utc: "2024-11-21T00:00:00Z".to_string(),
             game_state,
             away_team: nhl_api::ScheduleTeam {
-                id: 1,
+                id: 1.into(),
                 abbrev: away_abbrev.to_string(),
                 place_name: None,
                 logo: String::new(),
                 score: away_score,
             },
             home_team: nhl_api::ScheduleTeam {
-                id: 2,
+                id: 2.into(),
                 abbrev: home_abbrev.to_string(),
                 place_name: None,
                 logo: String::new(),
@@ -684,7 +684,7 @@ mod tests {
                     PeriodScoring {
                         period_descriptor: PeriodDescriptor {
                             number: 1,
-                            period_type: PeriodType::Regulation,
+                            period_type: Some(PeriodType::Regulation),
                             max_regulation_periods: 3,
                         },
                         goals: vec![make_goal(1, false, 1, 0)],
@@ -692,7 +692,7 @@ mod tests {
                     PeriodScoring {
                         period_descriptor: PeriodDescriptor {
                             number: 3,
-                            period_type: PeriodType::Regulation,
+                            period_type: Some(PeriodType::Regulation),
                             max_regulation_periods: 3,
                         },
                         goals: vec![
@@ -704,8 +704,8 @@ mod tests {
                         ],
                     },
                 ],
-                shootout: None,
-                three_stars: None,
+                shootout: vec![],
+                three_stars: vec![],
                 penalties: vec![],
             }),
             None,
@@ -733,7 +733,7 @@ mod tests {
                     PeriodScoring {
                         period_descriptor: PeriodDescriptor {
                             number: 1,
-                            period_type: PeriodType::Regulation,
+                            period_type: Some(PeriodType::Regulation),
                             max_regulation_periods: 3,
                         },
                         goals: vec![make_goal(1, false, 1, 0)],
@@ -741,7 +741,7 @@ mod tests {
                     PeriodScoring {
                         period_descriptor: PeriodDescriptor {
                             number: 3,
-                            period_type: PeriodType::Regulation,
+                            period_type: Some(PeriodType::Regulation),
                             max_regulation_periods: 3,
                         },
                         goals: vec![
@@ -751,8 +751,8 @@ mod tests {
                         ],
                     },
                 ],
-                shootout: None,
-                three_stars: None,
+                shootout: vec![],
+                three_stars: vec![],
                 penalties: vec![],
             }),
             None,

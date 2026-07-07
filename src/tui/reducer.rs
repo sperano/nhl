@@ -109,7 +109,7 @@ pub fn reduce(
                     schedule
                         .games
                         .iter()
-                        .find(|g| g.id == game_id)
+                        .find(|g| g.id == game_id.into())
                         .map(|g| {
                             (
                                 g.away_team.abbrev.clone(),

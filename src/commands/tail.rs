@@ -4,7 +4,7 @@
 
 use crate::data_provider::NHLDataProvider;
 use anyhow::{Context, Result};
-use nhl_api::{PlayByPlay, PlayEvent, PlayEventType, RosterSpot};
+use nhl_api::{PlayByPlay, PlayEvent, PlayEventType, PlayerId, RosterSpot};
 use std::collections::HashSet;
 use std::io::{self, Write};
 use std::time::Duration;
@@ -61,7 +61,7 @@ pub async fn run(
     verbose: bool,
 ) -> Result<()> {
     let pbp = client
-        .play_by_play(game_id)
+        .play_by_play(game_id.into())
         .await
         .context("Failed to fetch play-by-play data")?;
 
@@ -92,7 +92,7 @@ pub async fn follow(
 
     loop {
         let pbp = client
-            .play_by_play(game_id)
+            .play_by_play(game_id.into())
             .await
             .context("Failed to fetch play-by-play data")?;
 
@@ -487,7 +487,7 @@ fn format_period_event(event_type: &PlayEventType) -> String {
 }
 
 /// Get player name from roster
-fn get_player_name(pbp: &PlayByPlay, player_id: Option<i64>) -> String {
+fn get_player_name(pbp: &PlayByPlay, player_id: Option<PlayerId>) -> String {
     match player_id {
         Some(id) => pbp
             .get_player(id)

@@ -1,8 +1,9 @@
 /// Trait for providing NHL data, abstracting over real API clients and mock implementations
 use async_trait::async_trait;
 use nhl_api::{
-    Boxscore, ClubStats, DailySchedule, Franchise, GameDate, GameMatchup, GameType, NHLApiError,
-    PlayByPlay, PlayerGameLog, PlayerLanding, PlayerSearchResult, SeasonGameTypes, Standing,
+    Boxscore, ClubStats, DailySchedule, Franchise, GameDate, GameId, GameMatchup, GameType,
+    NHLApiError, PlayByPlay, PlayerGameLog, PlayerId, PlayerLanding, PlayerSearchResult,
+    SeasonGameTypes, Standing,
 };
 
 /// Trait for NHL data providers, implemented by both real Client and MockClient
@@ -15,13 +16,13 @@ pub trait NHLDataProvider: Send + Sync {
     async fn daily_schedule(&self, date: Option<GameDate>) -> Result<DailySchedule, NHLApiError>;
 
     /// Get game landing data (summary with period scores)
-    async fn landing(&self, game_id: i64) -> Result<GameMatchup, NHLApiError>;
+    async fn landing(&self, game_id: GameId) -> Result<GameMatchup, NHLApiError>;
 
     /// Get boxscore for a specific game
-    async fn boxscore(&self, game_id: i64) -> Result<Boxscore, NHLApiError>;
+    async fn boxscore(&self, game_id: GameId) -> Result<Boxscore, NHLApiError>;
 
     /// Get play-by-play for a specific game
-    async fn play_by_play(&self, game_id: i64) -> Result<PlayByPlay, NHLApiError>;
+    async fn play_by_play(&self, game_id: GameId) -> Result<PlayByPlay, NHLApiError>;
 
     /// Get club stats for a team
     async fn club_stats(
@@ -36,7 +37,7 @@ pub trait NHLDataProvider: Send + Sync {
         -> Result<Vec<SeasonGameTypes>, NHLApiError>;
 
     /// Get player landing data
-    async fn player_landing(&self, player_id: i64) -> Result<PlayerLanding, NHLApiError>;
+    async fn player_landing(&self, player_id: PlayerId) -> Result<PlayerLanding, NHLApiError>;
 
     /// Get all franchises
     async fn franchises(&self) -> Result<Vec<Franchise>, NHLApiError>;
@@ -51,7 +52,7 @@ pub trait NHLDataProvider: Send + Sync {
     /// Get player game log for a season
     async fn player_game_log(
         &self,
-        player_id: i64,
+        player_id: PlayerId,
         season: i32,
         game_type: GameType,
     ) -> Result<PlayerGameLog, NHLApiError>;
@@ -80,15 +81,15 @@ impl NHLDataProvider for nhl_api::Client {
         self.daily_schedule(date).await
     }
 
-    async fn landing(&self, game_id: i64) -> Result<GameMatchup, NHLApiError> {
+    async fn landing(&self, game_id: GameId) -> Result<GameMatchup, NHLApiError> {
         self.landing(game_id).await
     }
 
-    async fn boxscore(&self, game_id: i64) -> Result<Boxscore, NHLApiError> {
+    async fn boxscore(&self, game_id: GameId) -> Result<Boxscore, NHLApiError> {
         self.boxscore(game_id).await
     }
 
-    async fn play_by_play(&self, game_id: i64) -> Result<PlayByPlay, NHLApiError> {
+    async fn play_by_play(&self, game_id: GameId) -> Result<PlayByPlay, NHLApiError> {
         self.play_by_play(game_id).await
     }
 
@@ -108,7 +109,7 @@ impl NHLDataProvider for nhl_api::Client {
         self.club_stats_season(team_abbr).await
     }
 
-    async fn player_landing(&self, player_id: i64) -> Result<PlayerLanding, NHLApiError> {
+    async fn player_landing(&self, player_id: PlayerId) -> Result<PlayerLanding, NHLApiError> {
         self.player_landing(player_id).await
     }
 
@@ -126,7 +127,7 @@ impl NHLDataProvider for nhl_api::Client {
 
     async fn player_game_log(
         &self,
-        player_id: i64,
+        player_id: PlayerId,
         season: i32,
         game_type: GameType,
     ) -> Result<PlayerGameLog, NHLApiError> {

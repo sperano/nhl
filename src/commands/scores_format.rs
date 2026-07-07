@@ -50,8 +50,9 @@ impl PeriodScores {
 }
 
 /// Format period text (e.g., "1st Period", "Overtime", "Shootout")
-pub fn format_period_text(period_type: PeriodType, period_number: i32) -> String {
-    match period_type {
+/// Missing period type (historical data) is treated as regulation.
+pub fn format_period_text(period_type: Option<PeriodType>, period_number: i32) -> String {
+    match period_type.unwrap_or(PeriodType::Regulation) {
         PeriodType::Regulation => {
             let ordinal = match period_number {
                 1 => "1st",
@@ -378,14 +379,14 @@ pub fn extract_period_scores(summary: &GameSummary) -> PeriodScores {
         let period_num = period.period_descriptor.number as usize;
 
         // Determine if this is OT or SO
-        if period.period_descriptor.period_type == PeriodType::Overtime {
+        if period.period_descriptor.period_type == Some(PeriodType::Overtime) {
             has_ot = true;
             // Ensure we have enough slots (up to OVERTIME_INDEX + 1)
             if away_periods.len() < OVERTIME_INDEX + 1 {
                 away_periods.push(0);
                 home_periods.push(0);
             }
-        } else if period.period_descriptor.period_type == PeriodType::Shootout {
+        } else if period.period_descriptor.period_type == Some(PeriodType::Shootout) {
             has_so = true;
             // Ensure we have enough slots (up to SHOOTOUT_INDEX + 1)
             while away_periods.len() < SHOOTOUT_INDEX + 1 {
@@ -405,9 +406,10 @@ pub fn extract_period_scores(summary: &GameSummary) -> PeriodScores {
 
             // Store in the appropriate slot
             let idx = match period.period_descriptor.period_type {
-                PeriodType::Regulation => (period_num - 1).min(PERIOD_3_INDEX), // P1=0, P2=1, P3=2
-                PeriodType::Overtime => OVERTIME_INDEX,
-                PeriodType::Shootout => SHOOTOUT_INDEX,
+                // Missing period type (historical data) is treated as regulation
+                Some(PeriodType::Regulation) | None => (period_num - 1).min(PERIOD_3_INDEX), // P1=0, P2=1, P3=2
+                Some(PeriodType::Overtime) => OVERTIME_INDEX,
+                Some(PeriodType::Shootout) => SHOOTOUT_INDEX,
             };
 
             if idx < away_periods.len() {
@@ -599,19 +601,20 @@ mod tests {
 
     #[test]
     fn test_format_period_text_regular() {
-        assert_eq!(format_period_text(PeriodType::Regulation, 1), "1st Period");
-        assert_eq!(format_period_text(PeriodType::Regulation, 2), "2nd Period");
-        assert_eq!(format_period_text(PeriodType::Regulation, 3), "3rd Period");
-        assert_eq!(format_period_text(PeriodType::Regulation, 4), "4th Period");
+        assert_eq!(format_period_text(Some(PeriodType::Regulation), 1), "1st Period");
+        assert_eq!(format_period_text(Some(PeriodType::Regulation), 2), "2nd Period");
+        assert_eq!(format_period_text(Some(PeriodType::Regulation), 3), "3rd Period");
+        assert_eq!(format_period_text(Some(PeriodType::Regulation), 4), "4th Period");
+        assert_eq!(format_period_text(None, 1), "1st Period");
     }
 
     #[test]
     fn test_format_period_text_overtime() {
-        assert_eq!(format_period_text(PeriodType::Overtime, 4), "Overtime");
+        assert_eq!(format_period_text(Some(PeriodType::Overtime), 4), "Overtime");
     }
 
     #[test]
     fn test_format_period_text_shootout() {
-        assert_eq!(format_period_text(PeriodType::Shootout, 5), "Shootout");
+        assert_eq!(format_period_text(Some(PeriodType::Shootout), 5), "Shootout");
     }
 }
