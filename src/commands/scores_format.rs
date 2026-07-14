@@ -601,20 +601,38 @@ mod tests {
 
     #[test]
     fn test_format_period_text_regular() {
-        assert_eq!(format_period_text(Some(PeriodType::Regulation), 1), "1st Period");
-        assert_eq!(format_period_text(Some(PeriodType::Regulation), 2), "2nd Period");
-        assert_eq!(format_period_text(Some(PeriodType::Regulation), 3), "3rd Period");
-        assert_eq!(format_period_text(Some(PeriodType::Regulation), 4), "4th Period");
+        assert_eq!(
+            format_period_text(Some(PeriodType::Regulation), 1),
+            "1st Period"
+        );
+        assert_eq!(
+            format_period_text(Some(PeriodType::Regulation), 2),
+            "2nd Period"
+        );
+        assert_eq!(
+            format_period_text(Some(PeriodType::Regulation), 3),
+            "3rd Period"
+        );
+        assert_eq!(
+            format_period_text(Some(PeriodType::Regulation), 4),
+            "4th Period"
+        );
         assert_eq!(format_period_text(None, 1), "1st Period");
     }
 
     #[test]
     fn test_format_period_text_overtime() {
-        assert_eq!(format_period_text(Some(PeriodType::Overtime), 4), "Overtime");
+        assert_eq!(
+            format_period_text(Some(PeriodType::Overtime), 4),
+            "Overtime"
+        );
     }
 
     #[test]
     fn test_format_period_text_shootout() {
-        assert_eq!(format_period_text(Some(PeriodType::Shootout), 5), "Shootout");
+        assert_eq!(
+            format_period_text(Some(PeriodType::Shootout), 5),
+            "Shootout"
+        );
     }
 }
