@@ -26,7 +26,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Run tests
-        run: cargo test --lib ${{ matrix.features != 'default' && format('--features {0}', matrix.features) || '' }}
+        run: cargo test ${{ matrix.features != 'default' && format('--features {0}', matrix.features) || '' }}
 
   clippy:
     name: Clippy (${{ matrix.features }})
@@ -46,7 +46,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Run clippy
-        run: cargo clippy ${{ matrix.features != 'default' && format('--features {0}', matrix.features) || '' }} -- -D warnings
+        run: cargo clippy --all-targets ${{ matrix.features != 'default' && format('--features {0}', matrix.features) || '' }} -- -D warnings
 
   fmt:
     name: Format
@@ -61,6 +61,28 @@ jobs:
 
       - name: Check formatting
         run: cargo fmt --check
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-tarpaulin
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-tarpaulin
+
+      # Ratchet: set just below current total lib coverage. Raise it as
+      # coverage improves; never lower it. Measured 76.11% on 2026-07-08.
+      - name: Check coverage floor
+        run: cargo tarpaulin --lib --features development --fail-under 75
 
   build:
     name: Build

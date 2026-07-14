@@ -32,10 +32,11 @@ pub enum ScoresAction {
 
 Determine which reducer file handles this:
 - `src/tui/reducers/navigation.rs` - Tab/panel navigation
-- `src/tui/reducers/panels.rs` - Panel stack management
-- `src/tui/reducers/scores.rs` - Scores tab logic
+- `src/tui/reducers/document_stack.rs` - Document stack management
 - `src/tui/reducers/standings.rs` - Standings tab logic
+- `src/tui/reducers/settings.rs` - Settings logic
 - `src/tui/reducers/data_loading.rs` - API data arrival
+- Tab-specific UI actions (e.g. scores) are handled in the owning component (`src/tui/components/`), not a global reducer
 
 Add handler:
 ```rust

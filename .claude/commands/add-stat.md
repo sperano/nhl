@@ -6,10 +6,10 @@ Ask the user:
 Then add the statistic:
 
 **Step 1: Identify the widget file**
-- Skater stats: src/tui/components/skater_stats_table.rs
-- Goalie stats: src/tui/components/goalie_stats_table.rs
-- Standings: src/tui/components/standings_tab.rs
-- Team roster: src/tui/components/team_detail_panel.rs
+- Skater/goalie stats (boxscore): src/tui/components/boxscore_document.rs
+- Player stats: src/tui/components/player_detail_document.rs
+- Standings: src/tui/components/standings_tab.rs and src/tui/components/standings_documents/
+- Team roster: src/tui/components/team_detail_document.rs
 
 **Step 2: Verify data availability**
 Check that the field exists in the NHL API type:

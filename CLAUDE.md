@@ -67,7 +67,10 @@ Use these slash commands for domain-specific help:
 - Be unicode-aware (no byte-length assumptions)
 
 ### Testing
-- 90% minimum coverage for new code
+- Aim for 90% coverage on new code
+- CI enforces a total lib-coverage floor via `cargo tarpaulin --fail-under`
+  (see `.github/workflows/ci.yml`). It's a ratchet: raise it as coverage
+  improves, never lower it. Check locally with `/test-coverage`.
 - Always use `assert_buffer` for rendering tests
 - Add regression tests after fixing bugs
 - Use `tui::testing` utilities
