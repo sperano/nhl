@@ -23,8 +23,8 @@ use crate::tui::action::Action;
 use crate::tui::component::Effect;
 use crate::tui::document_nav::{DocumentNavMsg, DocumentNavState};
 use crate::tui::tab_component::{
-    handle_common_message, CommonTabMessage, TabMessage, TabState, BASE_CHROME_LINES,
-    SUBTAB_CHROME_LINES,
+    activate_focused_link, enter_item_focus, exit_item_focus, handle_common_message,
+    CommonTabMessage, TabMessage, TabState, BASE_CHROME_LINES, SUBTAB_CHROME_LINES,
 };
 
 /// Component state for StandingsTab - managed by the component itself
@@ -154,44 +154,23 @@ impl Component for StandingsTab {
         // Handle tab-specific messages
         match msg {
             StandingsTabMsg::CycleViewLeft => {
-                state.view = match state.view {
-                    GroupBy::Wildcard => GroupBy::League,
-                    GroupBy::Division => GroupBy::Wildcard,
-                    GroupBy::Conference => GroupBy::Division,
-                    GroupBy::League => GroupBy::Conference,
-                };
+                state.view = state.view.prev();
                 // Reset focus/scroll when changing views
                 state.clear_item_focus();
                 // Signal that focusable metadata needs to be rebuilt
-                Effect::Action(crate::tui::action::Action::RebuildStandingsFocusable)
+                Effect::Action(Action::RebuildStandingsFocusable)
             }
             StandingsTabMsg::CycleViewRight => {
-                state.view = match state.view {
-                    GroupBy::Wildcard => GroupBy::Division,
-                    GroupBy::Division => GroupBy::Conference,
-                    GroupBy::Conference => GroupBy::League,
-                    GroupBy::League => GroupBy::Wildcard,
-                };
+                state.view = state.view.next();
                 // Reset focus/scroll when changing views
                 state.clear_item_focus();
                 // Signal that focusable metadata needs to be rebuilt
-                Effect::Action(crate::tui::action::Action::RebuildStandingsFocusable)
+                Effect::Action(Action::RebuildStandingsFocusable)
             }
-            StandingsTabMsg::EnterBrowseMode => {
-                state.focus_first_item();
-                Effect::None
-            }
-            StandingsTabMsg::ExitBrowseMode => {
-                state.clear_item_focus();
-                Effect::None
-            }
+            StandingsTabMsg::EnterBrowseMode => enter_item_focus(state),
+            StandingsTabMsg::ExitBrowseMode => exit_item_focus(state, Effect::None),
 
-            StandingsTabMsg::ActivateTeam => match state.doc_nav().focused_link_target() {
-                Some(crate::tui::document::LinkTarget::Push(doc)) => {
-                    Effect::Action(Action::PushDocument(doc.clone()))
-                }
-                _ => Effect::None,
-            },
+            StandingsTabMsg::ActivateTeam => activate_focused_link(state),
 
             // Common messages already handled above
             StandingsTabMsg::DocNav(_)
@@ -530,38 +509,38 @@ mod tests {
             "──────────┴──────────┴────────────┴─────────────────────────────────────────────────────────────────────────────────────",
             "   Team                          GP     W    L   OT    PTS",
             "   ───────────────────────────────────────────────────────",
+            "   Avalanche                     19    16    2    1     33",
+            "   Devils                        18    15    2    1     31",
+            "   Golden Knights                19    15    3    1     31",
             "   Panthers                      19    14    3    2     30",
+            "   Hurricanes                    19    14    3    2     30",
+            "   Stars                         20    14    4    2     30",
+            "   Oilers                        20    14    4    2     30",
             "   Bruins                        18    13    4    1     27",
+            "   Jets                          19    13    5    1     27",
             "   Maple Leafs                   19    12    5    2     26",
+            "   Rangers                       18    12    5    1     25",
+            "   Kings                         19    12    6    1     25",
+            "   Penguins                      19    11    6    2     24",
+            "   Wild                          19    11    6    2     24",
+            "   Kraken                        19    11    6    2     24",
             "   Lightning                     18    11    6    1     23",
             "   Canadiens                     18    10    5    3     23",
-            "   Senators                      18     9    7    2     20",
-            "   Red Wings                     18     8    8    2     18",
-            "   Sabres                        18     6   10    2     14",
-            "   Devils                        18    15    2    1     31",
-            "   Hurricanes                    19    14    3    2     30",
-            "   Rangers                       18    12    5    1     25",
-            "   Penguins                      19    11    6    2     24",
-            "   Capitals                      18    10    7    1     21",
-            "   Islanders                     18     9    7    2     20",
-            "   Flyers                        18     8    9    1     17",
-            "   Blue Jackets                  18     5   11    2     12",
-            "   Avalanche                     19    16    2    1     33",
-            "   Stars                         20    14    4    2     30",
-            "   Jets                          19    13    5    1     27",
-            "   Wild                          19    11    6    2     24",
             "   Predators                     19    10    7    2     22",
-            "   Blues                         19     8    8    3     19",
-            "   Blackhawks                    18     7   10    1     15",
-            "   Coyotes                       18     4   13    1      9",
-            "   Golden Knights                19    15    3    1     31",
-            "   Oilers                        20    14    4    2     30",
-            "   Kings                         19    12    6    1     25",
-            "   Kraken                        19    11    6    2     24",
             "   Canucks                       19    10    7    2     22",
+            "   Capitals                      18    10    7    1     21",
+            "   Senators                      18     9    7    2     20",
+            "   Islanders                     18     9    7    2     20",
             "   Flames                        19     9    8    2     20",
+            "   Blues                         19     8    8    3     19",
+            "   Red Wings                     18     8    8    2     18",
+            "   Flyers                        18     8    9    1     17",
             "   Ducks                         19     7   10    2     16",
+            "   Blackhawks                    18     7   10    1     15",
+            "   Sabres                        18     6   10    2     14",
+            "   Blue Jackets                  18     5   11    2     12",
             "   Sharks                        18     5   12    1     11",
+            "   Coyotes                       18     4   13    1      9",
             " ",
             " ",
             " ",

@@ -8,6 +8,7 @@ mod division;
 mod league;
 mod wildcard;
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use nhl_api::Standing;
@@ -16,7 +17,8 @@ use ratatui::layout::Rect;
 
 use crate::config::{Config, RenderContext};
 use crate::tui::component::ElementWidget;
-use crate::tui::document::{Document, DocumentView};
+use crate::tui::document::{Document, DocumentElement, DocumentView, FocusContext};
+use crate::tui::helpers::StandingsSorting;
 
 pub use conference::ConferenceStandingsDocument;
 pub use division::DivisionStandingsDocument;
@@ -24,6 +26,95 @@ pub use league::LeagueStandingsDocument;
 pub use wildcard::WildcardStandingsDocument;
 
 use super::{standings_columns, TableWidget};
+
+/// Left indent applied to section titles so they align with table content
+/// (after the selector space).
+const SECTION_TITLE_MARGIN: u16 = 2;
+
+/// Horizontal gap between the two side-by-side standings columns.
+const COLUMN_GAP: u16 = 4;
+
+/// Group standings with `key`, sorting each group's teams by points descending.
+fn group_standings_by(
+    standings: &[Standing],
+    key: impl Fn(&Standing) -> String,
+) -> BTreeMap<String, Vec<Standing>> {
+    let mut grouped: BTreeMap<String, Vec<Standing>> = BTreeMap::new();
+    for standing in standings {
+        grouped
+            .entry(key(standing))
+            .or_default()
+            .push(standing.clone());
+    }
+    for teams in grouped.values_mut() {
+        teams.sort_by_points_desc();
+    }
+    grouped
+}
+
+/// Standings for the four NHL divisions, each sorted by points descending,
+/// as (Atlantic, Metropolitan, Central, Pacific). Divisions absent from the
+/// input (e.g. standings not yet loaded) come back empty.
+fn division_standings(
+    standings: &[Standing],
+) -> (Vec<Standing>, Vec<Standing>, Vec<Standing>, Vec<Standing>) {
+    let mut grouped = group_standings_by(standings, |s| s.division_name.clone());
+    (
+        grouped.remove("Atlantic").unwrap_or_default(),
+        grouped.remove("Metropolitan").unwrap_or_default(),
+        grouped.remove("Central").unwrap_or_default(),
+        grouped.remove("Pacific").unwrap_or_default(),
+    )
+}
+
+/// Order the (eastern, western) pair per the western-first display setting.
+fn order_conferences<T>(eastern: T, western: T, western_first: bool) -> (T, T) {
+    if western_first {
+        (western, eastern)
+    } else {
+        (eastern, western)
+    }
+}
+
+/// A titled, focus-aware standings table section within a column.
+struct StandingsSection<'a> {
+    title: &'a str,
+    table_name: String,
+    teams: Vec<Standing>,
+}
+
+/// Build a vertical column of standings sections, skipping empty ones (no
+/// title over an empty table) and separating the rest with single-line
+/// spacers -- never a trailing spacer.
+fn build_sections_group(sections: Vec<StandingsSection>, focus: &FocusContext) -> DocumentElement {
+    let mut children = Vec::new();
+    for section in sections.into_iter().filter(|s| !s.teams.is_empty()) {
+        if !children.is_empty() {
+            children.push(DocumentElement::spacer(1));
+        }
+        children.push(DocumentElement::indented(
+            DocumentElement::section_title(section.title, false),
+            SECTION_TITLE_MARGIN,
+        ));
+        let table = TableWidget::from_data(standings_columns(), section.teams)
+            .with_focused_row(focus.focused_table_row(&section.table_name));
+        children.push(DocumentElement::table(section.table_name, table));
+    }
+    DocumentElement::group(children)
+}
+
+/// Place two standings columns side-by-side (centered, standard gap). A
+/// column whose group came out empty (e.g. standings not yet loaded for that
+/// conference) is omitted so the remaining column fills the row.
+fn two_column_row(left: DocumentElement, right: DocumentElement) -> DocumentElement {
+    let columns = [left, right]
+        .into_iter()
+        .filter(
+            |col| !matches!(col, DocumentElement::Group { children, .. } if children.is_empty()),
+        )
+        .collect();
+    DocumentElement::row_center_with_gap(columns, COLUMN_GAP)
+}
 
 /// Widget that renders a standings document with DocumentView
 ///
@@ -117,7 +208,7 @@ impl ElementWidget for StandingsDocumentWidget {
         view.set_scroll_offset(self.scroll_offset);
 
         // Create child RenderContext with our focus state
-        let child_ctx = RenderContext::new(ctx.config, self.focused);
+        let child_ctx = ctx.child(self.focused);
 
         // Render the document
         view.render(area, buf, &child_ctx);
@@ -181,44 +272,46 @@ mod tests {
         // Height should be: column headers (1) + separator (1) + 32 teams = 34 lines
         assert_eq!(height, 34);
 
-        // Check all lines
+        // Teams are now sorted by points descending (see LeagueStandingsDocument's
+        // doc comment); ties are broken by the stable sort's input order, which
+        // groups division-by-division (Atlantic, Metropolitan, Central, Pacific).
         assert_buffer(
             &buf,
             &[
                 "  Team                          GP     W    L   OT    PTS",
                 "  ───────────────────────────────────────────────────────",
+                "  Avalanche                     19    16    2    1     33",
+                "  Devils                        18    15    2    1     31",
+                "  Golden Knights                19    15    3    1     31",
                 "  Panthers                      19    14    3    2     30",
+                "  Hurricanes                    19    14    3    2     30",
+                "  Stars                         20    14    4    2     30",
+                "  Oilers                        20    14    4    2     30",
                 "  Bruins                        18    13    4    1     27",
+                "  Jets                          19    13    5    1     27",
                 "  Maple Leafs                   19    12    5    2     26",
+                "  Rangers                       18    12    5    1     25",
+                "  Kings                         19    12    6    1     25",
+                "  Penguins                      19    11    6    2     24",
+                "  Wild                          19    11    6    2     24",
+                "  Kraken                        19    11    6    2     24",
                 "  Lightning                     18    11    6    1     23",
                 "  Canadiens                     18    10    5    3     23",
-                "  Senators                      18     9    7    2     20",
-                "  Red Wings                     18     8    8    2     18",
-                "  Sabres                        18     6   10    2     14",
-                "  Devils                        18    15    2    1     31",
-                "  Hurricanes                    19    14    3    2     30",
-                "  Rangers                       18    12    5    1     25",
-                "  Penguins                      19    11    6    2     24",
-                "  Capitals                      18    10    7    1     21",
-                "  Islanders                     18     9    7    2     20",
-                "  Flyers                        18     8    9    1     17",
-                "  Blue Jackets                  18     5   11    2     12",
-                "  Avalanche                     19    16    2    1     33",
-                "  Stars                         20    14    4    2     30",
-                "  Jets                          19    13    5    1     27",
-                "  Wild                          19    11    6    2     24",
                 "  Predators                     19    10    7    2     22",
-                "  Blues                         19     8    8    3     19",
-                "  Blackhawks                    18     7   10    1     15",
-                "  Coyotes                       18     4   13    1      9",
-                "  Golden Knights                19    15    3    1     31",
-                "  Oilers                        20    14    4    2     30",
-                "  Kings                         19    12    6    1     25",
-                "  Kraken                        19    11    6    2     24",
                 "  Canucks                       19    10    7    2     22",
+                "  Capitals                      18    10    7    1     21",
+                "  Senators                      18     9    7    2     20",
+                "  Islanders                     18     9    7    2     20",
                 "  Flames                        19     9    8    2     20",
+                "  Blues                         19     8    8    3     19",
+                "  Red Wings                     18     8    8    2     18",
+                "  Flyers                        18     8    9    1     17",
                 "  Ducks                         19     7   10    2     16",
+                "  Blackhawks                    18     7   10    1     15",
+                "  Sabres                        18     6   10    2     14",
+                "  Blue Jackets                  18     5   11    2     12",
                 "  Sharks                        18     5   12    1     11",
+                "  Coyotes                       18     4   13    1      9",
             ],
         );
     }
@@ -354,9 +447,9 @@ mod tests {
         // Right column (16 teams): positions 4, 5, 6, ... 19
 
         // First 16 positions are left column
-        for i in 0..16 {
+        for (i, position) in positions.iter().take(16).enumerate() {
             assert_eq!(
-                positions[i],
+                *position,
                 4 + i as u16,
                 "Left column position {} should be {}",
                 i,
@@ -396,11 +489,11 @@ mod tests {
         // Check that we have elements from both columns (0 and 1)
         let column_0_count = row_positions
             .iter()
-            .filter(|rp| rp.as_ref().map_or(false, |p| p.child_idx == 0))
+            .filter(|rp| rp.as_ref().is_some_and(|p| p.child_idx == 0))
             .count();
         let column_1_count = row_positions
             .iter()
-            .filter(|rp| rp.as_ref().map_or(false, |p| p.child_idx == 1))
+            .filter(|rp| rp.as_ref().is_some_and(|p| p.child_idx == 1))
             .count();
 
         // Should have 16 teams in each column
@@ -413,8 +506,10 @@ mod tests {
         let standings = Arc::new(create_test_standings());
 
         // Test with western_first = false (Eastern left, Western right)
-        let mut config = Config::default();
-        config.display_standings_western_first = false;
+        let config = Config {
+            display_standings_western_first: false,
+            ..Default::default()
+        };
         let doc = ConferenceStandingsDocument::new(standings.clone(), Arc::new(config));
         let elements = doc.build(&FocusContext::default());
 
@@ -430,8 +525,10 @@ mod tests {
         }
 
         // Test with western_first = true (Western left, Eastern right)
-        let mut config = Config::default();
-        config.display_standings_western_first = true;
+        let config = Config {
+            display_standings_western_first: true,
+            ..Default::default()
+        };
         let doc = ConferenceStandingsDocument::new(standings, Arc::new(config));
         let elements = doc.build(&FocusContext::default());
 
@@ -541,11 +638,11 @@ mod tests {
         // Check that we have elements from both columns (0 and 1)
         let column_0_count = row_positions
             .iter()
-            .filter(|rp| rp.as_ref().map_or(false, |p| p.child_idx == 0))
+            .filter(|rp| rp.as_ref().is_some_and(|p| p.child_idx == 0))
             .count();
         let column_1_count = row_positions
             .iter()
-            .filter(|rp| rp.as_ref().map_or(false, |p| p.child_idx == 1))
+            .filter(|rp| rp.as_ref().is_some_and(|p| p.child_idx == 1))
             .count();
 
         // Should have 16 teams in each column (2 divisions x 8 teams)
@@ -558,8 +655,10 @@ mod tests {
         let standings = Arc::new(create_test_standings());
 
         // Test with western_first = false (Eastern divisions left, Western divisions right)
-        let mut config = Config::default();
-        config.display_standings_western_first = false;
+        let config = Config {
+            display_standings_western_first: false,
+            ..Default::default()
+        };
         let doc = DivisionStandingsDocument::new(standings.clone(), Arc::new(config));
         let elements = doc.build(&FocusContext::default());
 
@@ -574,8 +673,10 @@ mod tests {
         }
 
         // Test with western_first = true (Western divisions left, Eastern divisions right)
-        let mut config = Config::default();
-        config.display_standings_western_first = true;
+        let config = Config {
+            display_standings_western_first: true,
+            ..Default::default()
+        };
         let doc = DivisionStandingsDocument::new(standings, Arc::new(config));
         let elements = doc.build(&FocusContext::default());
 
