@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use ratatui::{buffer::Buffer, layout::Rect};
@@ -8,10 +9,10 @@ use super::table::TableWidget;
 use crate::config::RenderContext;
 use crate::tui::component::{Component, Element, ElementWidget};
 use crate::tui::document::{
-    Document, DocumentBuilder, DocumentElement, DocumentView, FocusContext,
-    TEAM_BOXSCORE_SIDE_BY_SIDE_WIDTH,
+    render_document_widget, Document, DocumentBuilder, DocumentElement, DocumentWidgetParams,
+    FocusContext, TEAM_BOXSCORE_SIDE_BY_SIDE_WIDTH,
 };
-use crate::tui::widgets::{BigScoreParams, LoadingAnimation, ScoreBoxStatus, StandaloneWidget};
+use crate::tui::widgets::{BigScoreParams, ScoreBoxStatus};
 use crate::tui::{Alignment, CellValue, ColumnDef};
 
 /// View mode for boxscore panel
@@ -30,7 +31,7 @@ pub struct BoxscoreDocumentProps {
     /// construction site shared with the input-handling path.
     pub document: Option<Arc<dyn Document>>,
     pub loading: bool,
-    pub selected_index: Option<usize>,
+    pub focus_index: Option<usize>,
     pub scroll_offset: u16,
     pub focused: bool,
     pub animation_frame: u8,
@@ -48,7 +49,7 @@ impl Component for BoxscoreDocument {
         Element::Widget(Box::new(BoxscoreDocumentWidget {
             document: props.document.clone(),
             loading: props.loading,
-            selected_index: props.selected_index,
+            focus_index: props.focus_index,
             scroll_offset: props.scroll_offset,
             focused: props.focused,
             animation_frame: props.animation_frame,
@@ -173,9 +174,21 @@ impl Document for BoxscoreDocumentContent {
         }
         builder = builder.spacer(1);
 
-        // Player stats - side by side if wide enough, otherwise stacked
-        let away_boxscore = self.build_team_boxscore(focus, true);
-        let home_boxscore = self.build_team_boxscore(focus, false);
+        // Player stats - side by side if wide enough, otherwise stacked.
+        // A team with no player stats at all (e.g. a game that hasn't
+        // started) is omitted entirely rather than rendering an empty
+        // bordered shell.
+        let stats = &self.boxscore.player_by_game_stats;
+        let has_players = |team: &nhl_api::TeamPlayerStats| {
+            !team.forwards.is_empty() || !team.defense.is_empty() || !team.goalies.is_empty()
+        };
+        let mut boxscores = Vec::new();
+        if has_players(&stats.away_team) {
+            boxscores.push(self.build_team_boxscore(focus, true));
+        }
+        if has_players(&stats.home_team) {
+            boxscores.push(self.build_team_boxscore(focus, false));
+        }
 
         let wide_enough = focus
             .available_width
@@ -183,28 +196,28 @@ impl Document for BoxscoreDocumentContent {
             .unwrap_or(false);
 
         if wide_enough {
-            builder = builder.element(DocumentElement::row_center_with_gap(
-                vec![away_boxscore, home_boxscore],
-                4,
-            ));
+            builder = builder.element(DocumentElement::row_center_with_gap(boxscores, 4));
         } else {
-            builder = builder.element(away_boxscore);
-            builder = builder.spacer(1);
-            builder = builder.element(home_boxscore);
+            for (i, boxscore) in boxscores.into_iter().enumerate() {
+                if i > 0 {
+                    builder = builder.spacer(1);
+                }
+                builder = builder.element(boxscore);
+            }
         }
 
         builder.build()
     }
 
-    fn title(&self) -> String {
-        format!(
+    fn title(&self) -> Cow<'static, str> {
+        Cow::Owned(format!(
             "{} @ {} - Game {}",
             self.boxscore.away_team.abbrev, self.boxscore.home_team.abbrev, self.game_id
-        )
+        ))
     }
 
-    fn id(&self) -> String {
-        format!("boxscore_{}", self.game_id)
+    fn id(&self) -> Cow<'static, str> {
+        Cow::Owned(format!("boxscore_{}", self.game_id))
     }
 }
 
@@ -223,7 +236,10 @@ fn game_skater_columns() -> Vec<ColumnDef<SkaterStats>> {
             }
         }),
         ColumnDef::new("Pos", 3, Alignment::Center, |s: &SkaterStats| {
-            CellValue::Text(s.position.map_or_else(String::new, |p| p.code().to_string()))
+            CellValue::Text(
+                s.position
+                    .map_or_else(String::new, |p| p.code().to_string()),
+            )
         }),
         ColumnDef::new("G", 2, Alignment::Right, |s: &SkaterStats| {
             CellValue::Text(s.goals.to_string())
@@ -384,10 +400,11 @@ fn boxscore_to_status(boxscore: &Boxscore) -> ScoreBoxStatus {
 }
 
 /// Widget for rendering boxscore document
+#[derive(Clone)]
 struct BoxscoreDocumentWidget {
     document: Option<Arc<dyn Document>>,
     loading: bool,
-    selected_index: Option<usize>,
+    focus_index: Option<usize>,
     scroll_offset: u16,
     focused: bool,
     animation_frame: u8,
@@ -395,46 +412,23 @@ struct BoxscoreDocumentWidget {
 
 impl ElementWidget for BoxscoreDocumentWidget {
     fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
-        // Create child RenderContext with our focus state
-        let child_ctx = RenderContext::new(ctx.config, self.focused);
-
-        // Show animation if loading or data hasn't arrived yet
-        if self.loading || self.document.is_none() {
-            LoadingAnimation::new(self.animation_frame).render(area, buf, &child_ctx);
-            return;
-        }
-
-        // Safe to unwrap since we checked is_none() above
-        let document = self.document.clone().unwrap();
-
-        if area.width == 0 || area.height == 0 {
-            return;
-        }
-
-        // Render the pre-built document with DocumentView
-        let mut view = DocumentView::new(document, area.height);
-
-        // Apply focus state
-        if let Some(idx) = self.selected_index {
-            view.focus_by_index(idx);
-        }
-
-        // Apply scroll offset
-        view.set_scroll_offset(self.scroll_offset);
-
-        // Render the document
-        view.render(area, buf, &child_ctx);
+        render_document_widget(
+            &DocumentWidgetParams {
+                document: &self.document,
+                loading: self.loading,
+                focus_index: self.focus_index,
+                scroll_offset: self.scroll_offset,
+                animation_frame: self.animation_frame,
+                focused: self.focused,
+            },
+            area,
+            buf,
+            ctx,
+        );
     }
 
     fn clone_box(&self) -> Box<dyn ElementWidget> {
-        Box::new(BoxscoreDocumentWidget {
-            document: self.document.clone(),
-            loading: self.loading,
-            selected_index: self.selected_index,
-            scroll_offset: self.scroll_offset,
-            focused: self.focused,
-            animation_frame: self.animation_frame,
-        })
+        Box::new(self.clone())
     }
 }
 
@@ -616,6 +610,87 @@ mod tests {
         assert_eq!(doc.id(), "boxscore_2024020001");
     }
 
+    /// Count TeamBoxscore elements anywhere in the built tree (they sit
+    /// inside a Row at side-by-side widths, at the top level otherwise).
+    fn count_team_boxscores(elements: &[DocumentElement]) -> usize {
+        elements
+            .iter()
+            .map(|e| match e {
+                DocumentElement::TeamBoxscore { .. } => 1,
+                DocumentElement::Row { children, .. } => count_team_boxscores(children),
+                _ => 0,
+            })
+            .sum()
+    }
+
+    #[test]
+    fn test_build_omits_team_with_no_player_stats() {
+        // A team without any player stats (e.g. a game that hasn't started)
+        // must not render an empty bordered shell.
+        let mut boxscore = create_test_boxscore();
+        boxscore.player_by_game_stats.away_team = TeamPlayerStats {
+            forwards: vec![],
+            defense: vec![],
+            goalies: vec![],
+        };
+        let doc = BoxscoreDocumentContent::new(2024020001, boxscore, TeamView::Away);
+
+        let elements = doc.build(&FocusContext::default());
+        assert_eq!(count_team_boxscores(&elements), 1);
+    }
+
+    #[test]
+    fn test_build_omits_all_boxscores_when_no_player_stats() {
+        let mut boxscore = create_test_boxscore();
+        let empty = || TeamPlayerStats {
+            forwards: vec![],
+            defense: vec![],
+            goalies: vec![],
+        };
+        boxscore.player_by_game_stats.away_team = empty();
+        boxscore.player_by_game_stats.home_team = empty();
+        let doc = BoxscoreDocumentContent::new(2024020001, boxscore, TeamView::Away);
+
+        let elements = doc.build(&FocusContext::default());
+        assert_eq!(count_team_boxscores(&elements), 0);
+        assert_eq!(doc.focusables(&FocusContext::default()).len(), 0);
+    }
+
+    #[test]
+    fn test_mock_boxscore_document_renders_player_tables() {
+        // End-to-end: the mock-mode boxscore document must show actual
+        // player rows, not collapsed borders.
+        let boxscore = crate::fixtures::create_mock_boxscore(2024020001);
+        let doc = BoxscoreDocumentContent::new(2024020001, boxscore, TeamView::Away);
+
+        let display_config = crate::config::DisplayConfig::default();
+        let ctx = RenderContext::focused(&display_config);
+        let (buf, _height) = doc.render_full(120, &ctx, &FocusContext::default());
+
+        let text = crate::tui::testing::buffer_lines(&buf).join("\n");
+        for name in [
+            "Matthews", "Rielly", "Woll", "Stutzle", "Chabot", "Forsberg",
+        ] {
+            assert!(text.contains(name), "expected player {name} in:\n{text}");
+        }
+    }
+
+    #[test]
+    fn test_mock_boxscore_has_player_stats_for_both_teams() {
+        // Mock mode exists to demo the UI; an empty player_by_game_stats
+        // renders the boxscore document as bare border lines (regression:
+        // 2026-07-08 manual smoke pass).
+        let boxscore = crate::fixtures::create_mock_boxscore(2024020001);
+        for team in [
+            &boxscore.player_by_game_stats.away_team,
+            &boxscore.player_by_game_stats.home_team,
+        ] {
+            assert!(!team.forwards.is_empty());
+            assert!(!team.defense.is_empty());
+            assert!(!team.goalies.is_empty());
+        }
+    }
+
     #[test]
     fn test_focusable_positions() {
         let boxscore = create_test_boxscore();
@@ -635,7 +710,7 @@ mod tests {
         let widget = BoxscoreDocumentWidget {
             document: None,
             loading: true,
-            selected_index: None,
+            focus_index: None,
             scroll_offset: 0,
             focused: true,
             animation_frame: 0,
@@ -657,7 +732,7 @@ mod tests {
         let widget = BoxscoreDocumentWidget {
             document: None,
             loading: false,
-            selected_index: None,
+            focus_index: None,
             scroll_offset: 0,
             focused: true,
             animation_frame: 0,
@@ -685,7 +760,7 @@ mod tests {
         let widget = BoxscoreDocumentWidget {
             document: Some(document),
             loading: false,
-            selected_index: None,
+            focus_index: None,
             scroll_offset: 0,
             focused: true,
             animation_frame: 0,

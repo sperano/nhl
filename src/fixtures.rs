@@ -8,10 +8,11 @@
 /// The fixtures represent realistic NHL data with all 32 teams and various game states.
 use nhl_api::{
     Boxscore, BoxscoreTeam, DailySchedule, DefendingSide, Franchise, GameClock, GameDate, GameLog,
-    GameMatchup, GameOutcome, GameScheduleState, GameState, GameType, Handedness, HomeRoad,
-    LocalizedString, PeriodDescriptor, PeriodType, PlayByPlay, PlayEvent, PlayEventDetails,
-    PlayEventType, PlayerByGameStats, PlayerGameLog, PlayerLanding, PlayerSearchResult, Position,
-    RosterSpot, ScheduleGame, ScheduleTeam, Season, Standing, TeamPlayerStats, ZoneCode,
+    GameMatchup, GameOutcome, GameScheduleState, GameState, GameType, GoalieDecision, GoalieStats,
+    Handedness, HomeRoad, LocalizedString, PeriodDescriptor, PeriodType, PlayByPlay, PlayEvent,
+    PlayEventDetails, PlayEventType, PlayerByGameStats, PlayerGameLog, PlayerLanding,
+    PlayerSearchResult, Position, RosterSpot, ScheduleGame, ScheduleTeam, Season, SkaterStats,
+    Standing, TeamPlayerStats, ZoneCode,
 };
 
 /// Create mock standings data - reusing the test data structure
@@ -204,7 +205,11 @@ fn create_game_matchup_final(overtime: bool) -> GameMatchup {
     };
 
     GameMatchup {
-        id: if overtime { 2024020006.into() } else { 2024020005.into() },
+        id: if overtime {
+            2024020006.into()
+        } else {
+            2024020005.into()
+        },
         season: Season::new(2024),
         game_type: nhl_api::GameType::RegularSeason,
         limited_scoring: false,
@@ -320,6 +325,128 @@ fn create_game_summary(_period: i32, _away_score: i32, _home_score: i32) -> nhl_
     }
 }
 
+/// Skater line for the mock boxscore. Player ids/numbers/positions match
+/// `create_mock_roster_spots` so boxscore rows agree with the play-by-play
+/// fixtures that reference the same players.
+#[allow(clippy::too_many_arguments)]
+fn mock_skater(
+    player_id: i64,
+    name: &str,
+    sweater_number: i32,
+    position: Position,
+    goals: i32,
+    assists: i32,
+    sog: i32,
+    hits: i32,
+) -> SkaterStats {
+    SkaterStats {
+        player_id: player_id.into(),
+        name: LocalizedString {
+            default: name.to_string(),
+        },
+        sweater_number,
+        position: Some(position),
+        goals,
+        assists,
+        points: goals + assists,
+        plus_minus: goals + assists - 1,
+        pim: if hits > 2 { 2 } else { 0 },
+        hits,
+        power_play_goals: if goals > 1 { 1 } else { 0 },
+        sog,
+        faceoff_winning_pctg: if position == Position::Center {
+            0.55
+        } else {
+            0.0
+        },
+        toi: "18:24".to_string(),
+        blocked_shots: 1,
+        shifts: 22,
+        giveaways: 1,
+        takeaways: 1,
+    }
+}
+
+/// Goalie line for the mock boxscore; ids match `create_mock_roster_spots`.
+fn mock_goalie(
+    player_id: i64,
+    name: &str,
+    sweater_number: i32,
+    goals_against: i32,
+    shots_against: i32,
+    won: bool,
+) -> GoalieStats {
+    GoalieStats {
+        player_id: player_id.into(),
+        name: LocalizedString {
+            default: name.to_string(),
+        },
+        sweater_number,
+        position: Some(Position::Goalie),
+        even_strength_shots_against: format!("{}", shots_against - 4),
+        power_play_shots_against: "4".to_string(),
+        shorthanded_shots_against: "0".to_string(),
+        save_shots_against: format!("{}/{}", shots_against - goals_against, shots_against),
+        save_pctg: Some(f64::from(shots_against - goals_against) / f64::from(shots_against)),
+        even_strength_goals_against: goals_against.saturating_sub(1),
+        power_play_goals_against: goals_against.min(1),
+        shorthanded_goals_against: 0,
+        pim: Some(0),
+        goals_against,
+        toi: "58:41".to_string(),
+        starter: Some(true),
+        decision: Some(if won {
+            GoalieDecision::Win
+        } else {
+            GoalieDecision::Loss
+        }),
+        shots_against,
+        saves: shots_against - goals_against,
+    }
+}
+
+/// Player stats for the mock boxscore (TOR away, OTT home), consistent with
+/// the roster fixtures. Both live and final mock games share these lines.
+fn create_mock_player_stats() -> PlayerByGameStats {
+    PlayerByGameStats {
+        away_team: TeamPlayerStats {
+            forwards: vec![
+                mock_skater(8478483, "A. Matthews", 34, Position::Center, 2, 0, 7, 1),
+                mock_skater(8478444, "M. Marner", 16, Position::RightWing, 0, 2, 3, 0),
+                mock_skater(8478858, "W. Nylander", 88, Position::RightWing, 1, 1, 5, 1),
+            ],
+            defense: vec![mock_skater(
+                8479318,
+                "M. Rielly",
+                44,
+                Position::Defense,
+                0,
+                1,
+                2,
+                3,
+            )],
+            goalies: vec![mock_goalie(8477970, "J. Woll", 60, 4, 28, false)],
+        },
+        home_team: TeamPlayerStats {
+            forwards: vec![
+                mock_skater(8479469, "T. Stutzle", 18, Position::Center, 1, 2, 4, 2),
+                mock_skater(8480801, "D. Batherson", 19, Position::RightWing, 2, 1, 6, 1),
+            ],
+            defense: vec![mock_skater(
+                8479325,
+                "T. Chabot",
+                72,
+                Position::Defense,
+                1,
+                0,
+                3,
+                4,
+            )],
+            goalies: vec![mock_goalie(8476341, "A. Forsberg", 31, 3, 32, true)],
+        },
+    }
+}
+
 /// Create mock boxscore
 pub fn create_mock_boxscore(game_id: i64) -> Boxscore {
     let is_live = game_id == 2024020002 || game_id == 2024020003 || game_id == 2024020004;
@@ -423,18 +550,7 @@ pub fn create_mock_boxscore(game_id: i64) -> Boxscore {
                 in_intermission: false,
             }
         },
-        player_by_game_stats: PlayerByGameStats {
-            away_team: TeamPlayerStats {
-                forwards: vec![],
-                defense: vec![],
-                goalies: vec![],
-            },
-            home_team: TeamPlayerStats {
-                forwards: vec![],
-                defense: vec![],
-                goalies: vec![],
-            },
-        },
+        player_by_game_stats: create_mock_player_stats(),
     }
 }
 
