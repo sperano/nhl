@@ -533,7 +533,7 @@ mod tests {
 
     #[test]
     fn test_builder_for_each() {
-        let items = vec!["One", "Two", "Three"];
+        let items = ["One", "Two", "Three"];
         let elements = DocumentBuilder::new()
             .heading(1, "List")
             .for_each(items.iter(), |b, item| b.text(*item))
@@ -544,7 +544,7 @@ mod tests {
 
     #[test]
     fn test_builder_complex_document() {
-        let teams = vec![("BOS", "Boston Bruins"), ("TOR", "Toronto Maple Leafs")];
+        let teams = [("BOS", "Boston Bruins"), ("TOR", "Toronto Maple Leafs")];
 
         let elements = DocumentBuilder::new()
             .heading(1, "NHL Teams")

@@ -2,6 +2,7 @@ use anyhow::Context;
 use phf::phf_map;
 use ratatui::style::{Color, Modifier, Style};
 use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -553,6 +554,10 @@ pub struct RenderContext<'a> {
     pub focused: bool,
     /// Tab selections for embedded tabs in documents (tabs_id -> active_index)
     pub tab_selections: HashMap<String, usize>,
+    /// Cross-frame document render cache, owned by the TUI run loop and
+    /// threaded down to `DocumentView` via `child()`. `None` (the default,
+    /// and always the case in CLI paths and most tests) disables caching.
+    pub doc_cache: Option<&'a RefCell<crate::tui::document::DocumentRenderCache>>,
 }
 
 impl<'a> RenderContext<'a> {
@@ -562,21 +567,39 @@ impl<'a> RenderContext<'a> {
             config,
             focused,
             tab_selections: HashMap::new(),
+            doc_cache: None,
         }
     }
 
     /// Create a focused render context (convenience for the common case)
     pub fn focused(config: &'a DisplayConfig) -> Self {
-        Self {
-            config,
-            focused: true,
+        Self::new(config, true)
+    }
+
+    /// Derive a child context with its own focus flag, preserving the config
+    /// and the document render cache (but not tab selections, which are
+    /// per-document and set by the widget that owns them).
+    pub fn child(&self, focused: bool) -> RenderContext<'a> {
+        RenderContext {
+            config: self.config,
+            focused,
             tab_selections: HashMap::new(),
+            doc_cache: self.doc_cache,
         }
     }
 
     /// Set tab selections for embedded tabs
     pub fn with_tab_selections(mut self, selections: HashMap<String, usize>) -> Self {
         self.tab_selections = selections;
+        self
+    }
+
+    /// Attach the cross-frame document render cache
+    pub fn with_doc_cache(
+        mut self,
+        cache: &'a RefCell<crate::tui::document::DocumentRenderCache>,
+    ) -> Self {
+        self.doc_cache = Some(cache);
         self
     }
 
@@ -941,11 +964,16 @@ mod tests {
 
     #[test]
     fn test_config_to_toml() {
-        let mut config = Config::default();
-        config.refresh_interval = 30;
-        config.log_level = "debug".to_string();
-        config.display_standings_western_first = true;
-        config.display.use_unicode = false;
+        let config = Config {
+            refresh_interval: 30,
+            log_level: "debug".to_string(),
+            display_standings_western_first: true,
+            display: DisplayConfig {
+                use_unicode: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
 
         let toml_str = toml::to_string_pretty(&config).unwrap();
 
@@ -988,9 +1016,9 @@ error_fg = "255,0,0"
         // Deserialize back
         let deserialized: Config = toml::from_str(&toml_str).unwrap();
 
-        assert_eq!(deserialized.display.use_unicode, false);
+        assert!(!deserialized.display.use_unicode);
         assert_eq!(deserialized.refresh_interval, 45);
-        assert_eq!(deserialized.display_standings_western_first, true);
+        assert!(deserialized.display_standings_western_first);
     }
 
     #[test]

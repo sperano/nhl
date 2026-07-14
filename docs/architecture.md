@@ -412,8 +412,11 @@ instead of redrawing every poll cycle:
 ## Renderer
 
 `Renderer` (`src/tui/renderer.rs`) is stateless — it holds no fields and no
-cross-call cache; there is no virtual-DOM diffing. `Renderer::render(element,
-area, buf, ctx)` walks the `Element` tree once per call:
+cross-call cache; there is no virtual-DOM diffing. (Document-backed widgets
+do reuse work across frames, but that lives in `DocumentRenderCache`, owned
+by the run loop and threaded down via `RenderContext` — see
+`docs/document-system.md`.) `Renderer::render(element, area, buf, ctx)`
+walks the `Element` tree once per call:
 
 - `Element::Widget(w)` → `w.render(area, buf, ctx)`
 - `Element::Container { children, layout }` → splits `area` via

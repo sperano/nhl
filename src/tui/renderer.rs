@@ -98,7 +98,7 @@ impl Renderer {
 
             Element::FocusContext { focused, child } => {
                 // Create child context with specified focus state
-                let child_ctx = RenderContext::new(ctx.config, *focused);
+                let child_ctx = ctx.child(*focused);
 
                 // Fill the entire area with the appropriate background color
                 // This ensures empty space is also dimmed when unfocused

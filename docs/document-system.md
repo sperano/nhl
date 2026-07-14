@@ -26,27 +26,47 @@ The document system (`src/tui/document/`) provides scrollable, focusable content
 └─────────────────────────────────────────────────────────────┘
 ```
 
-`DocumentView::new()` builds the element tree **once** and derives both the
-document height and the `FocusManager` from that single build, instead of
-calling `calculate_height()` (which independently calls `build()` again
-internally) and then building a second time for the focus manager:
+`DocumentView::new()` builds nothing: at construction time neither the real
+content width (known only when `render()` sees its area) nor the focused
+element (applied afterwards via `focus_by_index`) are known, so it just
+records them as pending state. `render()` then obtains the full-height
+buffer and copies the visible slice into the output buffer. Building
+happens **once** per changed frame in the common unfocused case; when an
+element is focused a second build is unavoidable, because focus highlighting
+is baked into the tree by `build()` itself and resolving a focus *index*
+into the `FocusableId` that `build()` needs requires a first, unfocused
+build.
 
-```rust
-pub fn new(document: Arc<dyn Document>, viewport_height: u16) -> Self {
-    let elements = document.build(&FocusContext::default());
-    let doc_height = elements.iter().map(|e| e.height()).sum();
-    let viewport = Viewport::new(0, viewport_height, doc_height);
-    let focus_manager = FocusManager::from_elements(&elements);
-    // ...
-}
-```
+### DocumentRenderCache (cross-frame reuse)
 
-`DocumentView::render()` then calls `document.render_full()`, which builds
-the element tree a second time (this time with the current `FocusContext`, so
-the just-focused element renders correctly) and renders it to a full-height
-buffer before copying the visible slice into the output buffer. So a full
-render cycle through `DocumentView` (construct + render) does **two** builds
-per document, not three.
+The TUI run loop owns a `DocumentRenderCache` and threads it down to every
+`DocumentView` through `RenderContext` (propagated by `RenderContext::child`,
+so widgets that derive child contexts keep it). Each entry stores a
+document's full-height rendered buffer together with every input it depended
+on: data identity, focus index, content width, focused flag, tab selections,
+and a config fingerprint (theme name, unicode, box chars, error color).
+
+While those inputs are unchanged, re-renders skip `Document::build` and the
+offscreen render entirely — scrolling and the idle 1 Hz status-bar redraw
+become a pure viewport copy, because the scroll offset only selects which
+slice of the cached buffer is blitted. Any changed input rebuilds exactly
+once and replaces the entry.
+
+Data identity works two ways:
+
+- **Persistent documents** (team/player/boxscore — built once when data
+  arrives and stored in state) hit via `Arc` pointer equality.
+- **Per-frame documents** (the standings documents, recreated each frame
+  around persistent data `Arc`s) implement `Document::cache_token()`,
+  returning the addresses of the `Arc`s their `build()` output depends on.
+  Equal tokens mean identical content because each cache entry holds the
+  previously rendered document — keeping those allocations alive, so an
+  address cannot be reused by different data while the entry exists.
+  Documents that don't implement `cache_token()` (settings, score boxes,
+  demo) simply rebuild every frame, exactly as before.
+
+CLI paths and tests that construct a `RenderContext` without a cache render
+uncached, with identical output.
 
 ## Document Trait
 
