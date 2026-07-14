@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use ratatui::{buffer::Buffer, layout::Rect};
@@ -9,10 +10,10 @@ use crate::config::RenderContext;
 use crate::team_abbrev::common_name_to_abbrev;
 use crate::tui::component::{Component, Element, ElementWidget};
 use crate::tui::document::{
-    Document, DocumentBuilder, DocumentElement, DocumentView, FocusContext,
+    render_document_widget, Document, DocumentBuilder, DocumentElement, DocumentWidgetParams,
+    FocusContext,
 };
 use crate::tui::helpers::SeasonSorting;
-use crate::tui::widgets::{LoadingAnimation, StandaloneWidget};
 use crate::tui::{Alignment, CellValue, ColumnDef};
 
 /// Props for PlayerDetailDocument component
@@ -24,7 +25,7 @@ pub struct PlayerDetailDocumentProps {
     /// construction site shared with the input-handling path.
     pub document: Option<Arc<dyn Document>>,
     pub loading: bool,
-    pub selected_index: Option<usize>,
+    pub focus_index: Option<usize>,
     pub scroll_offset: u16,
     pub animation_frame: u8,
     /// Whether this document has focus (affects dim/bright rendering)
@@ -44,7 +45,7 @@ impl Component for PlayerDetailDocument {
         Element::Widget(Box::new(PlayerDetailDocumentWidget {
             document: props.document.clone(),
             loading: props.loading,
-            focus_index: props.selected_index,
+            focus_index: props.focus_index,
             scroll_offset: props.scroll_offset,
             animation_frame: props.animation_frame,
             focused: props.focused,
@@ -281,15 +282,17 @@ impl Document for PlayerDetailDocumentContent {
         builder.build()
     }
 
-    fn title(&self) -> String {
-        self.player_data
-            .as_ref()
-            .map(|p| format!("{} {}", p.first_name.default, p.last_name.default))
-            .unwrap_or_else(|| format!("Player {}", self.player_id))
+    fn title(&self) -> Cow<'static, str> {
+        Cow::Owned(
+            self.player_data
+                .as_ref()
+                .map(|p| format!("{} {}", p.first_name.default, p.last_name.default))
+                .unwrap_or_else(|| format!("Player {}", self.player_id)),
+        )
     }
 
-    fn id(&self) -> String {
-        format!("player_detail_{}", self.player_id)
+    fn id(&self) -> Cow<'static, str> {
+        Cow::Owned(format!("player_detail_{}", self.player_id))
     }
 }
 
@@ -310,25 +313,19 @@ pub struct PlayerDetailDocumentWidget {
 
 impl ElementWidget for PlayerDetailDocumentWidget {
     fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
-        // Create child RenderContext with our focus state
-        let child_ctx = RenderContext::new(ctx.config, self.focused);
-
-        // Handle loading state - show animation if loading or data hasn't arrived yet
-        if self.loading || self.document.is_none() {
-            LoadingAnimation::new(self.animation_frame).render(area, buf, &child_ctx);
-            return;
-        }
-
-        // Safe to unwrap since we checked is_none() above
-        let document = self.document.clone().unwrap();
-
-        // Create DocumentView and render the pre-built document
-        let mut view = DocumentView::new(document, area.height);
-        if let Some(idx) = self.focus_index {
-            view.focus_by_index(idx);
-        }
-        view.set_scroll_offset(self.scroll_offset);
-        view.render(area, buf, &child_ctx);
+        render_document_widget(
+            &DocumentWidgetParams {
+                document: &self.document,
+                loading: self.loading,
+                focus_index: self.focus_index,
+                scroll_offset: self.scroll_offset,
+                animation_frame: self.animation_frame,
+                focused: self.focused,
+            },
+            area,
+            buf,
+            ctx,
+        );
     }
 
     fn clone_box(&self) -> Box<dyn ElementWidget> {

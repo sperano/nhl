@@ -66,7 +66,6 @@ impl Component for TabbedPanel {
             .iter()
             .map(|tab| TabLabel {
                 title: tab.title.clone(),
-                key: tab.key.clone(),
                 active: tab.key == props.active_key,
             })
             .collect();
@@ -104,8 +103,6 @@ impl TabbedPanel {
 #[derive(Clone)]
 struct TabLabel {
     title: String,
-    #[allow(dead_code)]
-    key: String,
     active: bool,
 }
 
@@ -465,17 +462,14 @@ mod tests {
             labels: vec![
                 TabLabel {
                     title: "Home".into(),
-                    key: "home".into(),
                     active: true,
                 },
                 TabLabel {
                     title: "Profile".into(),
-                    key: "profile".into(),
                     active: false,
                 },
                 TabLabel {
                     title: "Settings".into(),
-                    key: "settings".into(),
                     active: false,
                 },
             ],
@@ -498,7 +492,6 @@ mod tests {
         let widget = TabBarWidget {
             labels: vec![TabLabel {
                 title: "Only Tab".into(),
-                key: "only".into(),
                 active: true,
             }],
             focused: true,
@@ -536,12 +529,10 @@ mod tests {
             labels: vec![
                 TabLabel {
                     title: "Tab A".into(),
-                    key: "a".into(),
                     active: true,
                 },
                 TabLabel {
                     title: "Tab B".into(),
-                    key: "b".into(),
                     active: false,
                 },
             ],
@@ -566,17 +557,14 @@ mod tests {
             labels: vec![
                 TabLabel {
                     title: "Scores".into(),
-                    key: "scores".into(),
                     active: true,
                 },
                 TabLabel {
                     title: "Standings".into(),
-                    key: "standings".into(),
                     active: false,
                 },
                 TabLabel {
                     title: "Stats".into(),
-                    key: "stats".into(),
                     active: false,
                 },
             ],
@@ -613,7 +601,6 @@ mod tests {
         let widget = TabBarWidget {
             labels: vec![TabLabel {
                 title: "Test".into(),
-                key: "test".into(),
                 active: true,
             }],
             focused: true,
@@ -630,7 +617,6 @@ mod tests {
         let widget = TabBarWidget {
             labels: vec![TabLabel {
                 title: "Test".into(),
-                key: "test".into(),
                 active: true,
             }],
             focused: true,
@@ -651,12 +637,10 @@ mod tests {
             labels: vec![
                 TabLabel {
                     title: "Home".into(),
-                    key: "home".into(),
                     active: true,
                 },
                 TabLabel {
                     title: "Profile".into(),
-                    key: "profile".into(),
                     active: false,
                 },
             ],
@@ -690,12 +674,10 @@ mod tests {
             labels: vec![
                 TabLabel {
                     title: "Tab A".into(),
-                    key: "a".into(),
                     active: true,
                 },
                 TabLabel {
                     title: "Tab B".into(),
-                    key: "b".into(),
                     active: false,
                 },
             ],

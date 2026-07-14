@@ -36,7 +36,9 @@
 //! }
 //! ```
 
+use crate::tui::action::Action;
 use crate::tui::component::Effect;
+use crate::tui::document::LinkTarget;
 use crate::tui::document_nav::{DocumentNavMsg, DocumentNavState};
 
 /// Terminal lines consumed by chrome shared by every tab: the main tab bar
@@ -245,6 +247,38 @@ macro_rules! component_message_impl {
 // Re-export macro at module level
 pub use component_message_impl;
 
+/// Focus the first focusable item in the document (entering "browse"/"focus" mode).
+///
+/// Shared by every tab's `EnterBoxSelection`/`EnterBrowseMode`/`EnterFocus`-style
+/// message, which all just delegate to `TabState::focus_first_item()`.
+pub fn enter_item_focus<S: TabState>(state: &mut S) -> Effect {
+    state.focus_first_item();
+    Effect::None
+}
+
+/// Clear item focus/scroll (leaving "browse"/"focus" mode), then return `effect`.
+///
+/// Shared by every tab's `ExitBoxSelection`/`ExitBrowseMode`/`ExitFocus`-style
+/// message. Most tabs just bubble `Effect::None` back up; DemoTab additionally
+/// signals `Action::ExitContentFocus`, hence the caller-supplied `effect`.
+pub fn exit_item_focus<S: TabState>(state: &mut S, effect: Effect) -> Effect {
+    state.clear_item_focus();
+    effect
+}
+
+/// Activate (push) the document behind the currently focused link, if any.
+///
+/// Shared by every tab's `ActivateGame`/`ActivateTeam`/`ActivateLink`-style
+/// message: the focused element carries its own `LinkTarget::Push(doc)`,
+/// attached when the document was built, so there's nothing tab-specific left
+/// to do beyond checking for it.
+pub fn activate_focused_link<S: TabState>(state: &S) -> Effect {
+    match state.doc_nav().focused_link_target() {
+        Some(LinkTarget::Push(doc)) => Effect::Action(Action::PushDocument(doc.clone())),
+        _ => Effect::None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -265,8 +299,6 @@ mod tests {
     #[derive(Default, Clone)]
     struct TestTabState {
         doc_nav: DocumentNavState,
-        #[allow(dead_code)]
-        custom_field: i32,
     }
 
     impl TabState for TestTabState {

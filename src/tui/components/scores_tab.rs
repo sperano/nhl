@@ -9,15 +9,19 @@ use crate::component_message_impl;
 use crate::config::RenderContext;
 use crate::tui::action::Action;
 use crate::tui::component::{Component, Effect, Element, ElementWidget};
-use crate::tui::document::{DocumentView, LinkTarget};
+use crate::tui::document::DocumentView;
 use crate::tui::document_nav::{DocumentNavMsg, DocumentNavState};
 use crate::tui::tab_component::{
-    handle_common_message, CommonTabMessage, TabMessage, TabState, BASE_CHROME_LINES,
-    SUBTAB_CHROME_LINES,
+    activate_focused_link, enter_item_focus, exit_item_focus, handle_common_message,
+    CommonTabMessage, TabMessage, TabState, BASE_CHROME_LINES, SUBTAB_CHROME_LINES,
 };
 
 use super::score_boxes_document::ScoreBoxesDocument;
 use super::{TabItem, TabbedPanel, TabbedPanelProps};
+//
+/// Number of dates shown at once in the scores tab's date selector, e.g.
+/// [-2, -1, today, +1, +2] centered on `selected_date_index`.
+const DATE_WINDOW_SIZE: usize = 5;
 //
 /// Component state for ScoresTab - managed by the component itself
 #[derive(Clone, Debug)]
@@ -33,7 +37,7 @@ pub struct ScoresTabState {
 impl Default for ScoresTabState {
     fn default() -> Self {
         Self {
-            selected_date_index: 2, // Middle of 5-date window
+            selected_date_index: DATE_WINDOW_SIZE / 2, // Middle of the date window
             game_date: GameDate::today(),
             doc_nav: DocumentNavState::default(),
         }
@@ -150,7 +154,6 @@ impl Component for ScoresTab {
             }
             ScoresTabMsg::NavigateRight => {
                 // Navigate right in the date window
-                const DATE_WINDOW_SIZE: usize = 5;
                 if state.selected_date_index < DATE_WINDOW_SIZE - 1 {
                     // Move within the window
                     state.selected_date_index += 1;
@@ -158,28 +161,19 @@ impl Component for ScoresTab {
                 } else {
                     // At right edge - shift window right
                     state.game_date = state.game_date.add_days(1);
-                    // selected_date_index stays at 4
+                    // selected_date_index stays at DATE_WINDOW_SIZE - 1
                 }
                 // Refresh schedule for new date (also updates global state and clears old data)
                 Effect::Action(Action::RefreshSchedule(state.game_date.clone()))
             }
-            ScoresTabMsg::EnterBoxSelection => {
-                state.focus_first_item();
-                Effect::None
-            }
-            ScoresTabMsg::ExitBoxSelection => {
-                state.clear_item_focus();
-                Effect::None
-            }
+            ScoresTabMsg::EnterBoxSelection => enter_item_focus(state),
+            ScoresTabMsg::ExitBoxSelection => exit_item_focus(state, Effect::None),
 
             // Game activation: the focused score box carries its own
             // `LinkTarget::Push(Boxscore { .. })`, attached when the document
             // was built (see `ScoreBoxesDocument::build_link_target`), so
             // there's no need to re-derive the game's abbrevs/scores here.
-            ScoresTabMsg::ActivateGame => match state.doc_nav().focused_link_target() {
-                Some(LinkTarget::Push(doc)) => Effect::Action(Action::PushDocument(doc.clone())),
-                _ => Effect::None,
-            },
+            ScoresTabMsg::ActivateGame => activate_focused_link(state),
 
             // Common messages already handled above
             ScoresTabMsg::DocNav(_)
@@ -198,9 +192,7 @@ impl Component for ScoresTab {
 impl ScoresTab {
     /// Render date tabs using component state for UI, props for data
     fn render_date_tabs(&self, props: &ScoresTabProps, state: &ScoresTabState) -> Element {
-        const DATE_WINDOW_SIZE: usize = 5;
-        //
-        // Calculate the 5-date window using component state
+        // Calculate the date window using component state
         let window_base_date = state
             .game_date
             .add_days(-(state.selected_date_index as i64));
@@ -315,7 +307,7 @@ impl ElementWidget for ScoreBoxesDocumentWidget {
         view.set_scroll_offset(self.scroll_offset);
 
         // Create child RenderContext with our focus state
-        let child_ctx = RenderContext::new(ctx.config, self.focused);
+        let child_ctx = ctx.child(self.focused);
 
         // Render the document
         view.render(area, buf, &child_ctx);
@@ -367,7 +359,7 @@ mod tests {
     #[test]
     fn test_activate_game_pushes_boxscore_document() {
         use crate::tui::component::Component;
-        use crate::tui::document::{FocusableElement, FocusableId};
+        use crate::tui::document::{FocusableElement, FocusableId, LinkTarget};
         use crate::tui::types::StackedDocument;
 
         let mut scores_tab = ScoresTab;

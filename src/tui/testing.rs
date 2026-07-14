@@ -162,7 +162,11 @@ pub fn buffer_lines(buf: &Buffer) -> Vec<String> {
         .collect()
 }
 
-/// Helper to print buffer contents for debugging tests
+/// Helper to print buffer contents for debugging tests.
+///
+/// Not called by any committed test -- it's meant to be dropped in temporarily
+/// (`print_buffer(&buf)`) while debugging a failing `assert_buffer`, then
+/// removed again, so it would otherwise trip `dead_code` between uses.
 #[allow(dead_code)]
 pub fn print_buffer(buf: &Buffer) {
     let lines = buffer_lines(buf);

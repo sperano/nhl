@@ -839,11 +839,11 @@ mod tests {
                     LinkTarget::Anchor("a".to_string()),
                 )]
             }
-            fn title(&self) -> String {
-                "fake".to_string()
+            fn title(&self) -> std::borrow::Cow<'static, str> {
+                std::borrow::Cow::Borrowed("fake")
             }
-            fn id(&self) -> String {
-                "fake".to_string()
+            fn id(&self) -> std::borrow::Cow<'static, str> {
+                std::borrow::Cow::Borrowed("fake")
             }
         }
 

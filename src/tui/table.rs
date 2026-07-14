@@ -160,10 +160,23 @@ impl<T> ColumnDef<T> {
 }
 
 // Manual Clone implementation for ColumnDef
+//
+// Invariant: this impl exists only so `ColumnDef` can appear in generic
+// contexts that require `T: Clone` (e.g. via derives elsewhere); it is never
+// actually invoked in production code. `cell_fn` is a `Box<dyn Fn>`, which
+// cannot be cloned in general (the closure may capture non-`Clone` state), so
+// there is no meaningful value this could return. Column sets are always
+// built fresh via `ColumnDef::new` (see `standings_columns()`,
+// `skater_columns()`, etc.) rather than cloned from an existing instance.
+// Returning a stub/default `ColumnDef` here would silently produce a column
+// with the wrong header/width/cell logic instead of surfacing the misuse, so
+// we panic loudly instead.
 impl<T> Clone for ColumnDef<T> {
     fn clone(&self) -> Self {
-        // We can't clone the Box<dyn Fn> directly, so we create a note about this limitation
-        panic!("ColumnDef cannot be cloned due to boxed closure. Create columns fresh each time.")
+        panic!(
+            "ColumnDef cannot be cloned due to boxed closure. Construct columns fresh with \
+             ColumnDef::new instead of cloning."
+        )
     }
 }
 
@@ -297,8 +310,6 @@ mod tests {
         #[derive(Clone)]
         struct TestRow {
             name: String,
-            #[allow(dead_code)]
-            value: i32,
         }
 
         let col = ColumnDef::new("Test Column", 20, Alignment::Left, |row: &TestRow| {
@@ -312,7 +323,6 @@ mod tests {
         // Test that cell_fn works
         let test_row = TestRow {
             name: "Test".to_string(),
-            value: 42,
         };
         let cell = (col.cell_fn)(&test_row);
         assert_eq!(cell.display_text(), "Test");

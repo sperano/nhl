@@ -7,6 +7,7 @@
 //! - Autoscrolling to keep focused elements visible
 //! - Embedded tables (league standings) rendered at natural height
 
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use nhl_api::Standing;
@@ -23,7 +24,10 @@ use crate::tui::document::{
 };
 use crate::tui::document_nav::{DocumentNavMsg, DocumentNavState};
 use crate::tui::helpers::StandingsSorting;
-use crate::tui::tab_component::{handle_common_message, CommonTabMessage, TabMessage};
+use crate::tui::tab_component::{
+    activate_focused_link, enter_item_focus, exit_item_focus, handle_common_message,
+    CommonTabMessage, TabMessage,
+};
 use crate::tui::types::StackedDocument;
 
 /// Props for the Demo tab
@@ -99,21 +103,14 @@ impl Component for DemoTab {
 
         // Handle tab-specific messages
         match msg {
-            DemoTabMsg::ActivateLink => match state.focused_link_target() {
-                Some(LinkTarget::Push(doc)) => Effect::Action(Action::PushDocument(doc.clone())),
-                _ => Effect::None,
-            },
+            DemoTabMsg::ActivateLink => activate_focused_link(state),
 
-            DemoTabMsg::EnterFocus => {
-                // Focus first item (global focus_in_content already set by reducer)
-                state.focus_first_item();
-                Effect::None
-            }
+            // Focus first item (global focus_in_content already set by reducer)
+            DemoTabMsg::EnterFocus => enter_item_focus(state),
 
+            // Clear selection and return to tab bar
             DemoTabMsg::ExitFocus => {
-                // Clear selection and return to tab bar
-                state.clear_item_focus();
-                Effect::Action(Action::ExitContentFocus)
+                exit_item_focus(state, Effect::Action(Action::ExitContentFocus))
             }
 
             // Common messages already handled above
@@ -166,7 +163,8 @@ impl ElementWidget for DemoTabWidget {
         // Create child RenderContext with our focus state
         // Document is only focused when navigating items within the document
         let has_item_focus = self.focus_index.is_some();
-        let child_ctx = RenderContext::new(ctx.config, self.focused && has_item_focus)
+        let child_ctx = ctx
+            .child(self.focused && has_item_focus)
             .with_tab_selections(self.tab_selections.clone());
 
         view.render(area, buf, &child_ctx);
@@ -231,7 +229,7 @@ impl DemoDocument {
         DocumentBuilder::new()
             .heading(2, "Player Stats")
             .spacer(1)
-            .text("TODO: Player statistics will be displayed here.")
+            .text("Player statistics placeholder.")
             .build()
     }
 }
@@ -329,12 +327,12 @@ impl Document for DemoDocument {
             .build()
     }
 
-    fn title(&self) -> String {
-        "Document System Demo".to_string()
+    fn title(&self) -> Cow<'static, str> {
+        Cow::Borrowed("Document System Demo")
     }
 
-    fn id(&self) -> String {
-        "demo".to_string()
+    fn id(&self) -> Cow<'static, str> {
+        Cow::Borrowed("demo")
     }
 }
 
@@ -431,33 +429,34 @@ mod tests {
         use crate::tui::document_nav::DocumentNavState;
 
         let mut demo_tab = DemoTab;
-        let mut state = DocumentNavState::default();
-
-        // Set up state with a focused team link
-        // The first 4 focusable elements are team links (BOS, TOR, NYR, MTL)
-        state.focus_index = Some(0); // BOS link
-        state.focusables = vec![
-            FocusableElement::at(0, 1, FocusableId::team_link("BOS")).with_link_target(
-                LinkTarget::Push(StackedDocument::TeamDetail {
-                    abbrev: "BOS".to_string(),
-                }),
-            ),
-            FocusableElement::at(1, 1, FocusableId::team_link("TOR")).with_link_target(
-                LinkTarget::Push(StackedDocument::TeamDetail {
-                    abbrev: "TOR".to_string(),
-                }),
-            ),
-            FocusableElement::at(2, 1, FocusableId::team_link("NYR")).with_link_target(
-                LinkTarget::Push(StackedDocument::TeamDetail {
-                    abbrev: "NYR".to_string(),
-                }),
-            ),
-            FocusableElement::at(3, 1, FocusableId::team_link("MTL")).with_link_target(
-                LinkTarget::Push(StackedDocument::TeamDetail {
-                    abbrev: "MTL".to_string(),
-                }),
-            ),
-        ];
+        // Set up state with a focused team link.
+        // The first 4 focusable elements are team links (BOS, TOR, NYR, MTL).
+        let mut state = DocumentNavState {
+            focus_index: Some(0), // BOS link
+            focusables: vec![
+                FocusableElement::at(0, 1, FocusableId::team_link("BOS")).with_link_target(
+                    LinkTarget::Push(StackedDocument::TeamDetail {
+                        abbrev: "BOS".to_string(),
+                    }),
+                ),
+                FocusableElement::at(1, 1, FocusableId::team_link("TOR")).with_link_target(
+                    LinkTarget::Push(StackedDocument::TeamDetail {
+                        abbrev: "TOR".to_string(),
+                    }),
+                ),
+                FocusableElement::at(2, 1, FocusableId::team_link("NYR")).with_link_target(
+                    LinkTarget::Push(StackedDocument::TeamDetail {
+                        abbrev: "NYR".to_string(),
+                    }),
+                ),
+                FocusableElement::at(3, 1, FocusableId::team_link("MTL")).with_link_target(
+                    LinkTarget::Push(StackedDocument::TeamDetail {
+                        abbrev: "MTL".to_string(),
+                    }),
+                ),
+            ],
+            ..Default::default()
+        };
 
         let effect = demo_tab.update(DemoTabMsg::ActivateLink, &mut state);
 
@@ -477,19 +476,20 @@ mod tests {
         use crate::tui::document_nav::DocumentNavState;
 
         let mut demo_tab = DemoTab;
-        let mut state = DocumentNavState::default();
-
-        // Set up state with a focused player link
-        state.focus_index = Some(0);
-        state.focusables = vec![
-            FocusableElement::at(0, 1, FocusableId::player_link(8477492)).with_link_target(
-                LinkTarget::Push(StackedDocument::PlayerDetail {
-                    player_id: 8477492,
-                    sweater_number: None,
-                    last_name: "Player 8477492".to_string(),
-                }),
-            ),
-        ];
+        // Set up state with a focused player link.
+        let mut state = DocumentNavState {
+            focus_index: Some(0),
+            focusables: vec![
+                FocusableElement::at(0, 1, FocusableId::player_link(8477492)).with_link_target(
+                    LinkTarget::Push(StackedDocument::PlayerDetail {
+                        player_id: 8477492,
+                        sweater_number: None,
+                        last_name: "Player 8477492".to_string(),
+                    }),
+                ),
+            ],
+            ..Default::default()
+        };
 
         let effect = demo_tab.update(DemoTabMsg::ActivateLink, &mut state);
 
@@ -512,14 +512,15 @@ mod tests {
         use crate::tui::document_nav::DocumentNavState;
 
         let mut demo_tab = DemoTab;
-        let mut state = DocumentNavState::default();
-
-        // No focus index set
-        state.focus_index = None;
-        state.focusables = vec![FocusableElement::at(0, 1, FocusableId::team_link("BOS"))
-            .with_link_target(LinkTarget::Push(StackedDocument::TeamDetail {
-                abbrev: "BOS".to_string(),
-            }))];
+        // No focus index set.
+        let mut state = DocumentNavState {
+            focus_index: None,
+            focusables: vec![FocusableElement::at(0, 1, FocusableId::team_link("BOS"))
+                .with_link_target(LinkTarget::Push(StackedDocument::TeamDetail {
+                    abbrev: "BOS".to_string(),
+                }))],
+            ..Default::default()
+        };
 
         let effect = demo_tab.update(DemoTabMsg::ActivateLink, &mut state);
 

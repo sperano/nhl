@@ -521,7 +521,7 @@ impl ElementWidget for SettingsTabWidget {
         view.set_scroll_offset(self.scroll_offset);
 
         // Create child RenderContext with our focus state
-        let child_ctx = RenderContext::new(ctx.config, self.focused);
+        let child_ctx = ctx.child(self.focused);
 
         view.render(area, buf, &child_ctx);
     }

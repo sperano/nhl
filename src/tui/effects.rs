@@ -126,7 +126,8 @@ impl DataEffects {
     pub fn fetch_player_stats(&self, player_id: i64) -> Effect {
         let client = self.client.clone();
         Effect::Async(Box::pin(async move {
-            let result = cache::fetch_player_landing_cached(client.as_ref(), player_id.into()).await;
+            let result =
+                cache::fetch_player_landing_cached(client.as_ref(), player_id.into()).await;
             Action::PlayerStatsLoaded(player_id, result.map_err(Arc::new))
         }))
     }

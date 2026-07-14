@@ -135,8 +135,10 @@ mod tests {
 
     #[test]
     fn test_find_initial_modal_index_log_level_info() {
-        let mut config = Config::default();
-        config.log_level = "info".to_string();
+        let config = Config {
+            log_level: "info".to_string(),
+            ..Default::default()
+        };
         // Log level values: ["trace", "debug", "info", "warn", "error"]
         // "info" is at index 2
         assert_eq!(find_initial_modal_index(&config, "log_level"), 2);
@@ -144,8 +146,10 @@ mod tests {
 
     #[test]
     fn test_find_initial_modal_index_unknown_value_returns_zero() {
-        let mut config = Config::default();
-        config.log_level = "unknown_level".to_string();
+        let config = Config {
+            log_level: "unknown_level".to_string(),
+            ..Default::default()
+        };
         // Should return 0 when value not found in list
         assert_eq!(find_initial_modal_index(&config, "log_level"), 0);
     }

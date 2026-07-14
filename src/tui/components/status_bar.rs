@@ -450,8 +450,10 @@ mod tests {
             is_error: false,
         };
 
-        let mut config = DisplayConfig::default();
-        config.theme = Some(THEME_ORANGE.clone());
+        let config = DisplayConfig {
+            theme: Some(THEME_ORANGE.clone()),
+            ..Default::default()
+        };
         let ctx = RenderContext::focused(&config);
 
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
@@ -529,8 +531,10 @@ mod tests {
             is_error: false,
         };
 
-        let mut config = DisplayConfig::default();
-        config.theme = Some(THEME_ORANGE.clone());
+        let config = DisplayConfig {
+            theme: Some(THEME_ORANGE.clone()),
+            ..Default::default()
+        };
         let ctx = RenderContext::focused(&config);
 
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));
@@ -565,8 +569,10 @@ mod tests {
             is_error: true,
         };
 
-        let mut config = DisplayConfig::default();
-        config.theme = Some(THEME_ORANGE.clone());
+        let config = DisplayConfig {
+            theme: Some(THEME_ORANGE.clone()),
+            ..Default::default()
+        };
         let ctx = RenderContext::focused(&config);
 
         let mut buf = Buffer::empty(Rect::new(0, 0, RENDER_WIDTH, 2));

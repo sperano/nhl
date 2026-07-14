@@ -1,20 +1,20 @@
-/// Widget-based rendering infrastructure for TUI
-///
-/// This module provides a trait-based architecture for composable, testable widgets.
-/// Inspired by OO UI frameworks, widgets are small, focused components that can be
-/// composed together to build complex interfaces.
-///
-/// ## Widget Traits
-///
-/// There are two widget traits in this codebase:
-///
-/// - **`StandaloneWidget`** (this module): For standalone widgets that render directly
-///   to a buffer. These don't need Send + Sync or clone_box(). Used for small,
-///   reusable rendering components like `GameBox`, `ScoreTable`.
-///
-/// - **`ElementWidget`** (`crate::tui::component`): For widgets that participate
-///   in the Element tree. Requires Send + Sync + clone_box(). Used for component
-///   widgets like `BoxscoreDocumentWidget`, `StatusBarWidget`.
+//! Widget-based rendering infrastructure for TUI
+//!
+//! This module provides a trait-based architecture for composable, testable widgets.
+//! Inspired by OO UI frameworks, widgets are small, focused components that can be
+//! composed together to build complex interfaces.
+//!
+//! ## Widget Traits
+//!
+//! There are two widget traits in this codebase:
+//!
+//! - **`StandaloneWidget`** (this module): For standalone widgets that render directly
+//!   to a buffer. These don't need Send + Sync or clone_box(). Used for small,
+//!   reusable rendering components like `GameBox`, `ScoreTable`.
+//!
+//! - **`ElementWidget`** (`crate::tui::component`): For widgets that participate
+//!   in the Element tree. Requires Send + Sync + clone_box(). Used for component
+//!   widgets like `BoxscoreDocumentWidget`, `StatusBarWidget`.
 
 #[cfg(test)]
 pub mod testing;

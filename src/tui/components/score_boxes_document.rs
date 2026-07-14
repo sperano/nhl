@@ -3,6 +3,7 @@
 //! This module provides a Document implementation that displays games in a
 //! Row-based grid layout using compact ScoreBox widgets.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -97,7 +98,8 @@ impl ScoreBoxesDocument {
             let (overtime, shootout) = if let Some(info) = self.game_info.get(&game.id.into()) {
                 let is_ot = info.period_descriptor.number > 3
                     || info.period_descriptor.period_type == Some(nhl_api::PeriodType::Overtime);
-                let is_so = info.period_descriptor.period_type == Some(nhl_api::PeriodType::Shootout);
+                let is_so =
+                    info.period_descriptor.period_type == Some(nhl_api::PeriodType::Shootout);
                 (is_ot && !is_so, is_so)
             } else {
                 (false, false)
@@ -209,7 +211,12 @@ impl Document for ScoreBoxesDocument {
                     let link_target = self.build_link_target(game);
 
                     // Use the ScoreBoxElement variant
-                    DocumentElement::score_box_element(game.id.into(), score_box, focused, link_target)
+                    DocumentElement::score_box_element(
+                        game.id.into(),
+                        score_box,
+                        focused,
+                        link_target,
+                    )
                 })
                 .collect();
 
@@ -220,12 +227,12 @@ impl Document for ScoreBoxesDocument {
         builder.build()
     }
 
-    fn title(&self) -> String {
-        format!("Scores for {}", self.game_date)
+    fn title(&self) -> Cow<'static, str> {
+        Cow::Owned(format!("Scores for {}", self.game_date))
     }
 
-    fn id(&self) -> String {
-        format!("scoreboxes_{}", self.game_date)
+    fn id(&self) -> Cow<'static, str> {
+        Cow::Owned(format!("scoreboxes_{}", self.game_date))
     }
 }
 

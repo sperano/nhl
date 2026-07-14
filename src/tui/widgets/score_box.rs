@@ -12,6 +12,21 @@ use ratatui::{buffer::Buffer, layout::Rect};
 
 use super::StandaloneWidget;
 
+/// Width of the team-name field, matched to `format_team_name`'s output length.
+const TEAM_NAME_WIDTH: usize = 17;
+/// Width of the score field, matched to `format_score`'s output (`"{:>3} "`, e.g. "  2 ").
+const SCORE_FIELD_WIDTH: u16 = 4;
+/// Column offset (from the box's left edge `x`) of the "│"/"╤"/"╧" divider between
+/// the team-name and score fields: border (1) + leading space (1) + TEAM_NAME_WIDTH.
+const SEPARATOR_COL: u16 = 2 + TEAM_NAME_WIDTH as u16;
+/// Column offset of the score field, immediately after the divider.
+const SCORE_COL: u16 = SEPARATOR_COL + 1;
+/// Column offset of the closing "║", immediately after the score field.
+const RIGHT_BORDER_COL: u16 = SCORE_COL + SCORE_FIELD_WIDTH;
+/// Length of the top/bottom border's first horizontal run: from just after the
+/// left corner character up to (not including) the junction at `SEPARATOR_COL`.
+const TOP_BORDER_NAME_SEGMENT: usize = SEPARATOR_COL as usize - 1;
+
 /// Game status for the ScoreBox header
 #[derive(Debug, Clone, PartialEq)]
 pub enum ScoreBoxStatus {
@@ -120,7 +135,6 @@ impl ScoreBox {
 
     /// Truncate or pad team name to fit in the available width (17 chars)
     fn format_team_name(name: &str) -> String {
-        const TEAM_NAME_WIDTH: usize = 17;
         if name.chars().count() > TEAM_NAME_WIDTH {
             name.chars().take(TEAM_NAME_WIDTH).collect()
         } else {
@@ -167,13 +181,13 @@ impl StandaloneWidget for ScoreBox {
         buf.set_string(x, y, &status_text, status_style);
 
         // Row 1: Top border ╔══════════════════╤════╗
-        // Width breakdown: ╔ (1) + ═×18 + ╤ (1) + ═×4 + ╗ (1) = 25
+        // Width breakdown: ╔ (1) + ═×TOP_BORDER_NAME_SEGMENT + ╤ (1) + ═×SCORE_FIELD_WIDTH + ╗ (1) = 25
         let top_border = format!(
             "{}{}{}{}{}",
             bc.double_top_left,
-            bc.double_horizontal.repeat(18),
+            bc.double_horizontal.repeat(TOP_BORDER_NAME_SEGMENT),
             bc.double_top_junction,
-            bc.double_horizontal.repeat(4),
+            bc.double_horizontal.repeat(SCORE_FIELD_WIDTH as usize),
             bc.double_top_right
         );
         buf.set_string(x, y + 1, &top_border, box_style);
@@ -188,22 +202,22 @@ impl StandaloneWidget for ScoreBox {
             Self::format_team_name(&self.away_team),
             text_style,
         );
-        buf.set_string(x + 19, y + 2, bc.vertical, box_style);
+        buf.set_string(x + SEPARATOR_COL, y + 2, bc.vertical, box_style);
         buf.set_string(
-            x + 20,
+            x + SCORE_COL,
             y + 2,
             Self::format_score(self.away_score),
             text_style,
         );
-        buf.set_string(x + 24, y + 2, bc.double_vertical, box_style);
+        buf.set_string(x + RIGHT_BORDER_COL, y + 2, bc.double_vertical, box_style);
 
         // Row 3: Separator ╟──────────────────┼────╢
         let separator = format!(
             "{}{}{}{}{}",
             bc.mixed_left_junction,
-            bc.horizontal.repeat(18),
+            bc.horizontal.repeat(TOP_BORDER_NAME_SEGMENT),
             bc.cross,
-            bc.horizontal.repeat(4),
+            bc.horizontal.repeat(SCORE_FIELD_WIDTH as usize),
             bc.mixed_right_junction
         );
         buf.set_string(x, y + 3, &separator, box_style);
@@ -217,22 +231,22 @@ impl StandaloneWidget for ScoreBox {
             Self::format_team_name(&self.home_team),
             text_style,
         );
-        buf.set_string(x + 19, y + 4, bc.vertical, box_style);
+        buf.set_string(x + SEPARATOR_COL, y + 4, bc.vertical, box_style);
         buf.set_string(
-            x + 20,
+            x + SCORE_COL,
             y + 4,
             Self::format_score(self.home_score),
             text_style,
         );
-        buf.set_string(x + 24, y + 4, bc.double_vertical, box_style);
+        buf.set_string(x + RIGHT_BORDER_COL, y + 4, bc.double_vertical, box_style);
 
         // Row 5: Bottom border ╚══════════════════╧════╝
         let bottom_border = format!(
             "{}{}{}{}{}",
             bc.double_bottom_left,
-            bc.double_horizontal.repeat(18),
+            bc.double_horizontal.repeat(TOP_BORDER_NAME_SEGMENT),
             bc.double_bottom_junction,
-            bc.double_horizontal.repeat(4),
+            bc.double_horizontal.repeat(SCORE_FIELD_WIDTH as usize),
             bc.double_bottom_right
         );
         buf.set_string(x, y + 5, &bottom_border, box_style);

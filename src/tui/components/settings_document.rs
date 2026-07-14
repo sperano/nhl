@@ -2,6 +2,7 @@
 //!
 //! This module provides the document-based implementation for settings display.
 
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use crate::config::Config;
@@ -158,20 +159,20 @@ impl Document for SettingsDocument {
         builder.build()
     }
 
-    fn title(&self) -> String {
-        match self.category {
-            SettingsCategory::Logging => "Logging Settings".to_string(),
-            SettingsCategory::Display => "Display Settings".to_string(),
-            SettingsCategory::Data => "Data Settings".to_string(),
-        }
+    fn title(&self) -> Cow<'static, str> {
+        Cow::Borrowed(match self.category {
+            SettingsCategory::Logging => "Logging Settings",
+            SettingsCategory::Display => "Display Settings",
+            SettingsCategory::Data => "Data Settings",
+        })
     }
 
-    fn id(&self) -> String {
-        match self.category {
-            SettingsCategory::Logging => "settings_logging".to_string(),
-            SettingsCategory::Display => "settings_display".to_string(),
-            SettingsCategory::Data => "settings_data".to_string(),
-        }
+    fn id(&self) -> Cow<'static, str> {
+        Cow::Borrowed(match self.category {
+            SettingsCategory::Logging => "settings_logging",
+            SettingsCategory::Display => "settings_display",
+            SettingsCategory::Data => "settings_data",
+        })
     }
 }
 

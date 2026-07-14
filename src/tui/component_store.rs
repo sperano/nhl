@@ -32,12 +32,17 @@ impl ComponentStateStore {
     pub fn get_or_init<C: Component>(&mut self, path: &str, props: &C::Props) -> &C::State {
         let type_id = TypeId::of::<C::State>();
 
+        // Invariant: every component path is only ever used with a single Component
+        // type for its lifetime (paths are constant strings like `SCORES_TAB_PATH`,
+        // each dedicated to one component). A mismatch here means two different
+        // component types were registered under the same path, which is a
+        // programming error we want to surface immediately rather than paper over.
         self.states
             .entry(path.to_string())
             .or_insert_with(|| (type_id, Box::new(C::init(props))))
             .1
             .downcast_ref::<C::State>()
-            .expect("State type mismatch")
+            .expect("state type mismatch: path was previously initialized with a different Component::State type")
     }
 
     /// Get immutable state
@@ -48,9 +53,16 @@ impl ComponentStateStore {
     ///
     /// Panics if the stored state type doesn't match the requested type.
     pub fn get<S: 'static + Send + Sync>(&self, path: &str) -> Option<&S> {
-        self.states
-            .get(path)
-            .map(|(_, state)| state.downcast_ref().expect("State type mismatch"))
+        // Invariant: see `get_or_init` — `path` is always paired with one fixed
+        // state type. We deliberately panic rather than return `None` on a type
+        // mismatch: silently reporting "no state" would hide the real bug (a
+        // caller reading a path with the wrong type) behind what looks like an
+        // unrelated missing-state code path.
+        self.states.get(path).map(|(_, state)| {
+            state.downcast_ref().expect(
+                "state type mismatch: path was previously initialized with a different type",
+            )
+        })
     }
 
     /// Get mutable state for update
@@ -61,9 +73,14 @@ impl ComponentStateStore {
     ///
     /// Panics if the stored state type doesn't match the requested type.
     pub fn get_mut<S: 'static + Send + Sync>(&mut self, path: &str) -> Option<&mut S> {
-        self.states
-            .get_mut(path)
-            .map(|(_, state)| state.downcast_mut().expect("State type mismatch"))
+        // Invariant: see `get_or_init` / `get` — a type mismatch here indicates a
+        // caller bug (wrong `S` for this path), so we panic instead of returning
+        // `None`, which would mask the mismatch as ordinary missing state.
+        self.states.get_mut(path).map(|(_, state)| {
+            state.downcast_mut().expect(
+                "state type mismatch: path was previously initialized with a different type",
+            )
+        })
     }
 
     /// Get mutable state as Any for dynamic dispatch
@@ -244,5 +261,62 @@ mod tests {
 
         let result = store.get_mut::<TestState>("nonexistent");
         assert!(result.is_none());
+    }
+
+    #[test]
+    #[should_panic(expected = "state type mismatch")]
+    fn test_component_store_get_panics_on_type_mismatch() {
+        let mut store = ComponentStateStore::new();
+        let props = TestProps { value: 5 };
+
+        store.get_or_init::<TestComponent>("test", &props);
+
+        // "test" holds a TestState; asking for a different, unrelated type is a
+        // caller bug and must panic rather than silently report "not found".
+        let _ = store.get::<i32>("test");
+    }
+
+    #[test]
+    #[should_panic(expected = "state type mismatch")]
+    fn test_component_store_get_mut_panics_on_type_mismatch() {
+        let mut store = ComponentStateStore::new();
+        let props = TestProps { value: 5 };
+
+        store.get_or_init::<TestComponent>("test", &props);
+
+        let _ = store.get_mut::<i32>("test");
+    }
+
+    #[test]
+    #[should_panic(expected = "state type mismatch")]
+    fn test_component_store_get_or_init_panics_on_type_mismatch() {
+        #[derive(Clone)]
+        struct OtherProps;
+
+        #[derive(Clone, Default)]
+        struct OtherState {
+            _flag: bool,
+        }
+
+        struct OtherComponent;
+
+        impl Component for OtherComponent {
+            type Props = OtherProps;
+            type State = OtherState;
+            type Message = ();
+
+            fn view(&self, _props: &Self::Props, _state: &Self::State) -> Element {
+                Element::None
+            }
+        }
+
+        let mut store = ComponentStateStore::new();
+        let props = TestProps { value: 5 };
+
+        // Register "test" as a TestComponent, then request it again as an
+        // unrelated OtherComponent: a real programming error, not a valid path
+        // for two different component types to share.
+        store.get_or_init::<TestComponent>("test", &props);
+        store.get_or_init::<OtherComponent>("test", &OtherProps);
     }
 }

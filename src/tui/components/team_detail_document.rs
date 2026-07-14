@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use ratatui::{buffer::Buffer, layout::Rect};
@@ -7,10 +8,12 @@ use nhl_api::{ClubGoalieStats, ClubSkaterStats, ClubStats, Standing};
 use super::table::TableWidget;
 use crate::config::RenderContext;
 use crate::tui::helpers::{ClubGoalieStatsSorting, ClubSkaterStatsSorting};
-use crate::tui::widgets::{LoadingAnimation, StandaloneWidget};
 use crate::tui::{
     component::{Component, Element, ElementWidget},
-    document::{Document, DocumentBuilder, DocumentElement, DocumentView, FocusContext},
+    document::{
+        render_document_widget, Document, DocumentBuilder, DocumentElement, DocumentWidgetParams,
+        FocusContext,
+    },
     Alignment, CellValue, ColumnDef,
 };
 
@@ -23,7 +26,7 @@ pub struct TeamDetailDocumentProps {
     /// construction site shared with the input-handling path.
     pub document: Option<Arc<dyn Document>>,
     pub loading: bool,
-    pub selected_index: Option<usize>,
+    pub focus_index: Option<usize>,
     pub scroll_offset: u16,
     pub animation_frame: u8,
     /// Whether this document has focus (affects dim/bright rendering)
@@ -43,7 +46,7 @@ impl Component for TeamDetailDocument {
         Element::Widget(Box::new(TeamDetailDocumentWidget {
             document: props.document.clone(),
             loading: props.loading,
-            selected_index: props.selected_index,
+            focus_index: props.focus_index,
             scroll_offset: props.scroll_offset,
             animation_frame: props.animation_frame,
             focused: props.focused,
@@ -155,19 +158,19 @@ impl Document for TeamDetailDocumentContent {
         builder.build()
     }
 
-    fn title(&self) -> String {
+    fn title(&self) -> Cow<'static, str> {
         if let Some(ref standing) = self.standing {
-            format!(
+            Cow::Owned(format!(
                 "{} {}",
                 standing.team_name.default, standing.team_common_name.default
-            )
+            ))
         } else {
-            self.team_abbrev.clone()
+            Cow::Owned(self.team_abbrev.clone())
         }
     }
 
-    fn id(&self) -> String {
-        format!("team_detail_{}", self.team_abbrev)
+    fn id(&self) -> Cow<'static, str> {
+        Cow::Owned(format!("team_detail_{}", self.team_abbrev))
     }
 }
 
@@ -184,7 +187,10 @@ fn skater_columns() -> Vec<ColumnDef<ClubSkaterStats>> {
             }
         }),
         ColumnDef::new("Pos", 3, Alignment::Left, |s: &ClubSkaterStats| {
-            CellValue::Text(s.position.map_or_else(String::new, |p| p.code().to_string()))
+            CellValue::Text(
+                s.position
+                    .map_or_else(String::new, |p| p.code().to_string()),
+            )
         }),
         ColumnDef::new("GP", 4, Alignment::Right, |s: &ClubSkaterStats| {
             CellValue::Text(s.games_played.to_string())
@@ -244,10 +250,11 @@ fn goalie_columns() -> Vec<ColumnDef<ClubGoalieStats>> {
 }
 
 /// Widget for rendering the team detail document
+#[derive(Clone)]
 struct TeamDetailDocumentWidget {
     document: Option<Arc<dyn Document>>,
     loading: bool,
-    selected_index: Option<usize>,
+    focus_index: Option<usize>,
     scroll_offset: u16,
     animation_frame: u8,
     /// Whether this widget has focus (affects dim/bright rendering)
@@ -256,46 +263,23 @@ struct TeamDetailDocumentWidget {
 
 impl ElementWidget for TeamDetailDocumentWidget {
     fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
-        // Create child RenderContext with our focus state
-        let child_ctx = RenderContext::new(ctx.config, self.focused);
-
-        // Show animation if loading or data hasn't arrived yet
-        if self.loading || self.document.is_none() {
-            LoadingAnimation::new(self.animation_frame).render(area, buf, &child_ctx);
-            return;
-        }
-
-        if area.width == 0 || area.height == 0 {
-            return;
-        }
-
-        // Safe to unwrap since we checked is_none() above
-        let document = self.document.clone().unwrap();
-
-        // Render the pre-built document with DocumentView
-        let mut view = DocumentView::new(document, area.height);
-
-        // Apply focus state
-        if let Some(idx) = self.selected_index {
-            view.focus_by_index(idx);
-        }
-
-        // Apply scroll offset
-        view.set_scroll_offset(self.scroll_offset);
-
-        // Render the document
-        view.render(area, buf, &child_ctx);
+        render_document_widget(
+            &DocumentWidgetParams {
+                document: &self.document,
+                loading: self.loading,
+                focus_index: self.focus_index,
+                scroll_offset: self.scroll_offset,
+                animation_frame: self.animation_frame,
+                focused: self.focused,
+            },
+            area,
+            buf,
+            ctx,
+        );
     }
 
     fn clone_box(&self) -> Box<dyn ElementWidget> {
-        Box::new(TeamDetailDocumentWidget {
-            document: self.document.clone(),
-            loading: self.loading,
-            selected_index: self.selected_index,
-            scroll_offset: self.scroll_offset,
-            animation_frame: self.animation_frame,
-            focused: self.focused,
-        })
+        Box::new(self.clone())
     }
 }
 
@@ -307,16 +291,16 @@ mod tests {
     use nhl_api::{ClubGoalieStats, ClubSkaterStats, LocalizedString, Position, Season};
     use ratatui::{buffer::Buffer, layout::Rect};
 
+    /// `stat_line` is `(games_played, goals, assists, points)`, grouped to keep the
+    /// argument count down since these four numbers are always supplied together.
     fn create_test_skater(
         player_id: i64,
         first_name: &str,
         last_name: &str,
         position: Position,
-        gp: i32,
-        goals: i32,
-        assists: i32,
-        points: i32,
+        stat_line: (i32, i32, i32, i32),
     ) -> ClubSkaterStats {
+        let (gp, goals, assists, points) = stat_line;
         ClubSkaterStats {
             player_id: player_id.into(),
             headshot: String::new(),
@@ -405,8 +389,8 @@ mod tests {
 
     fn create_test_club_stats() -> ClubStats {
         let skaters = vec![
-            create_test_skater(1, "John", "Doe", Position::Center, 20, 10, 15, 25),
-            create_test_skater(2, "Jane", "Smith", Position::LeftWing, 18, 8, 12, 20),
+            create_test_skater(1, "John", "Doe", Position::Center, (20, 10, 15, 25)),
+            create_test_skater(2, "Jane", "Smith", Position::LeftWing, (18, 8, 12, 20)),
         ];
         let goalies = vec![create_test_goalie(3, "Bob", "Johnson", 15, 8)];
 
@@ -488,10 +472,7 @@ mod tests {
                 "Test",
                 &format!("Player{}", i),
                 Position::Center,
-                20,
-                10,
-                15,
-                25,
+                (20, 10, 15, 25),
             ));
         }
 
@@ -523,7 +504,7 @@ mod tests {
         let widget = TeamDetailDocumentWidget {
             document: Some(document),
             loading: false,
-            selected_index: None,
+            focus_index: None,
             scroll_offset: 0,
             animation_frame: 0,
             focused: true,
@@ -548,10 +529,7 @@ mod tests {
             "John",
             "Doe",
             Position::Center,
-            20,
-            10,
-            15,
-            25,
+            (20, 10, 15, 25),
         )];
         let goalies = vec![create_test_goalie(2, "Jane", "Smith", 15, 8)];
 
@@ -572,7 +550,7 @@ mod tests {
         let widget = TeamDetailDocumentWidget {
             document: Some(document),
             loading: false,
-            selected_index: None,
+            focus_index: None,
             scroll_offset: 0,
             animation_frame: 0,
             focused: true,
@@ -593,7 +571,7 @@ mod tests {
         let widget = TeamDetailDocumentWidget {
             document: None,
             loading: true,
-            selected_index: None,
+            focus_index: None,
             scroll_offset: 0,
             animation_frame: 0,
             focused: true,
@@ -615,7 +593,7 @@ mod tests {
         let widget = TeamDetailDocumentWidget {
             document: None,
             loading: false,
-            selected_index: None,
+            focus_index: None,
             scroll_offset: 0,
             animation_frame: 0,
             focused: true,

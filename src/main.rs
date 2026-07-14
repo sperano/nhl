@@ -340,9 +340,11 @@ mod tests {
     #[test]
     fn test_resolve_log_config_prefers_config_when_no_cli_flags() {
         let cli = Cli::parse_from(["nhl"]);
-        let mut config = config::Config::default();
-        config.log_level = "debug".to_string();
-        config.log_file = "/tmp/nhl.log".to_string();
+        let config = config::Config {
+            log_level: "debug".to_string(),
+            log_file: "/tmp/nhl.log".to_string(),
+            ..Default::default()
+        };
 
         let (log_level, log_file) = resolve_log_config(&cli, &config);
 
@@ -358,8 +360,10 @@ mod tests {
         // value against the default string, which can't distinguish "user typed the default
         // value" from "user didn't pass the flag at all".
         let cli = Cli::parse_from(["nhl", "-L", "info"]);
-        let mut config = config::Config::default();
-        config.log_level = "debug".to_string();
+        let config = config::Config {
+            log_level: "debug".to_string(),
+            ..Default::default()
+        };
 
         let (log_level, _) = resolve_log_config(&cli, &config);
 
@@ -369,8 +373,10 @@ mod tests {
     #[test]
     fn test_resolve_log_config_explicit_log_file_wins() {
         let cli = Cli::parse_from(["nhl", "-F", "/dev/null"]);
-        let mut config = config::Config::default();
-        config.log_file = "/tmp/nhl.log".to_string();
+        let config = config::Config {
+            log_file: "/tmp/nhl.log".to_string(),
+            ..Default::default()
+        };
 
         let (_, log_file) = resolve_log_config(&cli, &config);
 
