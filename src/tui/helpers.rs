@@ -2,6 +2,7 @@
 use nhl_api::Position;
 /// Helper methods and extension traits for common TUI operations
 use nhl_api::{ClubGoalieStats, ClubSkaterStats, SeasonTotal, Standing};
+use std::cmp::Reverse;
 
 /// Extension trait for sorting standings by points (descending)
 pub trait StandingsSorting {
@@ -10,13 +11,13 @@ pub trait StandingsSorting {
 
 impl StandingsSorting for Vec<Standing> {
     fn sort_by_points_desc(&mut self) {
-        self.sort_by(|a, b| b.points.cmp(&a.points));
+        self.sort_by_key(|s| Reverse(s.points));
     }
 }
 
 impl StandingsSorting for Vec<&Standing> {
     fn sort_by_points_desc(&mut self) {
-        self.sort_by(|a, b| b.points.cmp(&a.points));
+        self.sort_by_key(|s| Reverse(s.points));
     }
 }
 
@@ -27,7 +28,7 @@ pub trait ClubSkaterStatsSorting {
 
 impl ClubSkaterStatsSorting for Vec<ClubSkaterStats> {
     fn sort_by_points_desc(&mut self) {
-        self.sort_by(|a, b| b.points.cmp(&a.points));
+        self.sort_by_key(|s| Reverse(s.points));
     }
 }
 
@@ -38,7 +39,7 @@ pub trait ClubGoalieStatsSorting {
 
 impl ClubGoalieStatsSorting for Vec<ClubGoalieStats> {
     fn sort_by_games_played_desc(&mut self) {
-        self.sort_by(|a, b| b.games_played.cmp(&a.games_played));
+        self.sort_by_key(|g| Reverse(g.games_played));
     }
 }
 
@@ -49,13 +50,13 @@ pub trait SeasonSorting {
 
 impl SeasonSorting for Vec<SeasonTotal> {
     fn sort_by_season_desc(&mut self) {
-        self.sort_by(|a, b| b.season.id().cmp(&a.season.id()));
+        self.sort_by_key(|t| Reverse(t.season.id()));
     }
 }
 
 impl SeasonSorting for Vec<&SeasonTotal> {
     fn sort_by_season_desc(&mut self) {
-        self.sort_by(|a, b| b.season.id().cmp(&a.season.id()));
+        self.sort_by_key(|t| Reverse(t.season.id()));
     }
 }
 

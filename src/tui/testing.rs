@@ -5,7 +5,7 @@
 //!
 //! # Usage
 //!
-//! ```rust
+//! ```ignore
 //! #[cfg(test)]
 //! mod tests {
 //!     use crate::tui::testing::*;

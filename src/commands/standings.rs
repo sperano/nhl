@@ -2,6 +2,7 @@ use crate::commands::parse_game_date;
 use crate::config::{Config, DisplayConfig};
 use crate::data_provider::NHLDataProvider;
 use crate::formatting::format_header;
+use crate::tui::helpers::StandingsSorting;
 use anyhow::{Context, Result};
 use nhl_api::Standing;
 use std::collections::BTreeMap;
@@ -322,7 +323,7 @@ fn format_wildcard_conference(
     let div2_remaining: Vec<_> = div2_teams.iter().skip(3).cloned().collect();
 
     let mut wildcard_teams: Vec<_> = div1_remaining.into_iter().chain(div2_remaining).collect();
-    wildcard_teams.sort_by(|a, b| b.points.cmp(&a.points));
+    wildcard_teams.sort_by_points_desc();
 
     if !wildcard_teams.is_empty() {
         lines.extend(format_group_with_header(
@@ -364,28 +365,28 @@ fn format_wildcard_view(
         .filter(|s| s.division_name == "Atlantic")
         .cloned()
         .collect();
-    atlantic.sort_by(|a, b| b.points.cmp(&a.points));
+    atlantic.sort_by_points_desc();
 
     let mut metropolitan: Vec<_> = sorted_standings
         .iter()
         .filter(|s| s.division_name == "Metropolitan")
         .cloned()
         .collect();
-    metropolitan.sort_by(|a, b| b.points.cmp(&a.points));
+    metropolitan.sort_by_points_desc();
 
     let mut central: Vec<_> = sorted_standings
         .iter()
         .filter(|s| s.division_name == "Central")
         .cloned()
         .collect();
-    central.sort_by(|a, b| b.points.cmp(&a.points));
+    central.sort_by_points_desc();
 
     let mut pacific: Vec<_> = sorted_standings
         .iter()
         .filter(|s| s.division_name == "Pacific")
         .cloned()
         .collect();
-    pacific.sort_by(|a, b| b.points.cmp(&a.points));
+    pacific.sort_by_points_desc();
 
     // Build Eastern Conference wildcard groups
     let eastern_lines = format_wildcard_conference(
@@ -427,7 +428,7 @@ pub fn format_standings_by_group(
     }
 
     let mut sorted_standings = standings.to_vec();
-    sorted_standings.sort_by(|a, b| b.points.cmp(&a.points));
+    sorted_standings.sort_by_points_desc();
 
     match by {
         GroupBy::Division => format_division_view(sorted_standings, western_first, display),

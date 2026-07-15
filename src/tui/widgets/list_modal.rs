@@ -115,8 +115,6 @@ pub fn render_list_modal(
         height: modal_area.height.saturating_sub(2),
     };
 
-    let mut y = inner.y;
-
     // Text style uses theme fg with theme bg
     let text_style = if let Some(theme) = ctx.theme() {
         ctx.base_style().fg(theme.fg)
@@ -132,11 +130,7 @@ pub fn render_list_modal(
     };
 
     // Render options
-    for (idx, option) in options.iter().enumerate() {
-        if y >= inner.bottom() {
-            break;
-        }
-
+    for (y, (idx, option)) in (inner.y..inner.bottom()).zip(options.iter().enumerate()) {
         let is_selected = idx == selected_index;
 
         if is_selected {
@@ -147,8 +141,6 @@ pub fn render_list_modal(
             buf.set_string(inner.x, y, "   ", ctx.base_style());
             buf.set_string(inner.x + 3, y, option, text_style);
         }
-
-        y += 1;
     }
 
     modal_area

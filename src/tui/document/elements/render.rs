@@ -55,12 +55,10 @@ pub(super) fn render_row(
             RowAlignment::Left => (area.x, gap),
             RowAlignment::Spread => {
                 // Calculate maximum gap to spread children across available width
-                let actual_gap = if num_gaps > 0 {
-                    let remaining_space = area.width.saturating_sub(total_children_width);
-                    (remaining_space / num_gaps).max(gap)
-                } else {
-                    0
-                };
+                let remaining_space = area.width.saturating_sub(total_children_width);
+                let actual_gap = remaining_space
+                    .checked_div(num_gaps)
+                    .map_or(0, |g| g.max(gap));
                 (area.x, actual_gap)
             }
             RowAlignment::Center => {
@@ -415,7 +413,7 @@ fn render_section_header(
         "{}{}{}",
         left_corner,
         bc.double_horizontal.repeat(2),
-        &bc.mixed_dh_right_t,
+        bc.mixed_dh_right_t,
     );
     let title_with_space = format!(" {} ", title);
 
