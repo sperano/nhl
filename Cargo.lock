@@ -1034,6 +1034,8 @@ dependencies = [
 [[package]]
 name = "nhl_api"
 version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2005478b36ce34e99d37275779ad5363ab0d41ba1db9ea7ea90e46ba96aed382"
 dependencies = [
  "chrono",
  "reqwest",
