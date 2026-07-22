@@ -14,6 +14,7 @@ use crate::tui::document::FocusContext;
 use crate::tui::types::StackedDocument;
 use crate::tui::widgets::{BigScore, BigScoreParams, ScoreBox};
 
+use super::render::{TEAM_BOXSCORE_SECTION_HEADER_ROWS, TEAM_BOXSCORE_SECTION_TRAILING_BLANK};
 use super::types::TABLE_COLUMN_HEADER_HEIGHT;
 use super::{DocTabDef, DocumentElement};
 
@@ -157,14 +158,15 @@ impl DocumentElement {
         let team_name = team_name.into();
         let mut focusable = Vec::new();
 
-        // Calculate y offset for each section's focusable elements
-        // Each section: 1 (header) + 1 (blank) + table_height + 1 (blank before next)
+        // Calculate y offset for each section's focusable elements, mirroring
+        // the section layout in render::render_team_boxscore via the shared
+        // TEAM_BOXSCORE_SECTION_* constants.
         let mut current_y: u16 = 0;
 
         // Forwards section
         if forwards_table.row_count() > 0 {
             let table_name = format!("{}_forwards", table_prefix);
-            current_y += 2; // header + blank after header
+            current_y += TEAM_BOXSCORE_SECTION_HEADER_ROWS;
             let data_start_y = current_y + TABLE_COLUMN_HEADER_HEIGHT;
 
             for row_idx in 0..forwards_table.row_count() {
@@ -195,13 +197,14 @@ impl DocumentElement {
                     }
                 }
             }
-            current_y += forwards_table.preferred_height().unwrap_or(0) + 1; // table + blank before next
+            current_y += forwards_table.preferred_height().unwrap_or(0)
+                + TEAM_BOXSCORE_SECTION_TRAILING_BLANK;
         }
 
         // Defense section
         if defense_table.row_count() > 0 {
             let table_name = format!("{}_defense", table_prefix);
-            current_y += 2; // header + blank after header
+            current_y += TEAM_BOXSCORE_SECTION_HEADER_ROWS;
             let data_start_y = current_y + TABLE_COLUMN_HEADER_HEIGHT;
 
             for row_idx in 0..defense_table.row_count() {
@@ -232,13 +235,14 @@ impl DocumentElement {
                     }
                 }
             }
-            current_y += defense_table.preferred_height().unwrap_or(0) + 1;
+            current_y += defense_table.preferred_height().unwrap_or(0)
+                + TEAM_BOXSCORE_SECTION_TRAILING_BLANK;
         }
 
         // Goalies section
         if goalies_table.row_count() > 0 {
             let table_name = format!("{}_goalies", table_prefix);
-            current_y += 2; // header + blank after header
+            current_y += TEAM_BOXSCORE_SECTION_HEADER_ROWS;
             let data_start_y = current_y + TABLE_COLUMN_HEADER_HEIGHT;
 
             for row_idx in 0..goalies_table.row_count() {
