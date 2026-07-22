@@ -27,6 +27,45 @@ pub const TEAM_BOXSCORE_GAP: u16 = 4;
 /// Minimum width needed to display two team boxscores side by side
 pub const TEAM_BOXSCORE_SIDE_BY_SIDE_WIDTH: u16 = TEAM_BOXSCORE_WIDTH * 2 + TEAM_BOXSCORE_GAP;
 
+/// Rows above each non-empty section's table: the `╞══╡ Title ╞═...` header
+/// line plus one blank line.
+pub(super) const TEAM_BOXSCORE_SECTION_HEADER_ROWS: u16 = 2;
+
+/// Rows below each non-empty section's table: one blank line (followed by the
+/// next section's header, or by the bottom border after the last section).
+pub(super) const TEAM_BOXSCORE_SECTION_TRAILING_BLANK: u16 = 1;
+
+/// The single `╘═...═╛` row closing a team boxscore.
+pub(super) const TEAM_BOXSCORE_BOTTOM_BORDER_HEIGHT: u16 = 1;
+
+/// Height of one team boxscore section exactly as `render_team_boxscore` lays
+/// it out; empty sections are skipped entirely and contribute nothing.
+pub(super) fn team_boxscore_section_height(table: &TableWidget) -> u16 {
+    if table.row_count() == 0 {
+        return 0;
+    }
+    TEAM_BOXSCORE_SECTION_HEADER_ROWS
+        + table.preferred_height().unwrap_or(0)
+        + TEAM_BOXSCORE_SECTION_TRAILING_BLANK
+}
+
+/// Total height of a team boxscore.
+///
+/// Single source of the boxscore's vertical layout math, shared by
+/// `DocumentElement::height()`, the focusable-position math in
+/// `DocumentElement::team_boxscore`, and `render_team_boxscore` (which
+/// debug_asserts each section it draws against `team_boxscore_section_height`).
+pub(super) fn team_boxscore_height(
+    forwards_table: &TableWidget,
+    defense_table: &TableWidget,
+    goalies_table: &TableWidget,
+) -> u16 {
+    team_boxscore_section_height(forwards_table)
+        + team_boxscore_section_height(defense_table)
+        + team_boxscore_section_height(goalies_table)
+        + TEAM_BOXSCORE_BOTTOM_BORDER_HEIGHT
+}
+
 /// Render a horizontal row of elements
 pub(super) fn render_row(
     children: &[DocumentElement],
@@ -151,6 +190,17 @@ pub(super) fn render_text(
     }
 }
 
+/// Rows a heading occupies: level 1 gets a `═` underline row, deeper levels
+/// are a single line. Shared by `DocumentElement::height()` and
+/// `render_heading` so the underline can't be drawn outside the reserved rows.
+pub(super) fn heading_height(level: u8) -> u16 {
+    if level == 1 {
+        2
+    } else {
+        1
+    }
+}
+
 /// Render a heading element
 pub(super) fn render_heading(
     level: u8,
@@ -164,11 +214,22 @@ pub(super) fn render_heading(
 
     // Render underline for level 1 with muted color, matching the actual rendered width
     // (not the raw char count, which would be wrong for wide characters).
-    if level == 1 && area.height > 1 {
+    if heading_height(level) > 1 && area.height > 1 {
         let underline_style = ctx.boxchar_style();
         let underline = "═".repeat(rendered_width as usize);
         buf.set_string(area.x, area.y + 1, &underline, underline_style);
     }
+}
+
+/// Blank row of spacing reserved below a section title (accounted for in the
+/// layout, never drawn).
+pub(super) const SECTION_TITLE_TRAILING_BLANK: u16 = 1;
+
+/// Rows a section title occupies: the title line, an optional underline row,
+/// and the trailing blank row. Shared by `DocumentElement::height()` and
+/// `render_section_title`.
+pub(super) fn section_title_height(underline: bool) -> u16 {
+    1 + u16::from(underline) + SECTION_TITLE_TRAILING_BLANK
 }
 
 /// Render a section title element
@@ -348,6 +409,7 @@ pub(super) fn render_team_boxscore(
         if table.row_count() == 0 {
             continue;
         }
+        let section_start = y;
 
         // Section header with embedded title
         let title = format!("{} - {}", team_name, section_name);
@@ -378,6 +440,12 @@ pub(super) fn render_team_boxscore(
         // Blank line after table (before next section or bottom border)
         render_empty_bordered_line(y, buf);
         y += 1;
+
+        debug_assert_eq!(
+            y - section_start,
+            team_boxscore_section_height(table),
+            "rows drawn for a boxscore section drifted from team_boxscore_section_height"
+        );
     }
 
     // Bottom border
@@ -479,6 +547,16 @@ fn render_bottom_border(x: u16, y: u16, width: u16, buf: &mut Buffer, ctx: &Rend
     if width > 1 {
         buf.set_string(x + width - 1, y, bc.mixed_dh_bottom_right, border_style);
     }
+}
+
+/// Rows a tabs element occupies: the tab bar plus the active tab's stacked
+/// content. Shared by `DocumentElement::height()` and `render_tabs`.
+pub(super) fn tabs_height(tabs: &[super::DocTabDef], active_index: usize) -> u16 {
+    let content_height: u16 = tabs
+        .get(active_index)
+        .map(|tab| tab.content.iter().map(|e| e.height()).sum())
+        .unwrap_or(0);
+    super::TAB_BAR_HEIGHT + content_height
 }
 
 /// Render a tabs element (tab bar + active tab content)
@@ -1425,6 +1503,32 @@ mod tests {
 
         // Right border should be at x=19 (area width - 1), not at TEAM_BOXSCORE_WIDTH - 1.
         assert_eq!(buf.cell((19, 0)).unwrap().symbol(), "╕");
+    }
+
+    #[test]
+    fn team_boxscore_rendered_rows_match_element_height() {
+        // Regression test for #67: height() and render_team_boxscore used to
+        // derive the section chrome independently. The bottom border must land
+        // exactly on the last row that height() reserves, with nothing drawn
+        // past it.
+        let elem = DocumentElement::team_boxscore(
+            "away",
+            "AB",
+            text_table(&["Alice", "Anna"]),
+            text_table(&["Bob"]),
+            text_table(&[]),
+        );
+        let height = elem.height();
+
+        // Render into a taller buffer so drift past the reserved rows is visible.
+        let area = Rect::new(0, 0, 40, height + 3);
+        let mut buf = Buffer::empty(area);
+        let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
+        elem.render(area, &mut buf, &ctx);
+
+        assert_eq!(buf.cell((0, height - 1)).unwrap().symbol(), "╘");
+        assert_eq!(buf.cell((0, height)).unwrap().symbol(), " ");
     }
 
     // ---- render_section_header ----

@@ -25,22 +25,8 @@ impl DocumentElement {
                 // Count lines in text (minimum 1)
                 content.lines().count().max(1) as u16
             }
-            Self::Heading { level, .. } => {
-                // Level 1 headings have underline
-                if *level == 1 {
-                    2
-                } else {
-                    1
-                }
-            }
-            Self::SectionTitle { underline, .. } => {
-                // title + optional underline + blank line
-                if *underline {
-                    3
-                } else {
-                    2
-                }
-            }
+            Self::Heading { level, .. } => render::heading_height(*level),
+            Self::SectionTitle { underline, .. } => render::section_title_height(*underline),
             Self::Link { .. } => 1,
             Self::Separator => 1,
             Self::Spacer { height } => *height,
@@ -64,42 +50,13 @@ impl DocumentElement {
                 defense_table,
                 goalies_table,
                 ..
-            } => {
-                // Height = section headers + tables + spacing + bottom border
-                // Each section: 1 (header) + 1 (blank) + table_height + 1 (blank before next)
-                // Final section has bottom border instead of blank
-                let section_chrome = 3; // header + blank after header + blank before next section
-                let forwards_height = if forwards_table.row_count() > 0 {
-                    section_chrome + forwards_table.preferred_height().unwrap_or(0)
-                } else {
-                    0
-                };
-                let defense_height = if defense_table.row_count() > 0 {
-                    section_chrome + defense_table.preferred_height().unwrap_or(0)
-                } else {
-                    0
-                };
-                let goalies_height = if goalies_table.row_count() > 0 {
-                    section_chrome + goalies_table.preferred_height().unwrap_or(0)
-                } else {
-                    0
-                };
-                let bottom_border_height = 1;
-                forwards_height + defense_height + goalies_height + bottom_border_height
-            }
+            } => render::team_boxscore_height(forwards_table, defense_table, goalies_table),
             Self::BigScoreElement { big_score } => {
                 big_score.preferred_height().unwrap_or(BIG_DIGIT_HEIGHT + 1)
             }
             Self::Tabs {
                 tabs, active_index, ..
-            } => {
-                // Tab bar (2 lines) + active tab content height
-                let content_height = tabs
-                    .get(*active_index)
-                    .map(|tab| tab.content.iter().map(|e| e.height()).sum())
-                    .unwrap_or(0);
-                TAB_BAR_HEIGHT + content_height
-            }
+            } => render::tabs_height(tabs, *active_index),
         }
     }
 }
