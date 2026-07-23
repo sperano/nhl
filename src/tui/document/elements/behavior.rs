@@ -4,6 +4,7 @@
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
+use unicode_width::UnicodeWidthStr;
 
 use crate::big_digits::BIG_DIGIT_HEIGHT;
 use crate::config::RenderContext;
@@ -79,7 +80,10 @@ impl DocumentElement {
                     id: FocusableId::link(id),
                     y: y_offset,
                     height: 1,
-                    rect: Rect::new(0, y_offset, display.chars().count() as u16, 1),
+                    // Display width, not char count: render_link draws the label
+                    // with real glyph widths, so the rect must match what's on
+                    // screen for wide glyphs (CJK, emoji).
+                    rect: Rect::new(0, y_offset, display.width() as u16, 1),
                     link_target: Some(target.clone()),
                     row_position: None,
                 });
@@ -340,7 +344,23 @@ mod tests {
         assert_eq!(focusable.len(), 1);
         assert_eq!(focusable[0].id, FocusableId::link("my_link"));
         assert_eq!(focusable[0].y, 10);
-        assert_eq!(focusable[0].rect.width, 10); // "Click here" = 10 chars
+        assert_eq!(focusable[0].rect.width, 10); // "Click here" = 10 display columns
+    }
+
+    #[test]
+    fn test_collect_focusable_link_rect_uses_display_width() {
+        // "日本" is 2 chars but 4 display columns; a char-count rect would be
+        // half as wide as the rendered label.
+        let elem = DocumentElement::link("wide", "日本", LinkTarget::Anchor("a".to_string()));
+        let mut focusable = Vec::new();
+        elem.collect_focusable(&mut focusable, 0);
+        assert_eq!(focusable[0].rect.width, 4);
+
+        // "Génie" is 6 bytes but 5 display columns.
+        let elem = DocumentElement::link("acc", "Génie", LinkTarget::Anchor("b".to_string()));
+        let mut focusable = Vec::new();
+        elem.collect_focusable(&mut focusable, 0);
+        assert_eq!(focusable[0].rect.width, 5);
     }
 
     #[test]
