@@ -5,6 +5,7 @@
 
 use ratatui::layout::Rect;
 use ratatui::style::Style;
+use unicode_width::UnicodeWidthStr;
 
 use crate::tui::component::ElementWidget;
 use crate::tui::components::TableWidget;
@@ -190,7 +191,7 @@ impl DocumentElement {
                             id: FocusableId::table_cell(&table_name, row_idx, col_idx),
                             y,
                             height: 1,
-                            rect: Rect::new(0, y, cell.display_text().len() as u16, 1),
+                            rect: Rect::new(0, y, cell.display_text().width() as u16, 1),
                             link_target,
                             row_position: None,
                         });
@@ -228,7 +229,7 @@ impl DocumentElement {
                             id: FocusableId::table_cell(&table_name, row_idx, col_idx),
                             y,
                             height: 1,
-                            rect: Rect::new(0, y, cell.display_text().len() as u16, 1),
+                            rect: Rect::new(0, y, cell.display_text().width() as u16, 1),
                             link_target,
                             row_position: None,
                         });
@@ -266,7 +267,7 @@ impl DocumentElement {
                             id: FocusableId::table_cell(&table_name, row_idx, col_idx),
                             y,
                             height: 1,
-                            rect: Rect::new(0, y, cell.display_text().len() as u16, 1),
+                            rect: Rect::new(0, y, cell.display_text().width() as u16, 1),
                             link_target,
                             row_position: None,
                         });
@@ -346,6 +347,43 @@ mod tests {
         match elem {
             DocumentElement::Heading { level, .. } => assert_eq!(level, 6),
             _ => panic!("Expected Heading"),
+        }
+    }
+
+    #[test]
+    fn test_team_boxscore_focusable_rect_uses_display_width() {
+        use crate::tui::{Alignment, CellValue, ColumnDef};
+
+        fn player_columns() -> Vec<ColumnDef<&'static str>> {
+            vec![ColumnDef::new(
+                "Player",
+                20,
+                Alignment::Left,
+                |name: &&str| CellValue::PlayerLink {
+                    display: name.to_string(),
+                    player_id: 1,
+                    sweater_number: None,
+                    last_name: name.to_string(),
+                },
+            )]
+        }
+
+        // "Génie" is 6 bytes but 5 display columns; the old byte-length rect
+        // was one column too wide.
+        let elem = DocumentElement::team_boxscore(
+            "away",
+            "T",
+            TableWidget::from_data(&player_columns(), vec!["Génie"]),
+            TableWidget::from_data(&player_columns(), vec![]),
+            TableWidget::from_data(&player_columns(), vec![]),
+        );
+
+        match elem {
+            DocumentElement::TeamBoxscore { focusable, .. } => {
+                assert_eq!(focusable.len(), 1);
+                assert_eq!(focusable[0].rect.width, 5);
+            }
+            _ => panic!("Expected TeamBoxscore"),
         }
     }
 
