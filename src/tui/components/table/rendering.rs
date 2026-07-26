@@ -59,6 +59,12 @@ impl TableWidget {
             let col_header_style = ctx.text_style().add_modifier(Modifier::BOLD);
 
             for (col_idx, header) in self.column_headers.iter().enumerate() {
+                // A set_string that *starts* outside the buffer panics (unlike
+                // one that merely extends past the edge, which truncates), so
+                // stop once the next column would begin out of bounds.
+                if x >= buf.area.right() {
+                    break;
+                }
                 let width = self.column_widths[col_idx];
                 let align = self.column_aligns[col_idx];
                 let formatted = self.format_cell(header, width, align);
@@ -101,6 +107,10 @@ impl TableWidget {
             // Render cells
             let mut x = area.x + SELECTOR_WIDTH as u16;
             for (col_idx, cell_value) in row_cells.iter().enumerate() {
+                // Same out-of-bounds start guard as the header loop above.
+                if x >= buf.area.right() {
+                    break;
+                }
                 let width = self.column_widths[col_idx];
                 let align = self.column_aligns[col_idx];
                 let cell_text = cell_value.display_text();
@@ -117,7 +127,7 @@ impl TableWidget {
                     .map(|c| is_row_focused && c.receives_selection_style())
                     .unwrap_or(false);
 
-                if current_styled && next_styled {
+                if current_styled && next_styled && (x + width as u16) < buf.area.right() {
                     buf.set_string(x + width as u16, y, "  ", style);
                 }
 

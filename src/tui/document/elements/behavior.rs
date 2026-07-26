@@ -179,8 +179,21 @@ impl DocumentElement {
 }
 
 impl DocumentElement {
-    /// Render this element to a buffer
+    /// Render this element to a buffer.
+    ///
+    /// Rendering goes through [`render::clipped`], which guarantees the
+    /// document layer's clipping contract: no element can draw outside the
+    /// `area` it was given, regardless of whether the underlying widget
+    /// clips itself (`TableWidget`, for one, lays out at its natural width).
+    /// Container variants (`Group`, `Row`, `Tabs`, `Indented`) render their
+    /// children through this method too, so the contract holds recursively.
     pub fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
+        render::clipped(area, buf, |scratch| {
+            self.render_unclipped(area, scratch, ctx)
+        });
+    }
+
+    fn render_unclipped(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
         match self {
             Self::Text { content, style } => {
                 render_text(content, *style, area, buf, ctx);

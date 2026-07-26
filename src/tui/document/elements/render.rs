@@ -111,7 +111,7 @@ pub(super) fn render_row(
         for child in children {
             let child_width = get_preferred_width(child).unwrap_or(0);
             let child_area = Rect::new(x_offset, area.y, child_width, area.height);
-            render_clipped(child, child_area, buf, ctx);
+            child.render(child_area, buf, ctx);
             x_offset += child_width + actual_gap;
         }
     } else {
@@ -124,29 +124,48 @@ pub(super) fn render_row(
         let mut x_offset = area.x;
         for child in children {
             let child_area = Rect::new(x_offset, area.y, child_width, area.height);
-            render_clipped(child, child_area, buf, ctx);
+            child.render(child_area, buf, ctx);
             x_offset += child_width + gap;
         }
     }
 }
 
-/// Render `element` into a scratch buffer scoped exactly to `area`, then merge only that
+/// Run `draw` against a scratch buffer covering exactly `area`, then copy the
 /// region back into `buf`.
 ///
-/// Some `ElementWidget` impls (e.g. `TableWidget`) lay out their content at its own natural
-/// width and don't clip themselves to the `area` they're given, so a plain
-/// `element.render(area, buf, ctx)` call can bleed past `area` into whatever the shared
-/// buffer holds beyond it - e.g. a sibling column rendered by `render_row`. Isolating the
-/// render in a same-sized scratch buffer makes that impossible: coordinates outside `area`
-/// simply don't exist in the scratch buffer, so out-of-bounds writes are dropped instead of
-/// landing on a neighbor. Truncation at the boundary is still expected; bleeding is not.
-fn render_clipped(element: &DocumentElement, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
+/// This is the document layer's clipping primitive: some `ElementWidget`
+/// impls (e.g. `TableWidget`) lay out their content at its own natural size
+/// and don't clip themselves to the `area` they're given, so drawing straight
+/// into the shared buffer could bleed past `area` into a sibling's cells.
+/// Coordinates outside `area` don't exist in the scratch buffer, so
+/// out-of-bounds writes are dropped instead of landing on a neighbor.
+/// Truncation at the boundary is still expected; bleeding is not.
+///
+/// The scratch is seeded with `buf`'s current cells so that, within `area`,
+/// drawing through the scratch is indistinguishable from drawing into `buf`
+/// directly: cells the drawing never touches keep their existing content and
+/// style (e.g. the theme background fill) rather than being reset to default
+/// cells, which a `Buffer::merge` of an empty scratch would do.
+pub(super) fn clipped(area: Rect, buf: &mut Buffer, draw: impl FnOnce(&mut Buffer)) {
     if area.width == 0 || area.height == 0 {
         return;
     }
     let mut scratch = Buffer::empty(area);
-    element.render(area, &mut scratch, ctx);
-    buf.merge(&scratch);
+    for y in area.top()..area.bottom() {
+        for x in area.left()..area.right() {
+            if let Some(src) = buf.cell((x, y)) {
+                scratch[(x, y)] = src.clone();
+            }
+        }
+    }
+    draw(&mut scratch);
+    for y in area.top()..area.bottom() {
+        for x in area.left()..area.right() {
+            if let Some(dst) = buf.cell_mut((x, y)) {
+                *dst = scratch[(x, y)].clone();
+            }
+        }
+    }
 }
 
 /// Get preferred width for elements that have fixed dimensions
@@ -390,8 +409,18 @@ pub(super) fn render_team_boxscore(
     let mut y = area.y;
     let mut is_first_section = true;
 
+    // All direct row writes below are guarded against area.bottom(): ratatui's
+    // set_string panics when its start position lies outside the buffer, so
+    // when the area is shorter than the boxscore's full height the overflow
+    // rows must be skipped (truncated), not attempted. The `y` cursor still
+    // advances through skipped rows to keep the section math intact.
+    let bottom = area.bottom();
+
     // Helper to render an empty bordered line
     let render_empty_bordered_line = |y: u16, buf: &mut Buffer| {
+        if y >= bottom {
+            return;
+        }
         buf.set_string(area.x, y, bc.vertical, border_style);
         if width > 1 {
             buf.set_string(area.x + width - 1, y, bc.vertical, border_style);
@@ -412,8 +441,10 @@ pub(super) fn render_team_boxscore(
         let section_start = y;
 
         // Section header with embedded title
-        let title = format!("{} - {}", team_name, section_name);
-        render_section_header(area.x, y, width, &title, is_first_section, buf, ctx);
+        if y < bottom {
+            let title = format!("{} - {}", team_name, section_name);
+            render_section_header(area.x, y, width, &title, is_first_section, buf, ctx);
+        }
         y += 1;
         is_first_section = false;
 
@@ -423,7 +454,8 @@ pub(super) fn render_team_boxscore(
 
         // Table content - render with side borders
         let table_height = table.preferred_height().unwrap_or(0);
-        for row in 0..table_height {
+        let visible_table_height = table_height.min(bottom.saturating_sub(y));
+        for row in 0..visible_table_height {
             // Left border
             buf.set_string(area.x, y + row, bc.vertical, border_style);
             // Right border
@@ -432,9 +464,14 @@ pub(super) fn render_team_boxscore(
             }
         }
 
-        // Render table content inside borders
-        let table_area = Rect::new(area.x + 1, y, inner_width, table_height);
-        table.render(table_area, buf, ctx);
+        // Render table content inside borders, clipped so a table wider than
+        // the boxscore (narrow area) truncates instead of overwriting the
+        // right border it was just drawn inside of, and a table taller than
+        // the remaining rows truncates instead of panicking in set_string.
+        let table_area = Rect::new(area.x + 1, y, inner_width, visible_table_height);
+        clipped(table_area, buf, |scratch| {
+            table.render(table_area, scratch, ctx)
+        });
         y += table_height;
 
         // Blank line after table (before next section or bottom border)
@@ -448,8 +485,10 @@ pub(super) fn render_team_boxscore(
         );
     }
 
-    // Bottom border
-    render_bottom_border(area.x, y, width, buf, ctx);
+    // Bottom border (skipped entirely when the area ran out of rows)
+    if y < bottom {
+        render_bottom_border(area.x, y, width, buf, ctx);
+    }
 }
 
 /// Render section header with embedded title
@@ -977,6 +1016,134 @@ mod tests {
             !right_columns.contains('A'),
             "left table bled into right child's columns: {right_columns:?}"
         );
+    }
+
+    // ---- clipping contract (#68) ----
+
+    #[test]
+    fn element_render_clips_standalone_table_to_its_area() {
+        // Natural table width is SELECTOR(2) + column(8) = 10, but the area is
+        // only 5 wide. Before the central clip, only tables inside a Row were
+        // protected; a standalone table bled into the rest of the buffer.
+        let elem = DocumentElement::table("t", text_table(&["AAAAAAAA"]));
+        let mut buf = Buffer::empty(Rect::new(0, 0, 12, 3));
+        let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
+
+        elem.render(Rect::new(0, 0, 5, 3), &mut buf, &ctx);
+
+        for y in 0..3 {
+            for x in 5..12 {
+                assert_eq!(
+                    buf.cell((x, y)).unwrap().symbol(),
+                    " ",
+                    "table bled outside its area at ({x},{y})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn element_render_clips_multi_column_table_without_panicking() {
+        // The second column's start position (SELECTOR 2 + col 8 + gap 2 = 12)
+        // lies beyond the 5-wide area. set_string panics on an out-of-bounds
+        // *start*, so this exercises TableWidget's column start guard as well
+        // as the central clip.
+        let columns: Vec<ColumnDef<&str>> = vec![
+            ColumnDef::new("A", 8, Alignment::Left, |row: &&str| {
+                CellValue::Text(row.to_string())
+            }),
+            ColumnDef::new("B", 8, Alignment::Left, |row: &&str| {
+                CellValue::Text(row.to_string())
+            }),
+        ];
+        let elem = DocumentElement::table("t", TableWidget::from_data(&columns, vec!["x"]));
+        let mut buf = Buffer::empty(Rect::new(0, 0, 20, 3));
+        let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
+
+        elem.render(Rect::new(0, 0, 5, 3), &mut buf, &ctx);
+
+        for y in 0..3 {
+            for x in 5..20 {
+                assert_eq!(
+                    buf.cell((x, y)).unwrap().symbol(),
+                    " ",
+                    "table bled outside its area at ({x},{y})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn element_render_clips_team_boxscore_vertically() {
+        let elem = DocumentElement::team_boxscore(
+            "away",
+            "AB",
+            text_table(&["Alice"]),
+            text_table(&[]),
+            text_table(&[]),
+        );
+        let full_height = elem.height();
+        let short_height = full_height - 3;
+        let mut buf = Buffer::empty(Rect::new(0, 0, 40, full_height + 2));
+        let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
+
+        // Give the element fewer rows than it needs: everything below the
+        // area must stay untouched instead of bleeding into later elements.
+        elem.render(Rect::new(0, 0, 40, short_height), &mut buf, &ctx);
+
+        for y in short_height..full_height + 2 {
+            assert_eq!(
+                buf.cell((0, y)).unwrap().symbol(),
+                " ",
+                "boxscore bled below its area at row {y}"
+            );
+        }
+    }
+
+    #[test]
+    fn element_render_clips_custom_render_fn() {
+        // A Custom element's render_fn is arbitrary code; the central clip
+        // must contain it like any other element.
+        let elem = DocumentElement::Custom {
+            render_fn: |_area, buf, _ctx| {
+                // Deliberately ignore the area and write far outside it.
+                buf.set_string(8, 2, "XX", Style::default());
+            },
+            height: 1,
+            focusable: vec![],
+        };
+        let mut buf = Buffer::empty(Rect::new(0, 0, 20, 4));
+        let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
+
+        elem.render(Rect::new(0, 0, 5, 1), &mut buf, &ctx);
+
+        assert_eq!(buf.cell((8, 2)).unwrap().symbol(), " ");
+    }
+
+    #[test]
+    fn row_preserves_prestyled_untouched_cells_in_child_areas() {
+        // Regression: the old empty-scratch merge reset every cell of a row
+        // child's area to a default cell, clobbering the theme background
+        // fill that render_elements_to_buffer applies before elements draw.
+        let children = vec![DocumentElement::text("hi"), DocumentElement::text("yo")];
+        let area = Rect::new(0, 0, 20, 2);
+        let mut buf = Buffer::empty(area);
+        buf.set_style(area, Style::default().bg(Color::Blue));
+        let config = DisplayConfig::default();
+        let ctx = RenderContext::focused(&config);
+
+        render_row(&children, 2, RowAlignment::Left, area, &mut buf, &ctx);
+
+        // Text was drawn on row 0.
+        assert_eq!(buf.cell((0, 0)).unwrap().symbol(), "h");
+        // Row 1 lies inside both children's areas but is never drawn on: it
+        // must keep the pre-applied background.
+        assert_eq!(buf.cell((0, 1)).unwrap().style().bg, Some(Color::Blue));
+        assert_eq!(buf.cell((11, 1)).unwrap().style().bg, Some(Color::Blue));
     }
 
     // ---- render_text ----

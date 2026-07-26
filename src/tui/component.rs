@@ -143,6 +143,16 @@ pub trait ElementWidget: Send + Sync {
     /// * `area` - The rectangular area to render into
     /// * `buf` - The buffer to write to
     /// * `ctx` - Render context with display configuration and focus state
+    ///
+    /// # Clipping contract
+    ///
+    /// Implementations should treat `area` as a bound, but are not required
+    /// to clip themselves (`TableWidget` lays out at its natural width, for
+    /// example). Inside document trees the framework enforces the bound:
+    /// `DocumentElement::render` routes every element through a clipping
+    /// scratch buffer, so writes outside `area` are dropped rather than
+    /// landing on sibling content. Outside the document layer, callers pass
+    /// layout-computed areas and are responsible for sizing them correctly.
     fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext);
 
     /// Clone this widget into a boxed trait object
