@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use crate::tui::component::Effect;
-use crate::tui::document::{Document, FocusContext, FocusableElement, LinkTarget};
+use crate::tui::document::{Document, FocusContext, FocusableElement, FocusableId, LinkTarget};
 
 /// Minimum viewport height - if smaller than this, autoscroll may behave oddly
 const MIN_VIEWPORT_HEIGHT: u16 = 5;
@@ -57,6 +57,17 @@ impl DocumentNavState {
     pub fn focused_link_target(&self) -> Option<&LinkTarget> {
         let focus_idx = self.focus_index?;
         self.focusables.get(focus_idx)?.link_target.as_ref()
+    }
+
+    /// Resolve `focus_index` into the focused element's ID, if any.
+    ///
+    /// This is what the render path consumes ([`DocumentView::focus_id`]):
+    /// `focus_index` is only meaningful relative to `focusables`, and both
+    /// live here, so the index never has to leave this struct.
+    ///
+    /// [`DocumentView::focus_id`]: crate::tui::document::DocumentView::focus_id
+    pub fn focused_id(&self) -> Option<FocusableId> {
+        Some(self.focusables.get(self.focus_index?)?.id.clone())
     }
 
     /// Get the active tab index for a tabs element
@@ -421,6 +432,25 @@ mod tests {
                 FocusableElement::at(y, height, FocusableId::link(format!("f{i}")))
             })
             .collect()
+    }
+
+    #[test]
+    fn test_focused_id_resolves_index_into_focusables() {
+        let mut state = DocumentNavState {
+            focusables: uniform_focusables(&[(0, 1), (5, 1), (10, 1)]),
+            ..Default::default()
+        };
+
+        // No focus -> no ID.
+        assert_eq!(state.focused_id(), None);
+
+        state.focus_index = Some(1);
+        assert_eq!(state.focused_id(), Some(FocusableId::link("f1")));
+
+        // A stale index past the end of `focusables` resolves to no focus
+        // rather than panicking.
+        state.focus_index = Some(99);
+        assert_eq!(state.focused_id(), None);
     }
 
     #[test]

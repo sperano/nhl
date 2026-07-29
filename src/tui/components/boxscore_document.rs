@@ -10,7 +10,7 @@ use crate::config::RenderContext;
 use crate::tui::component::{Component, Element, ElementWidget};
 use crate::tui::document::{
     render_document_widget, Document, DocumentBuilder, DocumentElement, DocumentWidgetParams,
-    FocusContext, TEAM_BOXSCORE_SIDE_BY_SIDE_WIDTH,
+    FocusContext, FocusableId, TEAM_BOXSCORE_SIDE_BY_SIDE_WIDTH,
 };
 use crate::tui::widgets::{BigScoreParams, ScoreBoxStatus};
 use crate::tui::{Alignment, CellValue, ColumnDef};
@@ -31,7 +31,7 @@ pub struct BoxscoreDocumentProps {
     /// construction site shared with the input-handling path.
     pub document: Option<Arc<dyn Document>>,
     pub loading: bool,
-    pub focus_index: Option<usize>,
+    pub focused_id: Option<FocusableId>,
     pub scroll_offset: u16,
     pub focused: bool,
     pub animation_frame: u8,
@@ -49,7 +49,7 @@ impl Component for BoxscoreDocument {
         Element::Widget(Box::new(BoxscoreDocumentWidget {
             document: props.document.clone(),
             loading: props.loading,
-            focus_index: props.focus_index,
+            focused_id: props.focused_id.clone(),
             scroll_offset: props.scroll_offset,
             focused: props.focused,
             animation_frame: props.animation_frame,
@@ -404,7 +404,7 @@ fn boxscore_to_status(boxscore: &Boxscore) -> ScoreBoxStatus {
 struct BoxscoreDocumentWidget {
     document: Option<Arc<dyn Document>>,
     loading: bool,
-    focus_index: Option<usize>,
+    focused_id: Option<FocusableId>,
     scroll_offset: u16,
     focused: bool,
     animation_frame: u8,
@@ -416,7 +416,7 @@ impl ElementWidget for BoxscoreDocumentWidget {
             &DocumentWidgetParams {
                 document: &self.document,
                 loading: self.loading,
-                focus_index: self.focus_index,
+                focused_id: self.focused_id.clone(),
                 scroll_offset: self.scroll_offset,
                 animation_frame: self.animation_frame,
                 focused: self.focused,
@@ -710,7 +710,7 @@ mod tests {
         let widget = BoxscoreDocumentWidget {
             document: None,
             loading: true,
-            focus_index: None,
+            focused_id: None,
             scroll_offset: 0,
             focused: true,
             animation_frame: 0,
@@ -732,7 +732,7 @@ mod tests {
         let widget = BoxscoreDocumentWidget {
             document: None,
             loading: false,
-            focus_index: None,
+            focused_id: None,
             scroll_offset: 0,
             focused: true,
             animation_frame: 0,
@@ -760,7 +760,7 @@ mod tests {
         let widget = BoxscoreDocumentWidget {
             document: Some(document),
             loading: false,
-            focus_index: None,
+            focused_id: None,
             scroll_offset: 0,
             focused: true,
             animation_frame: 0,
