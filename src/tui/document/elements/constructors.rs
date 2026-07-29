@@ -154,126 +154,24 @@ impl DocumentElement {
         defense_table: TableWidget,
         goalies_table: TableWidget,
     ) -> Self {
-        use crate::tui::CellValue;
-
         let team_name = team_name.into();
         let mut focusable = Vec::new();
 
-        // Calculate y offset for each section's focusable elements, mirroring
-        // the section layout in render::render_team_boxscore via the shared
+        // Walk the three sections in render order, mirroring the section
+        // layout in render::render_team_boxscore via the shared
         // TEAM_BOXSCORE_SECTION_* constants.
         let mut current_y: u16 = 0;
-
-        // Forwards section
-        if forwards_table.row_count() > 0 {
-            let table_name = format!("{}_forwards", table_prefix);
-            current_y += TEAM_BOXSCORE_SECTION_HEADER_ROWS;
-            let data_start_y = current_y + TABLE_COLUMN_HEADER_HEIGHT;
-
-            for row_idx in 0..forwards_table.row_count() {
-                for col_idx in 0..forwards_table.column_count() {
-                    if let Some(cell) = forwards_table.get_cell_value(row_idx, col_idx) {
-                        let y = data_start_y + row_idx as u16;
-                        let link_target = match &cell {
-                            CellValue::PlayerLink {
-                                player_id,
-                                sweater_number,
-                                last_name,
-                                ..
-                            } => Some(LinkTarget::Push(StackedDocument::PlayerDetail {
-                                player_id: *player_id,
-                                sweater_number: *sweater_number,
-                                last_name: last_name.clone(),
-                            })),
-                            _ => continue,
-                        };
-                        focusable.push(FocusableElement {
-                            id: FocusableId::table_cell(&table_name, row_idx, col_idx),
-                            y,
-                            height: 1,
-                            rect: Rect::new(0, y, cell.display_text().width() as u16, 1),
-                            link_target,
-                            row_position: None,
-                        });
-                    }
-                }
-            }
-            current_y += forwards_table.preferred_height().unwrap_or(0)
-                + TEAM_BOXSCORE_SECTION_TRAILING_BLANK;
-        }
-
-        // Defense section
-        if defense_table.row_count() > 0 {
-            let table_name = format!("{}_defense", table_prefix);
-            current_y += TEAM_BOXSCORE_SECTION_HEADER_ROWS;
-            let data_start_y = current_y + TABLE_COLUMN_HEADER_HEIGHT;
-
-            for row_idx in 0..defense_table.row_count() {
-                for col_idx in 0..defense_table.column_count() {
-                    if let Some(cell) = defense_table.get_cell_value(row_idx, col_idx) {
-                        let y = data_start_y + row_idx as u16;
-                        let link_target = match &cell {
-                            CellValue::PlayerLink {
-                                player_id,
-                                sweater_number,
-                                last_name,
-                                ..
-                            } => Some(LinkTarget::Push(StackedDocument::PlayerDetail {
-                                player_id: *player_id,
-                                sweater_number: *sweater_number,
-                                last_name: last_name.clone(),
-                            })),
-                            _ => continue,
-                        };
-                        focusable.push(FocusableElement {
-                            id: FocusableId::table_cell(&table_name, row_idx, col_idx),
-                            y,
-                            height: 1,
-                            rect: Rect::new(0, y, cell.display_text().width() as u16, 1),
-                            link_target,
-                            row_position: None,
-                        });
-                    }
-                }
-            }
-            current_y += defense_table.preferred_height().unwrap_or(0)
-                + TEAM_BOXSCORE_SECTION_TRAILING_BLANK;
-        }
-
-        // Goalies section
-        if goalies_table.row_count() > 0 {
-            let table_name = format!("{}_goalies", table_prefix);
-            current_y += TEAM_BOXSCORE_SECTION_HEADER_ROWS;
-            let data_start_y = current_y + TABLE_COLUMN_HEADER_HEIGHT;
-
-            for row_idx in 0..goalies_table.row_count() {
-                for col_idx in 0..goalies_table.column_count() {
-                    if let Some(cell) = goalies_table.get_cell_value(row_idx, col_idx) {
-                        let y = data_start_y + row_idx as u16;
-                        let link_target = match &cell {
-                            CellValue::PlayerLink {
-                                player_id,
-                                sweater_number,
-                                last_name,
-                                ..
-                            } => Some(LinkTarget::Push(StackedDocument::PlayerDetail {
-                                player_id: *player_id,
-                                sweater_number: *sweater_number,
-                                last_name: last_name.clone(),
-                            })),
-                            _ => continue,
-                        };
-                        focusable.push(FocusableElement {
-                            id: FocusableId::table_cell(&table_name, row_idx, col_idx),
-                            y,
-                            height: 1,
-                            rect: Rect::new(0, y, cell.display_text().width() as u16, 1),
-                            link_target,
-                            row_position: None,
-                        });
-                    }
-                }
-            }
+        for (table, suffix) in [
+            (&forwards_table, "forwards"),
+            (&defense_table, "defense"),
+            (&goalies_table, "goalies"),
+        ] {
+            current_y = collect_section_focusables(
+                table,
+                &format!("{table_prefix}_{suffix}"),
+                current_y,
+                &mut focusable,
+            );
         }
 
         Self::TeamBoxscore {
@@ -328,6 +226,58 @@ impl DocumentElement {
             active_index,
         }
     }
+}
+
+/// Walk one boxscore section's table for [`DocumentElement::team_boxscore`],
+/// appending a `FocusableElement` for every `PlayerLink` cell, and return
+/// `current_y` advanced past the section (header chrome, rows, trailing
+/// blank). An empty section contributes no chrome and no advance, matching
+/// `render::render_team_boxscore`.
+fn collect_section_focusables(
+    table: &TableWidget,
+    table_name: &str,
+    mut current_y: u16,
+    focusable: &mut Vec<FocusableElement>,
+) -> u16 {
+    use crate::tui::CellValue;
+
+    if table.row_count() == 0 {
+        return current_y;
+    }
+
+    current_y += TEAM_BOXSCORE_SECTION_HEADER_ROWS;
+    let data_start_y = current_y + TABLE_COLUMN_HEADER_HEIGHT;
+
+    for row_idx in 0..table.row_count() {
+        for col_idx in 0..table.column_count() {
+            if let Some(cell) = table.get_cell_value(row_idx, col_idx) {
+                let y = data_start_y + row_idx as u16;
+                let link_target = match &cell {
+                    CellValue::PlayerLink {
+                        player_id,
+                        sweater_number,
+                        last_name,
+                        ..
+                    } => Some(LinkTarget::Push(StackedDocument::PlayerDetail {
+                        player_id: *player_id,
+                        sweater_number: *sweater_number,
+                        last_name: last_name.clone(),
+                    })),
+                    _ => continue,
+                };
+                focusable.push(FocusableElement {
+                    id: FocusableId::table_cell(table_name, row_idx, col_idx),
+                    y,
+                    height: 1,
+                    rect: Rect::new(0, y, cell.display_text().width() as u16, 1),
+                    link_target,
+                    row_position: None,
+                });
+            }
+        }
+    }
+
+    current_y + table.preferred_height().unwrap_or(0) + TEAM_BOXSCORE_SECTION_TRAILING_BLANK
 }
 
 #[cfg(test)]
