@@ -20,7 +20,7 @@ use crate::tui::action::Action;
 use crate::tui::component::{Component, Effect, Element, ElementWidget};
 use crate::tui::components::create_standings_table_with_selection;
 use crate::tui::document::{
-    Document, DocumentBuilder, DocumentElement, DocumentView, FocusContext, LinkTarget,
+    Document, DocumentBuilder, DocumentElement, DocumentView, FocusContext, FocusableId, LinkTarget,
 };
 use crate::tui::document_nav::{DocumentNavMsg, DocumentNavState};
 use crate::tui::helpers::StandingsSorting;
@@ -125,7 +125,8 @@ impl Component for DemoTab {
     fn view(&self, props: &Self::Props, state: &Self::State) -> Element {
         Element::Widget(Box::new(DemoTabWidget {
             focused: props.focused,
-            focus_index: state.focus_index,
+            focused_id: state.focused_id(),
+            has_item_focus: state.focus_index.is_some(),
             scroll_offset: state.scroll_offset,
             standings: props.standings.clone(),
             tab_selections: state.doc_tab_selections.clone(),
@@ -139,7 +140,10 @@ const DEMO_TABS_ID: &str = "demo_tabs";
 /// Widget for rendering the Demo tab
 struct DemoTabWidget {
     focused: bool,
-    focus_index: Option<usize>,
+    focused_id: Option<FocusableId>,
+    /// Whether item-level focus is active (drives dim/bright rendering even
+    /// when the focus index doesn't resolve to a known focusable).
+    has_item_focus: bool,
     scroll_offset: u16,
     standings: Arc<Option<Vec<Standing>>>,
     tab_selections: std::collections::HashMap<String, usize>,
@@ -153,8 +157,8 @@ impl ElementWidget for DemoTabWidget {
         let mut view = DocumentView::new(doc, area.height);
 
         // Apply focus state from AppState
-        if let Some(idx) = self.focus_index {
-            view.focus_by_index(idx);
+        if let Some(id) = self.focused_id.clone() {
+            view.focus_id(id);
         }
 
         // Apply scroll offset from AppState
@@ -162,9 +166,8 @@ impl ElementWidget for DemoTabWidget {
 
         // Create child RenderContext with our focus state
         // Document is only focused when navigating items within the document
-        let has_item_focus = self.focus_index.is_some();
         let child_ctx = ctx
-            .child(self.focused && has_item_focus)
+            .child(self.focused && self.has_item_focus)
             .with_tab_selections(self.tab_selections.clone());
 
         view.render(area, buf, &child_ctx);
@@ -173,7 +176,8 @@ impl ElementWidget for DemoTabWidget {
     fn clone_box(&self) -> Box<dyn ElementWidget> {
         Box::new(DemoTabWidget {
             focused: self.focused,
-            focus_index: self.focus_index,
+            focused_id: self.focused_id.clone(),
+            has_item_focus: self.has_item_focus,
             scroll_offset: self.scroll_offset,
             standings: self.standings.clone(),
             tab_selections: self.tab_selections.clone(),
@@ -389,7 +393,8 @@ mod tests {
     fn test_demo_tab_widget_render() {
         let widget = DemoTabWidget {
             focused: true,
-            focus_index: None,
+            focused_id: None,
+            has_item_focus: false,
             scroll_offset: 0,
             standings: Arc::new(None),
             tab_selections: std::collections::HashMap::new(),
@@ -417,8 +422,8 @@ mod tests {
     // Focus-order navigation (Tab/Shift-Tab advancing/wrapping through
     // `DemoDocument`'s focusables) used to be tested here against
     // `DocumentView::focus_next/prev` (Engine A). That engine never ran in
-    // production -- the render path only ever calls `DocumentView::focus_by_index`
-    // with an index computed by `document_nav.rs` (Engine B), whose own generic
+    // production -- the render path only ever calls `DocumentView::focus_id`
+    // with an ID resolved by `document_nav.rs` (Engine B), whose own generic
     // tests (`test_focus_next_advances`, `test_focus_prev_wraps_around`, etc. in
     // document_nav.rs) already cover the same advance/wrap logic.
 

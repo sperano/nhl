@@ -17,7 +17,7 @@ use ratatui::layout::Rect;
 
 use crate::config::{Config, RenderContext};
 use crate::tui::component::ElementWidget;
-use crate::tui::document::{Document, DocumentElement, DocumentView, FocusContext};
+use crate::tui::document::{Document, DocumentElement, DocumentView, FocusContext, FocusableId};
 use crate::tui::helpers::StandingsSorting;
 
 pub use conference::ConferenceStandingsDocument;
@@ -122,7 +122,7 @@ fn two_column_row(left: DocumentElement, right: DocumentElement) -> DocumentElem
 /// It can render League, Conference, or Division standings based on the document type.
 pub struct StandingsDocumentWidget {
     doc: Arc<dyn Document>,
-    focus_index: Option<usize>,
+    focused_id: Option<FocusableId>,
     scroll_offset: u16,
     /// Whether this widget has focus (affects dim/bright rendering)
     focused: bool,
@@ -133,13 +133,13 @@ impl StandingsDocumentWidget {
     pub fn league(
         standings: Arc<Vec<Standing>>,
         config: impl Into<Arc<Config>>,
-        focus_index: Option<usize>,
+        focused_id: Option<FocusableId>,
         scroll_offset: u16,
         focused: bool,
     ) -> Self {
         Self {
             doc: Arc::new(LeagueStandingsDocument::new(standings, config)),
-            focus_index,
+            focused_id,
             scroll_offset,
             focused,
         }
@@ -149,13 +149,13 @@ impl StandingsDocumentWidget {
     pub fn conference(
         standings: Arc<Vec<Standing>>,
         config: impl Into<Arc<Config>>,
-        focus_index: Option<usize>,
+        focused_id: Option<FocusableId>,
         scroll_offset: u16,
         focused: bool,
     ) -> Self {
         Self {
             doc: Arc::new(ConferenceStandingsDocument::new(standings, config)),
-            focus_index,
+            focused_id,
             scroll_offset,
             focused,
         }
@@ -165,13 +165,13 @@ impl StandingsDocumentWidget {
     pub fn division(
         standings: Arc<Vec<Standing>>,
         config: impl Into<Arc<Config>>,
-        focus_index: Option<usize>,
+        focused_id: Option<FocusableId>,
         scroll_offset: u16,
         focused: bool,
     ) -> Self {
         Self {
             doc: Arc::new(DivisionStandingsDocument::new(standings, config)),
-            focus_index,
+            focused_id,
             scroll_offset,
             focused,
         }
@@ -181,13 +181,13 @@ impl StandingsDocumentWidget {
     pub fn wildcard(
         standings: Arc<Vec<Standing>>,
         config: impl Into<Arc<Config>>,
-        focus_index: Option<usize>,
+        focused_id: Option<FocusableId>,
         scroll_offset: u16,
         focused: bool,
     ) -> Self {
         Self {
             doc: Arc::new(WildcardStandingsDocument::new(standings, config)),
-            focus_index,
+            focused_id,
             scroll_offset,
             focused,
         }
@@ -200,8 +200,8 @@ impl ElementWidget for StandingsDocumentWidget {
         let mut view = DocumentView::new(self.doc.clone(), area.height);
 
         // Apply focus state from AppState
-        if let Some(idx) = self.focus_index {
-            view.focus_by_index(idx);
+        if let Some(id) = self.focused_id.clone() {
+            view.focus_id(id);
         }
 
         // Apply scroll offset from AppState
@@ -217,7 +217,7 @@ impl ElementWidget for StandingsDocumentWidget {
     fn clone_box(&self) -> Box<dyn ElementWidget> {
         Box::new(StandingsDocumentWidget {
             doc: self.doc.clone(),
-            focus_index: self.focus_index,
+            focused_id: self.focused_id.clone(),
             scroll_offset: self.scroll_offset,
             focused: self.focused,
         })

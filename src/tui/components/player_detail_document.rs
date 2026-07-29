@@ -11,7 +11,7 @@ use crate::team_abbrev::common_name_to_abbrev;
 use crate::tui::component::{Component, Element, ElementWidget};
 use crate::tui::document::{
     render_document_widget, Document, DocumentBuilder, DocumentElement, DocumentWidgetParams,
-    FocusContext,
+    FocusContext, FocusableId,
 };
 use crate::tui::helpers::SeasonSorting;
 use crate::tui::{Alignment, CellValue, ColumnDef};
@@ -25,7 +25,7 @@ pub struct PlayerDetailDocumentProps {
     /// construction site shared with the input-handling path.
     pub document: Option<Arc<dyn Document>>,
     pub loading: bool,
-    pub focus_index: Option<usize>,
+    pub focused_id: Option<FocusableId>,
     pub scroll_offset: u16,
     pub animation_frame: u8,
     /// Whether this document has focus (affects dim/bright rendering)
@@ -45,7 +45,7 @@ impl Component for PlayerDetailDocument {
         Element::Widget(Box::new(PlayerDetailDocumentWidget {
             document: props.document.clone(),
             loading: props.loading,
-            focus_index: props.focus_index,
+            focused_id: props.focused_id.clone(),
             scroll_offset: props.scroll_offset,
             animation_frame: props.animation_frame,
             focused: props.focused,
@@ -304,7 +304,7 @@ impl Document for PlayerDetailDocumentContent {
 pub struct PlayerDetailDocumentWidget {
     document: Option<Arc<dyn Document>>,
     loading: bool,
-    focus_index: Option<usize>,
+    focused_id: Option<FocusableId>,
     scroll_offset: u16,
     animation_frame: u8,
     /// Whether this widget has focus (affects dim/bright rendering)
@@ -317,7 +317,7 @@ impl ElementWidget for PlayerDetailDocumentWidget {
             &DocumentWidgetParams {
                 document: &self.document,
                 loading: self.loading,
-                focus_index: self.focus_index,
+                focused_id: self.focused_id.clone(),
                 scroll_offset: self.scroll_offset,
                 animation_frame: self.animation_frame,
                 focused: self.focused,
@@ -546,7 +546,7 @@ mod tests {
         let widget = PlayerDetailDocumentWidget {
             document: Some(test_document(Some(player))),
             loading: false,
-            focus_index: None,
+            focused_id: None,
             scroll_offset: 0,
             animation_frame: 0,
             focused: true,
@@ -568,7 +568,7 @@ mod tests {
         let widget = PlayerDetailDocumentWidget {
             document: None,
             loading: true,
-            focus_index: None,
+            focused_id: None,
             scroll_offset: 0,
             animation_frame: 0,
             focused: true,
@@ -589,7 +589,7 @@ mod tests {
         let widget = PlayerDetailDocumentWidget {
             document: None,
             loading: false,
-            focus_index: None,
+            focused_id: None,
             scroll_offset: 0,
             animation_frame: 0,
             focused: true,
@@ -608,11 +608,18 @@ mod tests {
     #[test]
     fn test_widget_with_focus() {
         let player = create_test_player(8479318, Position::Center);
+        let document = test_document(Some(player));
 
+        // Focus on the first focusable element
+        let first_focusable = document
+            .focusables(&FocusContext::default())
+            .into_iter()
+            .next()
+            .map(|f| f.id);
         let widget = PlayerDetailDocumentWidget {
-            document: Some(test_document(Some(player))),
+            document: Some(document),
             loading: false,
-            focus_index: Some(0), // Focus on first focusable element
+            focused_id: first_focusable,
             scroll_offset: 0,
             animation_frame: 0,
             focused: true,
@@ -636,7 +643,7 @@ mod tests {
         let widget = PlayerDetailDocumentWidget {
             document: Some(test_document(Some(player))),
             loading: false,
-            focus_index: None,
+            focused_id: None,
             scroll_offset: 5, // Scroll down 5 lines
             animation_frame: 0,
             focused: true,

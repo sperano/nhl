@@ -158,7 +158,7 @@ impl App {
                 let props = BoxscoreDocumentProps {
                     document,
                     loading: state.data.loading.contains(&LoadingKey::Boxscore(*game_id)),
-                    focus_index: doc_entry.nav.focus_index,
+                    focused_id: doc_entry.nav.focused_id(),
                     scroll_offset: doc_entry.nav.scroll_offset,
                     focused: true, // Document has focus when it's on the stack
                     animation_frame: state.system.animation_frame,
@@ -172,7 +172,7 @@ impl App {
                         .data
                         .loading
                         .contains(&LoadingKey::TeamRosterStats(abbrev.clone())),
-                    focus_index: doc_entry.nav.focus_index,
+                    focused_id: doc_entry.nav.focused_id(),
                     scroll_offset: doc_entry.nav.scroll_offset,
                     animation_frame: state.system.animation_frame,
                     focused: true, // Stacked documents are always focused
@@ -186,7 +186,7 @@ impl App {
                         .data
                         .loading
                         .contains(&LoadingKey::PlayerStats(*player_id)),
-                    focus_index: doc_entry.nav.focus_index,
+                    focused_id: doc_entry.nav.focused_id(),
                     scroll_offset: doc_entry.nav.scroll_offset,
                     animation_frame: state.system.animation_frame,
                     focused: true, // Stacked documents are always focused

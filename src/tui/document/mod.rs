@@ -30,7 +30,7 @@ pub use elements::{
     DocTabDef, DocumentElement, RowAlignment, TAB_BAR_HEIGHT, TEAM_BOXSCORE_SIDE_BY_SIDE_WIDTH,
 };
 pub use factory::build_stacked_document;
-pub use focus::{FocusManager, FocusableElement, FocusableId, RowPosition};
+pub use focus::{FocusableElement, FocusableId, RowPosition};
 pub use handlers::handle_stacked_document_key;
 pub use link::LinkTarget;
 pub use viewport::Viewport;
@@ -176,7 +176,7 @@ pub trait Document: Send + Sync {
     /// with what metadata" -- every field (position, height, ID, row
     /// membership, link target) is collected together from one `build()`
     /// call, so a sync site can no longer update some fields and forget
-    /// others. Prefer this over `build()` + manual `FocusManager` wiring
+    /// others. Prefer this over `build()` + manual focusable collection
     /// whenever you need focus metadata but not the full render/viewport
     /// machinery of `DocumentView`.
     fn focusables(&self, ctx: &FocusContext) -> Vec<FocusableElement> {
@@ -201,10 +201,10 @@ pub trait Document: Send + Sync {
 ///
 /// Shared by [`Document::render_full`] (a standalone entry point some
 /// documents' own tests call directly, e.g. the standings documents) and
-/// [`DocumentView::render`] (which builds the elements itself, once or
-/// twice depending on whether an element is focused). Factoring this out
-/// keeps both callers' element trees rendered identically without either
-/// one calling `Document::build` on the other's behalf.
+/// [`DocumentView::render`] (which builds the elements itself via
+/// [`build_full_document`]). Factoring this out keeps both callers'
+/// element trees rendered identically without either one calling
+/// `Document::build` on the other's behalf.
 fn render_elements_to_buffer(
     elements: Vec<DocumentElement>,
     width: u16,
@@ -230,45 +230,26 @@ fn render_elements_to_buffer(
 }
 
 /// Build a document's element tree and render it to a full-height offscreen
-/// buffer, resolving `focus_index` into the `FocusableId` that `build()`
-/// needs for highlighting.
+/// buffer, with focus highlighting (e.g. `Link` vs `focused_link`, a table's
+/// `focused_row`) baked in by `build()` when `focused_id` is set.
 ///
-/// Builds once in the common unfocused case. When an element is focused a
-/// second build is unavoidable: highlighting (e.g. `Link` vs `focused_link`,
-/// a table's `focused_row`) is baked into the tree by `build()` itself, and
-/// translating a focus *index* into a `FocusableId` requires a first,
-/// unfocused build.
+/// Always builds exactly once: the caller supplies the focused element's
+/// `FocusableId` directly (resolved by the navigation layer, whose
+/// `DocumentNavState.focusables` defines the focus index space), so no
+/// preliminary unfocused build is needed to translate an index into an ID.
 fn build_full_document(
     document: &dyn Document,
-    focus_index: Option<usize>,
+    focused_id: Option<&FocusableId>,
     content_width: u16,
     ctx: &RenderContext,
 ) -> (Buffer, u16) {
-    let structural_focus = FocusContext::default()
+    let mut focus = FocusContext::default()
         .with_width(content_width)
         .with_unicode(ctx.use_unicode())
         .with_box_chars(ctx.config.box_chars)
         .with_tab_selections(ctx.tab_selections.clone());
-    let structural_elements = document.build(&structural_focus);
-
-    let mut focus_manager = FocusManager::from_elements(&structural_elements);
-    if let Some(index) = focus_index {
-        focus_manager.focus_by_index(index);
-    }
-
-    let elements = match focus_manager.get_current_id() {
-        Some(id) => {
-            let focus = FocusContext::from_id(id)
-                .with_width(content_width)
-                .with_unicode(ctx.use_unicode())
-                .with_box_chars(ctx.config.box_chars)
-                .with_tab_selections(ctx.tab_selections.clone());
-            document.build(&focus)
-        }
-        None => structural_elements,
-    };
-
-    render_elements_to_buffer(elements, content_width, ctx)
+    focus.focused_id = focused_id.cloned();
+    render_elements_to_buffer(document.build(&focus), content_width, ctx)
 }
 
 /// The parts of [`crate::config::DisplayConfig`] that influence rendered
@@ -302,7 +283,7 @@ impl ConfigFingerprint {
 struct CacheEntry {
     document: Arc<dyn Document>,
     token: Option<Vec<usize>>,
-    focus_index: Option<usize>,
+    focused_id: Option<FocusableId>,
     content_width: u16,
     focused: bool,
     tab_selections: std::collections::HashMap<String, usize>,
@@ -315,7 +296,7 @@ impl CacheEntry {
     fn matches(
         &self,
         document: &Arc<dyn Document>,
-        focus_index: Option<usize>,
+        focused_id: Option<&FocusableId>,
         content_width: u16,
         ctx: &RenderContext,
     ) -> bool {
@@ -327,7 +308,7 @@ impl CacheEntry {
         ) || (self.token.is_some() && self.token == document.cache_token());
 
         same_document
-            && self.focus_index == focus_index
+            && self.focused_id.as_ref() == focused_id
             && self.content_width == content_width
             && self.focused == ctx.focused
             && self.tab_selections == ctx.tab_selections
@@ -346,7 +327,7 @@ const RENDER_CACHE_CAPACITY: usize = 8;
 /// Owned by the TUI run loop and threaded to [`DocumentView::render`]
 /// through [`RenderContext::child`]. A hit skips `Document::build` and the
 /// offscreen render entirely -- scrolling and idle redraws become a pure
-/// viewport copy. Any changed input (data identity, focus index, width,
+/// viewport copy. Any changed input (data identity, focused element, width,
 /// focus flag, tab selections, theme/unicode config) misses and re-renders
 /// exactly once.
 #[derive(Default)]
@@ -361,7 +342,7 @@ impl DocumentRenderCache {
     fn entry_for(
         &mut self,
         document: &Arc<dyn Document>,
-        focus_index: Option<usize>,
+        focused_id: Option<&FocusableId>,
         content_width: u16,
         ctx: &RenderContext,
     ) -> &CacheEntry {
@@ -371,18 +352,18 @@ impl DocumentRenderCache {
         if let Some(i) = pos {
             if self.entries[i]
                 .1
-                .matches(document, focus_index, content_width, ctx)
+                .matches(document, focused_id, content_width, ctx)
             {
                 return &self.entries[i].1;
             }
         }
 
         let (full_buffer, height) =
-            build_full_document(document.as_ref(), focus_index, content_width, ctx);
+            build_full_document(document.as_ref(), focused_id, content_width, ctx);
         let entry = CacheEntry {
             document: Arc::clone(document),
             token: document.cache_token(),
-            focus_index,
+            focused_id: focused_id.cloned(),
             content_width,
             focused: ctx.focused,
             tab_selections: ctx.tab_selections.clone(),
@@ -407,17 +388,18 @@ impl DocumentRenderCache {
     }
 }
 
-/// Render shim that pairs a document with a viewport offset and focus index.
+/// Render shim that pairs a document with a viewport offset and focused
+/// element.
 ///
 /// `DocumentView` holds no navigation logic of its own -- all focus/scroll
 /// semantics (next/prev, wrap, paging, autoscroll) live in `document_nav.rs`
 /// and its `DocumentNavState`. Each frame, the render path constructs a
-/// fresh `DocumentView`, injects the current focus index and scroll offset
-/// computed by `DocumentNavState`, and renders. This keeps exactly one
-/// navigation engine: `DocumentNavState` decides "where", `DocumentView`
-/// just draws "what's visible from here".
+/// fresh `DocumentView`, injects the current focused element's ID and the
+/// scroll offset computed by `DocumentNavState`, and renders. This keeps
+/// exactly one navigation engine: `DocumentNavState` decides "where",
+/// `DocumentView` just draws "what's visible from here".
 ///
-/// Focus index and scroll offset are only *requested* before `render` --
+/// Focused ID and scroll offset are only *requested* before `render` --
 /// neither can be resolved into a `Document::build` call until `render`
 /// knows the real content width, so `DocumentView` stores them as pending
 /// state rather than building early. `render` then obtains the full-height
@@ -430,9 +412,9 @@ pub struct DocumentView {
     /// with `pending_scroll_offset` and the document's real height (known
     /// only once `render` builds the element tree) to size the `Viewport`.
     viewport_height: u16,
-    /// Focus index requested via `focus_by_index`, resolved once `render`
-    /// builds the element tree.
-    pending_focus_index: Option<usize>,
+    /// Focused element requested via `focus_id`, baked into the element
+    /// tree once `render` builds it.
+    pending_focused_id: Option<FocusableId>,
     /// Scroll offset requested via `set_scroll_offset`, clamped once
     /// `render` knows the document's real height.
     pending_scroll_offset: u16,
@@ -447,21 +429,22 @@ impl DocumentView {
     pub fn new(document: Arc<dyn Document>, viewport_height: u16) -> Self {
         // No build here: at construction time neither the real content
         // width (known only once `render` sees its `area`) nor the focused
-        // element (set afterwards via `focus_by_index`) are known yet, so a
+        // element (set afterwards via `focus_id`) are known yet, so a
         // build performed now would just be discarded. `render` does the
         // one build that matters, using the pending state recorded below.
         Self {
             document,
             viewport_height,
-            pending_focus_index: None,
+            pending_focused_id: None,
             pending_scroll_offset: 0,
         }
     }
 
-    /// Focus a specific element by index (index space matches
-    /// `DocumentNavState.focusables`, which is built from the same document).
-    pub fn focus_by_index(&mut self, index: usize) {
-        self.pending_focus_index = Some(index);
+    /// Focus a specific element by ID (resolved by the navigation layer
+    /// from `DocumentNavState.focusables`, which is built from the same
+    /// document).
+    pub fn focus_id(&mut self, id: FocusableId) {
+        self.pending_focused_id = Some(id);
     }
 
     /// Set the scroll offset directly (computed by `document_nav.rs`)
@@ -490,14 +473,18 @@ impl DocumentView {
         match ctx.doc_cache {
             Some(cache) => {
                 let mut cache = cache.borrow_mut();
-                let entry =
-                    cache.entry_for(&self.document, self.pending_focus_index, content_width, ctx);
+                let entry = cache.entry_for(
+                    &self.document,
+                    self.pending_focused_id.as_ref(),
+                    content_width,
+                    ctx,
+                );
                 self.blit_visible(area, buf, ctx, &entry.full_buffer, entry.height);
             }
             None => {
                 let (full_buffer, height) = build_full_document(
                     self.document.as_ref(),
-                    self.pending_focus_index,
+                    self.pending_focused_id.as_ref(),
                     content_width,
                     ctx,
                 );
@@ -571,8 +558,9 @@ pub struct DocumentWidgetParams<'a> {
     /// Pre-built content document, or `None` while data hasn't arrived yet.
     pub document: &'a Option<Arc<dyn Document>>,
     pub loading: bool,
-    /// Index into the document's focusables, matching `DocumentNavState.focus_index`.
-    pub focus_index: Option<usize>,
+    /// The focused element's ID, resolved from `DocumentNavState` (see
+    /// `DocumentNavState::focused_id`).
+    pub focused_id: Option<FocusableId>,
     pub scroll_offset: u16,
     pub animation_frame: u8,
     /// Whether this widget has focus (affects dim/bright rendering)
@@ -607,8 +595,8 @@ pub fn render_document_widget(
     }
 
     let mut view = DocumentView::new(document.clone(), area.height);
-    if let Some(idx) = params.focus_index {
-        view.focus_by_index(idx);
+    if let Some(id) = params.focused_id.clone() {
+        view.focus_id(id);
     }
     view.set_scroll_offset(params.scroll_offset);
     view.render(area, buf, &child_ctx);
@@ -622,8 +610,7 @@ mod tests {
 
     // === assert_buffer rendering tests ===
     //
-    // These exercise the surviving render shim end to end: `new` builds the
-    // focus manager and viewport from the document, `focus_by_index` /
+    // These exercise the surviving render shim end to end: `focus_id` /
     // `set_scroll_offset` apply state computed by `document_nav.rs`, and
     // `render` clips the full document buffer into the visible area. Focus
     // wrap/paging/autoscroll *decisions* are covered by document_nav.rs's
@@ -787,7 +774,7 @@ mod tests {
         let ctx = RenderContext::focused(&config);
 
         // Focus the link
-        view.focus_by_index(0);
+        view.focus_id(FocusableId::link("test_link"));
 
         let area = Rect::new(0, 0, 17, 3);
         let mut buf = Buffer::empty(area);
@@ -809,7 +796,7 @@ mod tests {
         DocumentWidgetParams {
             document,
             loading: false,
-            focus_index: None,
+            focused_id: None,
             scroll_offset: 0,
             animation_frame: 0,
             focused: true,
@@ -946,7 +933,7 @@ mod tests {
         doc: &Arc<dyn Document>,
         cache: &RefCell<DocumentRenderCache>,
         config: &DisplayConfig,
-        focus_index: Option<usize>,
+        focused_id: Option<FocusableId>,
         scroll_offset: u16,
         width: u16,
     ) -> Buffer {
@@ -954,8 +941,8 @@ mod tests {
         let area = Rect::new(0, 0, width, 5);
         let mut buf = Buffer::empty(area);
         let mut view = DocumentView::new(Arc::clone(doc), area.height);
-        if let Some(idx) = focus_index {
-            view.focus_by_index(idx);
+        if let Some(id) = focused_id {
+            view.focus_id(id);
         }
         view.set_scroll_offset(scroll_offset);
         view.render(area, &mut buf, &ctx);
@@ -1025,7 +1012,7 @@ mod tests {
     }
 
     #[test]
-    fn test_cache_miss_on_focus_index_change() {
+    fn test_cache_miss_on_focused_id_change() {
         let builds = Arc::new(AtomicUsize::new(0));
         let data = lines(&["One", "Two"]);
         let doc = counting_doc("cache_focus", &data, &builds, false);
@@ -1035,14 +1022,30 @@ mod tests {
         render_with_cache(&doc, &cache, &config, None, 0, 12);
         assert_eq!(builds.load(Ordering::SeqCst), 1);
 
-        // Focusing costs two builds (structural + focused)...
-        let focused = render_with_cache(&doc, &cache, &config, Some(1), 0, 12);
-        assert_eq!(builds.load(Ordering::SeqCst), 3);
+        // Focusing rebuilds exactly once (focus styling is baked into the
+        // tree, but the focused ID is supplied directly -- no preliminary
+        // unfocused build)...
+        let focused = render_with_cache(
+            &doc,
+            &cache,
+            &config,
+            Some(FocusableId::link("link_1")),
+            0,
+            12,
+        );
+        assert_eq!(builds.load(Ordering::SeqCst), 2);
         assert_buffer(&focused, &["   One", " ▶ Two", "", "", ""]);
 
-        // ...but re-rendering with the same focus is a hit again.
-        render_with_cache(&doc, &cache, &config, Some(1), 0, 12);
-        assert_eq!(builds.load(Ordering::SeqCst), 3);
+        // ...and re-rendering with the same focus is a hit again.
+        render_with_cache(
+            &doc,
+            &cache,
+            &config,
+            Some(FocusableId::link("link_1")),
+            0,
+            12,
+        );
+        assert_eq!(builds.load(Ordering::SeqCst), 2);
     }
 
     #[test]

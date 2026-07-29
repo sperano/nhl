@@ -261,7 +261,7 @@ impl StandingsTab {
         Element::Widget(Box::new(StandingsDocumentWidget::league(
             Arc::new(standings.to_vec()),
             props.config.clone(),
-            state.doc_nav.focus_index,
+            state.doc_nav.focused_id(),
             state.doc_nav.scroll_offset,
             props.focused && state.has_item_focus(),
         )))
@@ -280,7 +280,7 @@ impl StandingsTab {
         Element::Widget(Box::new(StandingsDocumentWidget::conference(
             Arc::new(standings.to_vec()),
             props.config.clone(),
-            state.doc_nav.focus_index,
+            state.doc_nav.focused_id(),
             state.doc_nav.scroll_offset,
             props.focused && state.has_item_focus(),
         )))
@@ -299,7 +299,7 @@ impl StandingsTab {
         Element::Widget(Box::new(StandingsDocumentWidget::division(
             Arc::new(standings.to_vec()),
             props.config.clone(),
-            state.doc_nav.focus_index,
+            state.doc_nav.focused_id(),
             state.doc_nav.scroll_offset,
             props.focused && state.has_item_focus(),
         )))
@@ -318,7 +318,7 @@ impl StandingsTab {
         Element::Widget(Box::new(StandingsDocumentWidget::wildcard(
             Arc::new(standings.to_vec()),
             props.config.clone(),
-            state.doc_nav.focus_index,
+            state.doc_nav.focused_id(),
             state.doc_nav.scroll_offset,
             props.focused && state.has_item_focus(),
         )))

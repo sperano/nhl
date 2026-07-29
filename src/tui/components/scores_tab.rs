@@ -9,7 +9,7 @@ use crate::component_message_impl;
 use crate::config::RenderContext;
 use crate::tui::action::Action;
 use crate::tui::component::{Component, Effect, Element, ElementWidget};
-use crate::tui::document::DocumentView;
+use crate::tui::document::{DocumentView, FocusableId};
 use crate::tui::document_nav::{DocumentNavMsg, DocumentNavState};
 use crate::tui::tab_component::{
     activate_focused_link, enter_item_focus, exit_item_focus, handle_common_message,
@@ -258,7 +258,7 @@ impl ScoresTab {
             schedule: props.schedule.clone(),
             game_info: props.game_info.clone(),
             game_date: state.game_date.clone(),
-            focus_index: state.doc_nav.focus_index,
+            focused_id: state.doc_nav.focused_id(),
             scroll_offset: state.doc_nav.scroll_offset,
             animation_frame: props.animation_frame,
             focused: props.focused && state.has_item_focus(),
@@ -274,7 +274,7 @@ struct ScoreBoxesDocumentWidget {
     schedule: Arc<Option<DailySchedule>>,
     game_info: Arc<HashMap<i64, GameMatchup>>,
     game_date: GameDate,
-    focus_index: Option<usize>,
+    focused_id: Option<FocusableId>,
     scroll_offset: u16,
     animation_frame: u8,
     /// Whether this widget has focus (affects dim/bright rendering)
@@ -299,8 +299,8 @@ impl ElementWidget for ScoreBoxesDocumentWidget {
         let mut view = DocumentView::new(Arc::new(doc), area.height);
 
         // Apply focus state
-        if let Some(idx) = self.focus_index {
-            view.focus_by_index(idx);
+        if let Some(id) = self.focused_id.clone() {
+            view.focus_id(id);
         }
 
         // Apply scroll offset
@@ -318,7 +318,7 @@ impl ElementWidget for ScoreBoxesDocumentWidget {
             schedule: self.schedule.clone(),
             game_info: self.game_info.clone(),
             game_date: self.game_date.clone(),
-            focus_index: self.focus_index,
+            focused_id: self.focused_id.clone(),
             scroll_offset: self.scroll_offset,
             animation_frame: self.animation_frame,
             focused: self.focused,

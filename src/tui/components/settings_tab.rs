@@ -13,9 +13,9 @@ use crate::component_message_impl;
 use crate::config::{Config, RenderContext};
 use crate::tui::component::{Component, Effect, Element, ElementWidget};
 use crate::tui::components::{SettingsDocument, TabItem, TabbedPanel, TabbedPanelProps};
-use crate::tui::document::DocumentView;
 #[cfg(test)]
-use crate::tui::document::{FocusableElement, FocusableId};
+use crate::tui::document::FocusableElement;
+use crate::tui::document::{DocumentView, FocusableId};
 use crate::tui::document_nav::{DocumentNavMsg, DocumentNavState};
 use crate::tui::settings_helpers::ModalOption;
 use crate::tui::tab_component::{
@@ -444,7 +444,7 @@ impl SettingsTab {
         Element::Widget(Box::new(SettingsTabWidget {
             category,
             config: props.config.clone(),
-            focus_index: state.doc_nav.focus_index,
+            focused_id: state.doc_nav.focused_id(),
             scroll_offset: state.doc_nav.scroll_offset,
             viewport_height: state.doc_nav.viewport_height,
             focused: props.focused && state.has_item_focus(),
@@ -499,7 +499,7 @@ impl ElementWidget for SettingsTabWithModal {
 struct SettingsTabWidget {
     category: SettingsCategory,
     config: Arc<Config>,
-    focus_index: Option<usize>,
+    focused_id: Option<FocusableId>,
     scroll_offset: u16,
     viewport_height: u16,
     /// Whether this widget has focus (affects dim/bright rendering)
@@ -513,8 +513,8 @@ impl ElementWidget for SettingsTabWidget {
         let mut view = DocumentView::new(doc, area.height);
 
         // Apply focus state
-        if let Some(idx) = self.focus_index {
-            view.focus_by_index(idx);
+        if let Some(id) = self.focused_id.clone() {
+            view.focus_id(id);
         }
 
         // Apply scroll offset
@@ -530,7 +530,7 @@ impl ElementWidget for SettingsTabWidget {
         Box::new(SettingsTabWidget {
             category: self.category,
             config: self.config.clone(),
-            focus_index: self.focus_index,
+            focused_id: self.focused_id.clone(),
             scroll_offset: self.scroll_offset,
             viewport_height: self.viewport_height,
             focused: self.focused,
@@ -565,14 +565,17 @@ mod tests {
     #[test]
     fn test_data_settings_navigation_skips_inert_rows() {
         // Data category renders "Refresh Interval" (inert), then "Western
-        // Teams First" (focusable), then "Time Format" (inert). Focus index 0
-        // refers to the first *focusable* row, so the selector marker should
-        // land directly on "Western Teams First" and never on the two inert,
-        // display-only rows.
+        // Teams First" (focusable), then "Time Format" (inert). The first
+        // *focusable* row's ID is what gets focused, so the selector marker
+        // should land directly on "Western Teams First" and never on the two
+        // inert, display-only rows.
+        let first_focusable = get_focusable_ids_for_category(SettingsCategory::Data)
+            .into_iter()
+            .next();
         let widget = SettingsTabWidget {
             category: SettingsCategory::Data,
             config: Arc::new(Config::default()),
-            focus_index: Some(0),
+            focused_id: first_focusable,
             scroll_offset: 0,
             viewport_height: 8,
             focused: true,

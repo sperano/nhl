@@ -1,7 +1,10 @@
-//! Focus management for document navigation
+//! Focus identity for document navigation
 //!
-//! Provides Tab/Shift-Tab navigation through focusable elements within documents.
-//! Tracks focus state and provides methods for navigating and activating elements.
+//! Defines the types that identify focusable elements within documents
+//! ([`FocusableId`], [`FocusableElement`], [`RowPosition`]). Navigation
+//! semantics (next/prev, wrapping, scrolling, autoscroll) live in
+//! `document_nav.rs`, which owns the list of focusables and resolves the
+//! focused element's ID for the render path.
 
 use ratatui::layout::Rect;
 
@@ -156,113 +159,5 @@ impl FocusableElement {
     pub fn with_row_position(mut self, row_position: RowPosition) -> Self {
         self.row_position = Some(row_position);
         self
-    }
-}
-
-/// Builds the focusable list from a document's element tree and tracks which
-/// one is focused.
-///
-/// This is the render path's only consumer of focus state: `DocumentView`
-/// (the render shim in `document/mod.rs`) uses it to look up the currently
-/// focused element's ID when constructing the `FocusContext` for the next
-/// frame, and to apply the focus index carried over from `DocumentNavState`.
-///
-/// All navigation semantics -- next/prev, wrapping, scrolling, paging,
-/// autoscroll -- live in `document_nav.rs`. This type does not implement any
-/// of them; it is pure "given an index, what's focused" bookkeeping.
-#[derive(Debug, Clone)]
-pub struct FocusManager {
-    /// All focusable elements in tab order
-    elements: Vec<FocusableElement>,
-    /// Currently focused element index (None = no focus)
-    current_focus: Option<usize>,
-}
-
-impl FocusManager {
-    /// Build a focus manager from a list of document elements.
-    ///
-    /// Elements are collected in document order (top to bottom, left to right for rows).
-    pub fn from_elements(elements: &[super::elements::DocumentElement]) -> Self {
-        let mut focusable = Vec::new();
-        let mut y_offset = 0u16;
-
-        for element in elements {
-            element.collect_focusable(&mut focusable, y_offset);
-            y_offset += element.height();
-        }
-
-        Self {
-            elements: focusable,
-            current_focus: None,
-        }
-    }
-
-    /// Focus a specific element by index.
-    ///
-    /// Returns true if the index was valid. An invalid index leaves the
-    /// current focus unchanged.
-    pub fn focus_by_index(&mut self, index: usize) -> bool {
-        if index < self.elements.len() {
-            self.current_focus = Some(index);
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Get the currently focused element's ID.
-    pub fn get_current_id(&self) -> Option<&FocusableId> {
-        self.current_focus.map(|idx| &self.elements[idx].id)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::tui::document::elements::DocumentElement;
-    use crate::tui::document::link::LinkTarget;
-
-    #[test]
-    fn test_from_elements_no_focus_by_default() {
-        let elements = vec![DocumentElement::link(
-            "a",
-            "A",
-            LinkTarget::Anchor("a".to_string()),
-        )];
-        let fm = FocusManager::from_elements(&elements);
-
-        assert_eq!(fm.get_current_id(), None);
-    }
-
-    #[test]
-    fn test_focus_by_index() {
-        let elements = vec![
-            DocumentElement::link("a", "A", LinkTarget::Anchor("a".to_string())),
-            DocumentElement::link("b", "B", LinkTarget::Anchor("b".to_string())),
-            DocumentElement::link("c", "C", LinkTarget::Anchor("c".to_string())),
-        ];
-        let mut fm = FocusManager::from_elements(&elements);
-
-        assert!(fm.focus_by_index(2));
-        assert_eq!(fm.get_current_id(), Some(&FocusableId::link("c")));
-
-        // Invalid index returns false but leaves focus unchanged
-        assert!(!fm.focus_by_index(10));
-        assert_eq!(fm.get_current_id(), Some(&FocusableId::link("c")));
-    }
-
-    #[test]
-    fn test_from_elements_builds_focusable_list_in_document_order() {
-        let elements = vec![
-            DocumentElement::link("a", "A", LinkTarget::Anchor("a".to_string())),
-            DocumentElement::link("b", "B", LinkTarget::Anchor("b".to_string())),
-        ];
-        let mut fm = FocusManager::from_elements(&elements);
-
-        assert!(fm.focus_by_index(0));
-        assert_eq!(fm.get_current_id(), Some(&FocusableId::link("a")));
-
-        assert!(fm.focus_by_index(1));
-        assert_eq!(fm.get_current_id(), Some(&FocusableId::link("b")));
     }
 }

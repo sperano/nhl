@@ -48,7 +48,7 @@ src/tui/
 │   ├── settings.rs          # SettingsAction handling + config persistence
 │   └── standings.rs         # rebuild_standings_focusable_metadata()
 ├── document_nav.rs       # DocumentNavState + DocumentNavMsg (generic scroll/focus)
-├── document/             # Document trait, DocumentView, FocusManager, Viewport
+├── document/             # Document trait, DocumentView, Viewport
 ├── tab_component.rs      # TabState/TabMessage traits, component_message_impl! macro
 ├── nav_handler.rs        # key_to_nav_msg(): KeyEvent -> DocumentNavMsg
 ├── focus_helpers.rs      # Shared focus-index helper functions
@@ -376,7 +376,7 @@ known until then):
 
 ```rust
 let mut view = DocumentView::new(Arc::new(doc), area.height);
-if let Some(idx) = focus_index { view.focus_by_index(idx); }
+if let Some(id) = focused_id { view.focus_id(id); }
 view.set_scroll_offset(scroll_offset);
 view.render(area, buf, ctx);
 ```
@@ -391,7 +391,7 @@ the input path) and driven by the free function
 `document::handle_stacked_document_key`, dispatched from
 `Action::StackedDocumentKey` in `reduce_document_stack`. See
 `docs/document-system.md` for the full design of this subsystem
-(`DocumentBuilder`, `FocusManager`, link activation, etc.).
+(`DocumentBuilder`, focus identity, link activation, etc.).
 
 ## Main Loop (`src/tui/mod.rs`)
 

@@ -149,7 +149,7 @@ impl Component for MyTab {
     fn view(&self, props: &Self::Props, state: &Self::State) -> Element {
         Element::Widget(Box::new(MyDocumentWidget {
             data: props.data.clone(),
-            focus_index: state.doc_nav.focus_index,
+            focused_id: state.doc_nav.focused_id(),
             scroll_offset: state.doc_nav.scroll_offset,
             focused: props.focused && state.has_item_focus(),
         }))
@@ -160,7 +160,7 @@ impl Component for MyTab {
 // since the viewport width/height aren't known until then.
 struct MyDocumentWidget {
     data: Arc<MyData>,
-    focus_index: Option<usize>,
+    focused_id: Option<FocusableId>,
     scroll_offset: u16,
     focused: bool,
 }
@@ -169,8 +169,8 @@ impl ElementWidget for MyDocumentWidget {
     fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
         let doc = MyDocument::new(self.data.clone());
         let mut view = DocumentView::new(Arc::new(doc), area.height);
-        if let Some(idx) = self.focus_index {
-            view.focus_by_index(idx);
+        if let Some(id) = self.focused_id.clone() {
+            view.focus_id(id);
         }
         view.set_scroll_offset(self.scroll_offset);
         let child_ctx = RenderContext::new(ctx.config, self.focused);
@@ -180,7 +180,7 @@ impl ElementWidget for MyDocumentWidget {
     fn clone_box(&self) -> Box<dyn ElementWidget> {
         Box::new(MyDocumentWidget {
             data: self.data.clone(),
-            focus_index: self.focus_index,
+            focused_id: self.focused_id.clone(),
             scroll_offset: self.scroll_offset,
             focused: self.focused,
         })

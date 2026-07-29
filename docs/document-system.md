@@ -28,14 +28,13 @@ The document system (`src/tui/document/`) provides scrollable, focusable content
 
 `DocumentView::new()` builds nothing: at construction time neither the real
 content width (known only when `render()` sees its area) nor the focused
-element (applied afterwards via `focus_by_index`) are known, so it just
-records them as pending state. `render()` then obtains the full-height
-buffer and copies the visible slice into the output buffer. Building
-happens **once** per changed frame in the common unfocused case; when an
-element is focused a second build is unavoidable, because focus highlighting
-is baked into the tree by `build()` itself and resolving a focus *index*
-into the `FocusableId` that `build()` needs requires a first, unfocused
-build.
+element (applied afterwards via `focus_id`) are known, so it just records
+them as pending state. `render()` then obtains the full-height buffer and
+copies the visible slice into the output buffer. Building happens exactly
+**once** per changed frame: focus highlighting is baked into the tree by
+`build()`, and the focused element's `FocusableId` is supplied directly by
+the navigation layer (`DocumentNavState::focused_id`), so no preliminary
+unfocused build is needed.
 
 ### DocumentRenderCache (cross-frame reuse)
 
