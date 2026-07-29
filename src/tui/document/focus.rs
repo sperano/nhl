@@ -161,3 +161,87 @@ impl FocusableElement {
         self
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_focusable_id_constructors() {
+        assert_eq!(
+            FocusableId::table_cell("standings", 2, 0),
+            FocusableId::TableCell {
+                table_name: "standings".to_string(),
+                row: 2,
+                col: 0,
+            }
+        );
+        assert_eq!(
+            FocusableId::link("bos"),
+            FocusableId::Link("bos".to_string())
+        );
+        assert_eq!(
+            FocusableId::team_link("BOS"),
+            FocusableId::TeamLink("BOS".to_string())
+        );
+        assert_eq!(
+            FocusableId::player_link(8479318),
+            FocusableId::PlayerLink(8479318)
+        );
+        assert_eq!(
+            FocusableId::game_link(2024020001),
+            FocusableId::GameLink(2024020001)
+        );
+    }
+
+    #[test]
+    fn test_display_name_per_variant() {
+        assert_eq!(
+            FocusableId::table_cell("standings", 2, 0).display_name(),
+            "Table row 3"
+        );
+        assert_eq!(FocusableId::team_link("BOS").display_name(), "Team BOS");
+        assert_eq!(
+            FocusableId::player_link(8479318).display_name(),
+            "Player 8479318"
+        );
+        assert_eq!(
+            FocusableId::game_link(2024020001).display_name(),
+            "Game 2024020001"
+        );
+    }
+
+    #[test]
+    fn test_display_name_link_known_and_unknown_ids() {
+        assert_eq!(FocusableId::link("bos").display_name(), "Boston Bruins");
+        assert_eq!(
+            FocusableId::link("tor").display_name(),
+            "Toronto Maple Leafs"
+        );
+        assert_eq!(FocusableId::link("nyr").display_name(), "New York Rangers");
+        assert_eq!(
+            FocusableId::link("mtl").display_name(),
+            "Montreal Canadiens"
+        );
+        assert_eq!(FocusableId::link("custom_id").display_name(), "custom_id");
+    }
+
+    #[test]
+    fn test_focusable_element_new() {
+        let rect = Rect::new(2, 5, 10, 1);
+        let elem = FocusableElement::new(
+            FocusableId::link("a"),
+            5,
+            1,
+            rect,
+            Some(LinkTarget::Anchor("a".to_string())),
+        );
+
+        assert_eq!(elem.id, FocusableId::link("a"));
+        assert_eq!(elem.y, 5);
+        assert_eq!(elem.height, 1);
+        assert_eq!(elem.rect, rect);
+        assert_eq!(elem.link_target, Some(LinkTarget::Anchor("a".to_string())));
+        assert_eq!(elem.row_position, None);
+    }
+}
