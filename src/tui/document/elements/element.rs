@@ -284,6 +284,7 @@ impl std::fmt::Debug for DocumentElement {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tui::widgets::{BigScoreParams, ScoreBoxStatus};
 
     #[test]
     fn test_document_element_debug() {
@@ -295,5 +296,148 @@ mod tests {
         let elem = DocumentElement::separator();
         let debug_str = format!("{:?}", elem);
         assert!(debug_str.contains("Separator"));
+    }
+
+    fn render_noop(_area: Rect, _buf: &mut Buffer, _ctx: &RenderContext) {}
+
+    /// Every remaining variant's manual `Debug` arm, checked for the fields
+    /// it is supposed to surface (and, for the widget-bearing variants, the
+    /// summarized form -- counts instead of full contents).
+    #[test]
+    fn test_document_element_debug_all_variants() {
+        let table = TableWidget::from_data::<u8>(&[], vec![]);
+
+        let cases: Vec<(DocumentElement, &[&str])> = vec![
+            (
+                DocumentElement::Heading {
+                    level: 2,
+                    content: "Title".to_string(),
+                },
+                &["Heading", "level", "Title"],
+            ),
+            (
+                DocumentElement::SectionTitle {
+                    content: "Atlantic".to_string(),
+                    underline: true,
+                },
+                &["SectionTitle", "Atlantic", "underline"],
+            ),
+            (
+                DocumentElement::Link {
+                    display: "Bruins".to_string(),
+                    target: LinkTarget::Anchor("bos".to_string()),
+                    id: "bos".to_string(),
+                    focused: true,
+                },
+                &["Link", "Bruins", "focused"],
+            ),
+            (DocumentElement::Spacer { height: 3 }, &["Spacer", "height"]),
+            (
+                DocumentElement::Group {
+                    children: vec![DocumentElement::text("child")],
+                    style: None,
+                },
+                &["Group", "children", "child"],
+            ),
+            (
+                DocumentElement::Custom {
+                    render_fn: render_noop,
+                    height: 4,
+                    focusable: vec![],
+                },
+                &["Custom", "height", "focusable_count"],
+            ),
+            (
+                DocumentElement::Table {
+                    widget: table.clone(),
+                    focusable: vec![],
+                },
+                &["Table", "rows", "columns", "focusable_count"],
+            ),
+            (
+                DocumentElement::Row {
+                    children: vec![DocumentElement::text("cell")],
+                    gap: 2,
+                    align: RowAlignment::Left,
+                },
+                &["Row", "children", "gap", "align"],
+            ),
+            (
+                DocumentElement::ScoreBoxElement {
+                    id: "scorebox_1".to_string(),
+                    game_id: 1,
+                    score_box: ScoreBox::new(
+                        "BOS",
+                        "TOR",
+                        Some(3),
+                        Some(2),
+                        ScoreBoxStatus::Final {
+                            overtime: false,
+                            shootout: false,
+                        },
+                    ),
+                    focused: false,
+                    link_target: LinkTarget::Anchor("game".to_string()),
+                },
+                &["ScoreBoxElement", "scorebox_1", "game_id"],
+            ),
+            (
+                DocumentElement::Indented {
+                    element: Box::new(DocumentElement::text("inner")),
+                    margin: 4,
+                },
+                &["Indented", "inner", "margin"],
+            ),
+            (
+                DocumentElement::TeamBoxscore {
+                    team_name: "Bruins".to_string(),
+                    forwards_table: table.clone(),
+                    defense_table: table.clone(),
+                    goalies_table: table,
+                    focusable: vec![],
+                },
+                &["TeamBoxscore", "Bruins", "focusable_count"],
+            ),
+            (
+                DocumentElement::BigScoreElement {
+                    big_score: BigScore::new(BigScoreParams {
+                        away_name: "Devils".to_string(),
+                        home_name: "Sabres".to_string(),
+                        away_score: 4,
+                        home_score: 3,
+                        away_sog: 30,
+                        home_sog: 28,
+                        status: ScoreBoxStatus::Final {
+                            overtime: true,
+                            shootout: false,
+                        },
+                        venue: "KeyBank Center".to_string(),
+                    }),
+                },
+                &["BigScoreElement", "Devils", "Sabres"],
+            ),
+            (
+                DocumentElement::Tabs {
+                    id: "tabs".to_string(),
+                    tabs: vec![DocTabDef {
+                        key: "one".to_string(),
+                        title: "One".to_string(),
+                        content: vec![],
+                    }],
+                    active_index: 0,
+                },
+                &["Tabs", "tab_count", "active_index"],
+            ),
+        ];
+
+        for (elem, expected) in cases {
+            let debug_str = format!("{elem:?}");
+            for fragment in expected {
+                assert!(
+                    debug_str.contains(fragment),
+                    "Debug output {debug_str:?} missing {fragment:?}"
+                );
+            }
+        }
     }
 }
