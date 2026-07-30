@@ -97,7 +97,7 @@ pub trait Document: Send + Sync {
 
 ## DocumentElement Types
 
-`DocumentElement` (`src/tui/document/elements/mod.rs`) has more variants than
+`DocumentElement` (`src/tui/document/elements/element.rs`) has more variants than
 a quick glance at the builder API suggests:
 
 ```rust
@@ -112,7 +112,7 @@ pub enum DocumentElement {
     Custom { render_fn: fn(Rect, &mut Buffer, &RenderContext), height: u16, focusable: Vec<FocusableElement> },
     Table { widget: TableWidget, focusable: Vec<FocusableElement> },
     Row { children: Vec<DocumentElement>, gap: u16, align: RowAlignment },
-    ScoreBoxElement { id: String, game_id: i64, score_box: ScoreBox, focused: bool },
+    ScoreBoxElement { id: String, game_id: i64, score_box: ScoreBox, focused: bool, link_target: LinkTarget },
     Indented { element: Box<DocumentElement>, margin: u16 },
     TeamBoxscore { team_name: String, forwards_table: TableWidget, defense_table: TableWidget, goalies_table: TableWidget, focusable: Vec<FocusableElement> },
     BigScoreElement { big_score: BigScore },
@@ -138,6 +138,66 @@ pub enum DocumentElement {
   focusable metadata.
 
 There is no `Blank` variant - vertical spacing is `Spacer { height }`.
+
+### Adding a new variant: the consistency checklist
+
+A `DocumentElement` variant's behavior is spread across several match arms
+in different files. Rust's exhaustiveness checking guarantees you can't
+*forget* an arm — every site below fails to compile until the new variant is
+handled — but nothing checks that the arms agree *semantically*. That
+consistency is on you; this checklist is the contract.
+
+Touch points, in the order the compiler will surface them:
+
+1. **`elements/element.rs`** — the variant itself, plus an arm in the manual
+   `Debug` impl. Widget-bearing variants summarize (row/child *counts*, not
+   contents) — follow the existing arms. Extend
+   `test_document_element_debug_all_variants` with the new variant.
+2. **`elements/behavior.rs::height()`** — must equal the number of rows the
+   renderer actually draws. This is the highest-stakes pairing in the file:
+   report too few rows and the element is clipped mid-draw (the clipping
+   contract silently truncates overdraw); report too many and blank rows
+   appear and every focusable *below* the element lands on the wrong `y`.
+3. **`elements/behavior.rs::collect_focusable()`** — only if the variant is
+   focusable. The `y` math here must mirror the renderer's internal layout
+   exactly. Don't re-derive spacing by hand: share named constants between
+   the two (see `TEAM_BOXSCORE_SECTION_HEADER_ROWS` /
+   `TEAM_BOXSCORE_SECTION_TRAILING_BLANK`, shared by
+   `collect_section_focusables()` in `constructors.rs` and
+   `render_team_boxscore()` — the pattern that fixed tickets 67/98).
+4. **`elements/render.rs`** — a `render_*` function, dispatched from
+   `behavior.rs::render_unclipped()`. Draw only inside `area`;
+   `DocumentElement::render()` wraps every variant in `clipped()`, so
+   overdraw isn't a crash, it's silent truncation (which is how a
+   height()/render mismatch hides). Use `render_line`/`set_stringn` for
+   text so double-width glyphs (CJK, emoji) are measured in display
+   columns, never `char` counts. Container variants must render children
+   through `DocumentElement::render()` (not `render_unclipped`) so the
+   clipping contract holds recursively.
+5. **`elements/render.rs::get_preferred_width()`** — only if the variant has
+   an intrinsic fixed width (`Row` uses it to lay out fixed-width children;
+   everything else returns `None` via the catch-all).
+6. **Constructor** — in `constructors.rs`, or a dedicated
+   `*_constructor.rs` if it carries real logic and its own test suite (the
+   `table`/`row` precedent). Focusable metadata is attached here, at
+   construction time, using the same shared constants as step 3.
+7. **`builder.rs`** — an optional `DocumentBuilder` convenience method;
+   `DocumentBuilder::element()` already accepts any variant, so add one only
+   when call sites read better for it.
+8. **This file** — add the variant to the enum snippet above (and to **Key
+   types** if it has non-obvious semantics).
+
+Context-dependent variants (`Tabs` is the template): if what the element
+shows depends on `FocusContext` state, `height()`, `collect_focusable()`,
+and the renderer must all read the *same* state (for `Tabs`, the active
+tab's children) — a mismatch between any two desynchronizes scrolling,
+focus, or drawing.
+
+Minimum tests for a new variant: a `height()` assertion that matches what an
+`assert_buffer` render test actually shows (pinning pairing #2), focusable
+`y`/ID assertions if focusable (pinning #3), and the `Debug` arm addition
+from #1.
+
 
 ## Row Navigation (Left/Right)
 
