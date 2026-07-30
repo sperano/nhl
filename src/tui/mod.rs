@@ -130,9 +130,12 @@ fn needs_animation(state: &AppState) -> bool {
                 StackedDocument::Boxscore { game_id, .. } => {
                     state.data.boxscores.get(game_id).is_none()
                 }
-                StackedDocument::TeamDetail { abbrev } => {
-                    state.data.team_roster_stats.get(abbrev).is_none()
-                }
+                StackedDocument::TeamDetail { abbrev, season } => season.is_none_or(|s| {
+                    !state
+                        .data
+                        .team_roster_stats
+                        .contains_key(&(abbrev.clone(), s))
+                }),
                 StackedDocument::PlayerDetail { player_id, .. } => {
                     state.data.player_data.get(player_id).is_none()
                 }

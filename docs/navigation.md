@@ -84,6 +84,13 @@ means:
 
 - Number keys (`1`-`4`) do **not** switch tabs while a document is open - they
   are forwarded to the document instead.
+- `[` and `]` are intercepted by `reduce_document_stack::stacked_document_key`
+  before the generic handler: when the top document is a `TeamDetail` with a
+  resolved season, they cycle to the previous/next season in the team's
+  regular-season list (clamped at both ends, no wrap), resetting the
+  document's focus and scroll and fetching that season's roster if it isn't
+  cached yet. On any other document (or before the first roster load
+  resolves the season) they are no-ops.
 - `Enter` and all arrow/paging keys are forwarded to
   `document::handle_stacked_document_key` (see `docs/document-system.md`), not
   to any tab-specific handler.

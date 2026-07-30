@@ -164,6 +164,7 @@ mod tests {
         let document_stack = vec![DocumentStackEntry::with_selection(
             StackedDocument::TeamDetail {
                 abbrev: "TOR".to_string(),
+                season: None,
             },
             None,
         )];
@@ -351,6 +352,7 @@ mod tests {
         let document_stack = vec![DocumentStackEntry::with_selection(
             StackedDocument::TeamDetail {
                 abbrev: "TOR".to_string(),
+                season: None,
             },
             None,
         )];

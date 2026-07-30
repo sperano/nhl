@@ -59,6 +59,9 @@ pub struct TeamDetailDocumentContent {
     pub team_abbrev: String,
     pub standing: Option<Standing>,
     pub club_stats: Option<ClubStats>,
+    /// Whether the displayed season is the team's latest. The standings
+    /// record describes the current season, so it is only shown when true.
+    pub is_current_season: bool,
 }
 
 impl TeamDetailDocumentContent {
@@ -66,11 +69,13 @@ impl TeamDetailDocumentContent {
         team_abbrev: String,
         standing: Option<Standing>,
         club_stats: Option<ClubStats>,
+        is_current_season: bool,
     ) -> Self {
         Self {
             team_abbrev,
             standing,
             club_stats,
+            is_current_season,
         }
     }
 
@@ -127,19 +132,30 @@ impl Document for TeamDetailDocumentContent {
             let common_name = &standing.team_common_name.default;
             builder = builder.heading(1, format!("{} {}", team_name, common_name));
 
-            // Team record
-            let record = format!(
-                "Record: {}-{}-{} ({} pts) | Division: {} | Conference: {}",
-                standing.wins,
-                standing.losses,
-                standing.ot_losses,
-                standing.points,
-                standing.division_name,
-                standing.conference_name.as_deref().unwrap_or("Unknown")
-            );
-            builder = builder.text(&record);
+            // Team record describes the current season only; showing it next
+            // to a historical roster would be wrong.
+            if self.is_current_season {
+                let record = format!(
+                    "Record: {}-{}-{} ({} pts) | Division: {} | Conference: {}",
+                    standing.wins,
+                    standing.losses,
+                    standing.ot_losses,
+                    standing.points,
+                    standing.division_name,
+                    standing.conference_name.as_deref().unwrap_or("Unknown")
+                );
+                builder = builder.text(&record);
+            }
         } else {
             builder = builder.heading(1, &self.team_abbrev);
+        }
+
+        // Season selector line, derived from the data itself
+        if let Some(ref stats) = self.club_stats {
+            builder = builder.text(format!(
+                "Season: {}  ([ / ] to change season)",
+                stats.season.short_label()
+            ));
         }
 
         builder = builder.spacer(1);
@@ -170,7 +186,8 @@ impl Document for TeamDetailDocumentContent {
     }
 
     fn id(&self) -> Cow<'static, str> {
-        Cow::Owned(format!("team_detail_{}", self.team_abbrev))
+        let season_id = self.club_stats.as_ref().map_or(0, |s| s.season.id());
+        Cow::Owned(format!("team_detail_{}_{}", self.team_abbrev, season_id))
     }
 }
 
@@ -407,8 +424,12 @@ mod tests {
         let standing = create_test_standing();
         let club_stats = create_test_club_stats();
 
-        let doc =
-            TeamDetailDocumentContent::new("TST".to_string(), Some(standing), Some(club_stats));
+        let doc = TeamDetailDocumentContent::new(
+            "TST".to_string(),
+            Some(standing),
+            Some(club_stats),
+            true,
+        );
 
         let elements = doc.build(&FocusContext::default());
 
@@ -420,18 +441,19 @@ mod tests {
     fn test_document_metadata() {
         let standing = create_test_standing();
 
-        let doc = TeamDetailDocumentContent::new("TST".to_string(), Some(standing), None);
+        let doc = TeamDetailDocumentContent::new("TST".to_string(), Some(standing), None, true);
 
         assert_eq!(doc.title(), "Test Team Test");
-        assert_eq!(doc.id(), "team_detail_TST");
+        // No club stats loaded yet: season component falls back to 0
+        assert_eq!(doc.id(), "team_detail_TST_0");
     }
 
     #[test]
     fn test_document_without_standing() {
-        let doc = TeamDetailDocumentContent::new("TST".to_string(), None, None);
+        let doc = TeamDetailDocumentContent::new("TST".to_string(), None, None, true);
 
         assert_eq!(doc.title(), "TST");
-        assert_eq!(doc.id(), "team_detail_TST");
+        assert_eq!(doc.id(), "team_detail_TST_0");
     }
 
     #[test]
@@ -439,8 +461,12 @@ mod tests {
         let standing = create_test_standing();
         let club_stats = create_test_club_stats();
 
-        let doc =
-            TeamDetailDocumentContent::new("TST".to_string(), Some(standing), Some(club_stats));
+        let doc = TeamDetailDocumentContent::new(
+            "TST".to_string(),
+            Some(standing),
+            Some(club_stats),
+            true,
+        );
 
         let positions = doc.focusables(&FocusContext::default());
 
@@ -453,8 +479,12 @@ mod tests {
         let standing = create_test_standing();
         let club_stats = create_test_club_stats();
 
-        let doc =
-            TeamDetailDocumentContent::new("TST".to_string(), Some(standing), Some(club_stats));
+        let doc = TeamDetailDocumentContent::new(
+            "TST".to_string(),
+            Some(standing),
+            Some(club_stats),
+            true,
+        );
 
         let ids = doc.focusables(&FocusContext::default());
 
@@ -499,6 +529,7 @@ mod tests {
             "TST".to_string(),
             Some(standing),
             Some(club_stats),
+            true,
         ));
 
         let widget = TeamDetailDocumentWidget {
@@ -545,6 +576,7 @@ mod tests {
             "TST".to_string(),
             Some(standing),
             Some(club_stats),
+            true,
         ));
 
         let widget = TeamDetailDocumentWidget {
@@ -608,5 +640,47 @@ mod tests {
 
         // Should render "no stats" message without panic
         assert_eq!(*buf.area(), area);
+    }
+
+    #[test]
+    fn test_season_line_shows_viewed_season() {
+        let club_stats = create_test_club_stats();
+        let doc = TeamDetailDocumentContent::new(
+            "TST".to_string(),
+            Some(create_test_standing()),
+            Some(club_stats),
+            true,
+        );
+
+        let has_season_line = doc.build(&FocusContext::default()).iter().any(|e| {
+            matches!(e, DocumentElement::Text { content, .. }
+                if content.starts_with("Season:") && content.contains("[ / ]"))
+        });
+        assert!(has_season_line, "season selector line must render");
+    }
+
+    #[test]
+    fn test_historical_season_hides_record_line() {
+        let club_stats = create_test_club_stats();
+        let doc = TeamDetailDocumentContent::new(
+            "TST".to_string(),
+            Some(create_test_standing()),
+            Some(club_stats),
+            false,
+        );
+
+        let has_record = doc.build(&FocusContext::default()).iter().any(|e| {
+            matches!(e, DocumentElement::Text { content, .. } if content.starts_with("Record:"))
+        });
+        assert!(!has_record, "record line describes the current season only");
+    }
+
+    #[test]
+    fn test_id_embeds_season() {
+        let club_stats = create_test_club_stats();
+        let doc = TeamDetailDocumentContent::new("TST".to_string(), None, Some(club_stats), true);
+
+        let expected = format!("team_detail_TST_{}", create_test_club_stats().season.id());
+        assert_eq!(doc.id(), expected);
     }
 }

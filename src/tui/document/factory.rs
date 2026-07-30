@@ -44,8 +44,19 @@ pub fn build_stacked_document(
                 TeamView::Away,
             )))
         }
-        StackedDocument::TeamDetail { abbrev } => {
-            let club_stats = data.team_roster_stats.get(abbrev)?.clone();
+        StackedDocument::TeamDetail { abbrev, season } => {
+            // None = "latest" still resolving; the render path shows the
+            // loading spinner until the first fetch rewrites it.
+            let season_id = (*season)?;
+            let club_stats = data
+                .team_roster_stats
+                .get(&(abbrev.clone(), season_id))?
+                .clone();
+            let is_current_season = data
+                .team_seasons
+                .get(abbrev)
+                .and_then(|ids| ids.last())
+                .is_none_or(|latest| *latest == season_id);
             let standing = data.standings.as_ref().as_ref().and_then(|standings| {
                 standings
                     .iter()
@@ -56,6 +67,7 @@ pub fn build_stacked_document(
                 abbrev.clone(),
                 standing,
                 Some(club_stats),
+                is_current_season,
             )))
         }
         StackedDocument::PlayerDetail { player_id, .. } => {
@@ -368,6 +380,7 @@ mod tests {
     fn team_detail_returns_none_when_not_loaded() {
         let doc = StackedDocument::TeamDetail {
             abbrev: "TOR".to_string(),
+            season: None,
         };
         assert!(build_stacked_document(&doc, &DataState::default()).is_none());
     }
@@ -427,7 +440,7 @@ mod tests {
         let abbrev = "TST";
         let mut roster = HashMap::new();
         roster.insert(
-            abbrev.to_string(),
+            (abbrev.to_string(), 20242025),
             ClubStats {
                 season: Season::new(2024),
                 game_type: GameType::RegularSeason,
@@ -442,6 +455,7 @@ mod tests {
         };
         let doc = StackedDocument::TeamDetail {
             abbrev: abbrev.to_string(),
+            season: Some(20242025),
         };
 
         let document = build_stacked_document(&doc, &data).expect("roster data is loaded");
@@ -484,10 +498,100 @@ mod tests {
         nav.sync_focusables(document.as_ref(), &ctx);
         nav.focus_index = Some(0);
         match nav.focused_link_target() {
-            Some(LinkTarget::Push(StackedDocument::TeamDetail { abbrev })) => {
+            Some(LinkTarget::Push(StackedDocument::TeamDetail { abbrev, .. })) => {
                 assert_eq!(abbrev, "EDM");
             }
             other => panic!("expected Push(TeamDetail), got {other:?}"),
         }
+    }
+
+    // ========================================================================
+    // Season-aware TeamDetail construction
+    // ========================================================================
+
+    fn data_with_bos_roster(season: i32, all_seasons: Vec<i32>) -> DataState {
+        let mut roster = HashMap::new();
+        roster.insert(
+            ("BOS".to_string(), season),
+            ClubStats {
+                season: season.try_into().expect("valid test season id"),
+                game_type: GameType::RegularSeason,
+                skaters: vec![test_club_skater(200, "High", 30)],
+                goalies: vec![],
+            },
+        );
+        let mut seasons = HashMap::new();
+        seasons.insert("BOS".to_string(), all_seasons);
+        DataState {
+            team_roster_stats: Arc::new(roster),
+            team_seasons: Arc::new(seasons),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn team_detail_unresolved_season_returns_none_even_with_data() {
+        // season: None means "latest still resolving" -- the spinner shows
+        // even if some season's data is already in the map.
+        let data = data_with_bos_roster(20242025, vec![20242025]);
+        let doc = StackedDocument::TeamDetail {
+            abbrev: "BOS".to_string(),
+            season: None,
+        };
+        assert!(build_stacked_document(&doc, &data).is_none());
+    }
+
+    /// Collect every Text element's content, recursing into groups.
+    fn text_contents(elements: &[crate::tui::document::DocumentElement]) -> Vec<String> {
+        use crate::tui::document::DocumentElement;
+        let mut out = Vec::new();
+        for elem in elements {
+            match elem {
+                DocumentElement::Text { content, .. } => out.push(content.clone()),
+                DocumentElement::Group { children, .. } => {
+                    out.extend(text_contents(children));
+                }
+                _ => {}
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn team_detail_historical_season_hides_record_and_ids_by_season() {
+        let mut data = data_with_bos_roster(20232024, vec![20232024, 20242025]);
+        data.standings = Arc::new(Some(vec![test_standing("BOS")]));
+        let doc = StackedDocument::TeamDetail {
+            abbrev: "BOS".to_string(),
+            season: Some(20232024),
+        };
+
+        let document = build_stacked_document(&doc, &data).expect("roster data is loaded");
+        assert_eq!(document.id(), "team_detail_BOS_20232024");
+
+        let texts = text_contents(&document.build(&FocusContext::default()));
+        assert!(
+            texts.iter().any(|t| t.starts_with("Season: 2023-24")),
+            "season line must show the viewed season, got {texts:?}"
+        );
+        assert!(
+            !texts.iter().any(|t| t.starts_with("Record:")),
+            "current record must be hidden on a historical roster"
+        );
+    }
+
+    #[test]
+    fn team_detail_latest_season_shows_record() {
+        let mut data = data_with_bos_roster(20242025, vec![20232024, 20242025]);
+        data.standings = Arc::new(Some(vec![test_standing("BOS")]));
+        let doc = StackedDocument::TeamDetail {
+            abbrev: "BOS".to_string(),
+            season: Some(20242025),
+        };
+
+        let document = build_stacked_document(&doc, &data).expect("roster data is loaded");
+        let texts = text_contents(&document.build(&FocusContext::default()));
+        assert!(texts.iter().any(|t| t.starts_with("Record:")));
+        assert!(texts.iter().any(|t| t.starts_with("Season: 2024-25")));
     }
 }

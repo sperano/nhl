@@ -45,6 +45,7 @@ fn state_with_document_stack(tab: Tab, content_focused: bool) -> AppState {
         .document_stack
         .push(DocumentStackEntry::new(StackedDocument::TeamDetail {
             abbrev: "TOR".to_string(),
+            season: None,
         }));
     state
 }

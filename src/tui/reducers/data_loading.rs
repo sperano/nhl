@@ -2,13 +2,14 @@ use std::sync::Arc;
 use std::time::SystemTime;
 use tracing::debug;
 
-use crate::tui::action::Action;
+use crate::tui::action::{Action, TeamRosterStatsPayload};
 use crate::tui::component::Effect;
 #[cfg(feature = "development")]
 use crate::tui::constants::DEMO_TAB_PATH;
 use crate::tui::constants::{SCORES_TAB_PATH, STANDINGS_TAB_PATH};
 use crate::tui::reducers::standings::rebuild_standings_focusable_metadata;
 use crate::tui::state::{AppState, LoadingKey};
+use crate::tui::types::StackedDocument;
 
 // Error-message prefixes used both to build the user-facing status-bar message
 // and to recognize (via `starts_with`) whether a currently-displayed status
@@ -72,9 +73,14 @@ pub fn reduce_data_loading(
         Action::BoxscoreLoaded(game_id, result) => {
             Ok(handle_boxscore_loaded(state, *game_id, result.clone()))
         }
-        Action::TeamRosterStatsLoaded(team_abbrev, result) => Ok(handle_team_roster_loaded(
+        Action::TeamRosterStatsLoaded {
+            abbrev,
+            requested_season,
+            result,
+        } => Ok(handle_team_roster_loaded(
             state,
-            team_abbrev.clone(),
+            abbrev.clone(),
+            *requested_season,
             result.clone(),
         )),
         Action::PlayerStatsLoaded(player_id, result) => Ok(handle_player_stats_loaded(
@@ -316,20 +322,39 @@ fn handle_boxscore_loaded(
 fn handle_team_roster_loaded(
     state: AppState,
     team_abbrev: String,
-    result: Result<nhl_api::ClubStats, Arc<nhl_api::NHLApiError>>,
+    requested_season: Option<i32>,
+    result: Result<TeamRosterStatsPayload, Arc<nhl_api::NHLApiError>>,
 ) -> (AppState, Effect) {
     let mut new_state = state;
 
     match result {
-        Ok(roster) => {
-            debug!("DATA: Loaded roster for team {}", team_abbrev);
+        Ok(payload) => {
+            let resolved_season = payload.stats.season.id();
+            debug!(
+                "DATA: Loaded roster for team {} season {}",
+                team_abbrev, resolved_season
+            );
+            if let Some(seasons) = payload.seasons {
+                Arc::make_mut(&mut new_state.data.team_seasons)
+                    .insert(team_abbrev.clone(), seasons);
+            }
             // Focusable metadata is populated on-demand by handle_stacked_document_key
             Arc::make_mut(&mut new_state.data.team_roster_stats)
-                .insert(team_abbrev.clone(), roster);
-            new_state
-                .data
-                .loading
-                .remove(&LoadingKey::TeamRosterStats(team_abbrev));
+                .insert((team_abbrev.clone(), resolved_season), payload.stats);
+            new_state.data.loading.remove(&LoadingKey::TeamRosterStats(
+                team_abbrev.clone(),
+                requested_season,
+            ));
+            // A "latest" request has now resolved to a concrete season: give
+            // every pending TeamDetail entry for this team its identity, so
+            // season cycling and the loading-key lookup have a real id.
+            for entry in &mut new_state.navigation.document_stack {
+                if let StackedDocument::TeamDetail { abbrev, season } = &mut entry.document {
+                    if *abbrev == team_abbrev && season.is_none() {
+                        *season = Some(resolved_season);
+                    }
+                }
+            }
             clear_error_with_prefix(&mut new_state, TEAM_ROSTER_ERROR_PREFIX);
         }
         Err(e) => {
@@ -343,7 +368,7 @@ fn handle_team_roster_loaded(
             new_state
                 .data
                 .loading
-                .remove(&LoadingKey::TeamRosterStats(team_abbrev));
+                .remove(&LoadingKey::TeamRosterStats(team_abbrev, requested_season));
         }
     }
 
@@ -623,5 +648,136 @@ mod tests {
             recovered_state.system.status_message,
             Some(DEFAULT_STATUS_MESSAGE.to_string())
         );
+    }
+
+    // ========================================================================
+    // handle_team_roster_loaded
+    // ========================================================================
+
+    fn roster_payload(season: i32, seasons: Option<Vec<i32>>) -> TeamRosterStatsPayload {
+        TeamRosterStatsPayload {
+            seasons,
+            stats: crate::fixtures::create_mock_club_stats(
+                "BOS",
+                season,
+                nhl_api::GameType::RegularSeason,
+            ),
+        }
+    }
+
+    fn team_detail_entry(
+        abbrev: &str,
+        season: Option<i32>,
+    ) -> crate::tui::state::DocumentStackEntry {
+        crate::tui::state::DocumentStackEntry::new(StackedDocument::TeamDetail {
+            abbrev: abbrev.to_string(),
+            season,
+        })
+    }
+
+    #[test]
+    fn test_team_roster_loaded_latest_stores_seasons_and_resolves_stack_entries() {
+        let mut state = AppState::default();
+        state
+            .data
+            .loading
+            .insert(LoadingKey::TeamRosterStats("BOS".to_string(), None));
+        // Two pending entries for the same team (one deeper in the stack)
+        state
+            .navigation
+            .document_stack
+            .push(team_detail_entry("BOS", None));
+        state
+            .navigation
+            .document_stack
+            .push(team_detail_entry("BOS", None));
+
+        let (new_state, _effect) = handle_team_roster_loaded(
+            state,
+            "BOS".to_string(),
+            None,
+            Ok(roster_payload(20242025, Some(vec![20232024, 20242025]))),
+        );
+
+        assert_eq!(
+            new_state.data.team_seasons.get("BOS"),
+            Some(&vec![20232024, 20242025])
+        );
+        assert!(new_state
+            .data
+            .team_roster_stats
+            .contains_key(&("BOS".to_string(), 20242025)));
+        assert!(!new_state
+            .data
+            .loading
+            .contains(&LoadingKey::TeamRosterStats("BOS".to_string(), None)));
+        for entry in &new_state.navigation.document_stack {
+            assert!(matches!(
+                &entry.document,
+                StackedDocument::TeamDetail {
+                    season: Some(20242025),
+                    ..
+                }
+            ));
+        }
+    }
+
+    #[test]
+    fn test_team_roster_loaded_specific_season_does_not_rewrite_other_entries() {
+        let mut state = AppState::default();
+        state.data.loading.insert(LoadingKey::TeamRosterStats(
+            "BOS".to_string(),
+            Some(20232024),
+        ));
+        // A different team's unresolved entry must be left alone
+        state
+            .navigation
+            .document_stack
+            .push(team_detail_entry("TOR", None));
+
+        let (new_state, _effect) = handle_team_roster_loaded(
+            state,
+            "BOS".to_string(),
+            Some(20232024),
+            Ok(roster_payload(20232024, None)),
+        );
+
+        assert!(new_state.data.team_seasons.get("BOS").is_none());
+        assert!(new_state
+            .data
+            .team_roster_stats
+            .contains_key(&("BOS".to_string(), 20232024)));
+        assert!(!new_state
+            .data
+            .loading
+            .contains(&LoadingKey::TeamRosterStats(
+                "BOS".to_string(),
+                Some(20232024)
+            )));
+        assert!(matches!(
+            &new_state.navigation.document_stack[0].document,
+            StackedDocument::TeamDetail { season: None, .. }
+        ));
+    }
+
+    #[test]
+    fn test_team_roster_loaded_error_removes_requested_key_and_sets_error() {
+        let mut state = AppState::default();
+        state
+            .data
+            .loading
+            .insert(LoadingKey::TeamRosterStats("BOS".to_string(), None));
+
+        let (new_state, _effect) =
+            handle_team_roster_loaded(state, "BOS".to_string(), None, Err(network_error("boom")));
+
+        assert!(new_state.data.loading.is_empty());
+        assert!(new_state.system.status_is_error);
+        assert!(new_state
+            .system
+            .status_message
+            .as_deref()
+            .unwrap_or_default()
+            .starts_with(TEAM_ROSTER_ERROR_PREFIX));
     }
 }

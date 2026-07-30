@@ -590,17 +590,78 @@ pub fn create_mock_franchises() -> Vec<Franchise> {
     ]
 }
 
-/// Create mock club stats
+/// Create mock club stats with a small roster whose stats vary by season,
+/// so season cycling in the team detail view is visible in mock mode.
 pub fn create_mock_club_stats(
     _team: &str,
     season: i32,
     game_type: nhl_api::GameType,
 ) -> nhl_api::ClubStats {
+    // 20242025 -> 2024; earlier seasons get progressively smaller stat lines.
+    let start_year = season / 10_000;
+    let seasons_back = (2024 - start_year).max(0);
+
+    let skater = |player_id: i64, first: &str, last: &str, points: i32| nhl_api::ClubSkaterStats {
+        player_id: player_id.into(),
+        headshot: String::new(),
+        first_name: LocalizedString {
+            default: first.to_string(),
+        },
+        last_name: LocalizedString {
+            default: last.to_string(),
+        },
+        position: Some(Position::Center),
+        games_played: 82 - seasons_back * 2,
+        goals: points / 2,
+        assists: points - points / 2,
+        points,
+        plus_minus: 10 - seasons_back * 3,
+        penalty_minutes: 20,
+        power_play_goals: points / 8,
+        shorthanded_goals: 0,
+        game_winning_goals: points / 10,
+        overtime_goals: 1,
+        shots: points * 3,
+        shooting_pctg: 0.12,
+        avg_time_on_ice_per_game: 19.5,
+        avg_shifts_per_game: 21.0,
+        faceoff_win_pctg: 0.52,
+    };
+
     nhl_api::ClubStats {
         season: season.try_into().expect("valid mock season id"),
         game_type,
-        skaters: vec![],
-        goalies: vec![],
+        skaters: vec![
+            skater(8478001, "Alex", "Fontaine", 96 - seasons_back * 11),
+            skater(8478002, "Marc", "Tremblay", 74 - seasons_back * 9),
+            skater(8478003, "Sam", "Bergeron", 55 - seasons_back * 7),
+        ],
+        goalies: vec![nhl_api::ClubGoalieStats {
+            player_id: 8478010.into(),
+            headshot: String::new(),
+            first_name: LocalizedString {
+                default: "Louis".to_string(),
+            },
+            last_name: LocalizedString {
+                default: "Gagnon".to_string(),
+            },
+            games_played: 55 - seasons_back * 5,
+            games_started: 54 - seasons_back * 5,
+            wins: 32 - seasons_back * 4,
+            losses: 16,
+            overtime_losses: 5,
+            goals_against_average: 2.45 + f64::from(seasons_back) * 0.20,
+            save_percentage: 0.915 - f64::from(seasons_back) * 0.005,
+            shots_against: 1600,
+            saves: 1470,
+            goals_against: 130,
+            shutouts: 4 - seasons_back.min(4),
+            goals: 0,
+            assists: 2,
+            points: 2,
+            penalty_minutes: 2,
+            time_on_ice: 190_000,
+        }],
     }
 }
 

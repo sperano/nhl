@@ -130,12 +130,12 @@ impl Runtime {
                 let fetch_effect = self.data_effects.fetch_boxscore(game_id);
                 let _ = self.effect_tx.send(fetch_effect);
             }
-            Effect::FetchTeamRosterStats(abbrev) => {
+            Effect::FetchTeamRosterStats(abbrev, season) => {
                 debug!(
-                    "EFFECT: Executing team roster stats fetch for team={}",
-                    abbrev
+                    "EFFECT: Executing team roster stats fetch for team={} season={:?}",
+                    abbrev, season
                 );
-                let fetch_effect = self.data_effects.fetch_team_roster_stats(abbrev);
+                let fetch_effect = self.data_effects.fetch_team_roster_stats(abbrev, season);
                 let _ = self.effect_tx.send(fetch_effect);
             }
             Effect::FetchPlayerStats(player_id) => {
@@ -305,7 +305,7 @@ impl Runtime {
             // Fetch effects should never reach here - they're handled by execute_effect()
             // before being queued. Log a warning if they somehow slip through.
             Effect::FetchBoxscore(_)
-            | Effect::FetchTeamRosterStats(_)
+            | Effect::FetchTeamRosterStats(_, _)
             | Effect::FetchPlayerStats(_)
             | Effect::FetchGameDetails(_) => {
                 tracing::warn!(

@@ -839,16 +839,19 @@ mod tests {
             FocusableElement::at(0, 1, FocusableId::team_link("TOR")).with_link_target(
                 LinkTarget::Push(StackedDocument::TeamDetail {
                     abbrev: "TOR".to_string(),
+                    season: None,
                 }),
             ),
             FocusableElement::at(1, 1, FocusableId::team_link("BOS")).with_link_target(
                 LinkTarget::Push(StackedDocument::TeamDetail {
                     abbrev: "BOS".to_string(),
+                    season: None,
                 }),
             ),
             FocusableElement::at(2, 1, FocusableId::team_link("MTL")).with_link_target(
                 LinkTarget::Push(StackedDocument::TeamDetail {
                     abbrev: "MTL".to_string(),
+                    season: None,
                 }),
             ),
         ];
@@ -860,7 +863,9 @@ mod tests {
         let effect = standings_tab.update(StandingsTabMsg::ActivateTeam, &mut state);
 
         match effect {
-            Effect::Action(Action::PushDocument(StackedDocument::TeamDetail { abbrev })) => {
+            Effect::Action(Action::PushDocument(StackedDocument::TeamDetail {
+                abbrev, ..
+            })) => {
                 assert_eq!(abbrev, "BOS");
             }
             _ => panic!("Expected PushDocument(TeamDetail) action, got {:?}", effect),
@@ -883,6 +888,7 @@ mod tests {
         state.doc_nav.focusables = vec![FocusableElement::at(0, 1, FocusableId::team_link("TOR"))
             .with_link_target(LinkTarget::Push(StackedDocument::TeamDetail {
                 abbrev: "TOR".to_string(),
+                season: None,
             }))];
 
         // No focus set

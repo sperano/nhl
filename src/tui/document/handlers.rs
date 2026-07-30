@@ -350,9 +350,12 @@ mod tests {
         }
     }
 
+    /// Season id matching `test_club_stats()`'s `Season::new(2024)`.
+    const TEST_SEASON: i32 = 20242025;
+
     fn data_with_roster(abbrev: &str, club_stats: ClubStats) -> DataState {
         let mut map = HashMap::new();
-        map.insert(abbrev.to_string(), club_stats);
+        map.insert((abbrev.to_string(), TEST_SEASON), club_stats);
         DataState {
             team_roster_stats: Arc::new(map),
             ..Default::default()
@@ -365,7 +368,7 @@ mod tests {
         standings: Vec<Standing>,
     ) -> DataState {
         let mut map = HashMap::new();
-        map.insert(abbrev.to_string(), club_stats);
+        map.insert((abbrev.to_string(), TEST_SEASON), club_stats);
         DataState {
             team_roster_stats: Arc::new(map),
             standings: Arc::new(Some(standings)),
@@ -376,6 +379,7 @@ mod tests {
     fn test_team_detail_doc(abbrev: &str) -> StackedDocument {
         StackedDocument::TeamDetail {
             abbrev: abbrev.to_string(),
+            season: Some(TEST_SEASON),
         }
     }
 
@@ -930,7 +934,9 @@ mod tests {
         let data = data_with_player(1, test_player_with_seasons(1));
 
         match activate_at(&doc, &data, 0) {
-            Effect::Action(Action::PushDocument(StackedDocument::TeamDetail { abbrev })) => {
+            Effect::Action(Action::PushDocument(StackedDocument::TeamDetail {
+                abbrev, ..
+            })) => {
                 assert_eq!(abbrev, "EDM");
             }
             other => panic!("expected Effect::Action(PushDocument(TeamDetail)), got {other:?}"),
@@ -943,7 +949,9 @@ mod tests {
         let data = data_with_player(1, test_player_with_seasons(1));
 
         match activate_at(&doc, &data, 1) {
-            Effect::Action(Action::PushDocument(StackedDocument::TeamDetail { abbrev })) => {
+            Effect::Action(Action::PushDocument(StackedDocument::TeamDetail {
+                abbrev, ..
+            })) => {
                 assert_eq!(abbrev, "TOR");
             }
             other => panic!("expected Effect::Action(PushDocument(TeamDetail)), got {other:?}"),
@@ -1026,7 +1034,9 @@ mod tests {
         assert_eq!(nav.focusables.len(), 1);
 
         match activate_at(&doc, &data, 0) {
-            Effect::Action(Action::PushDocument(StackedDocument::TeamDetail { abbrev })) => {
+            Effect::Action(Action::PushDocument(StackedDocument::TeamDetail {
+                abbrev, ..
+            })) => {
                 assert_eq!(abbrev, "EDM");
             }
             other => {
