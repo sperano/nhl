@@ -348,6 +348,7 @@ mod tests {
             "Click here",
             LinkTarget::Push(StackedDocument::TeamDetail {
                 abbrev: "BOS".to_string(),
+                season: None,
             }),
         );
 

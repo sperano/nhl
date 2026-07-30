@@ -219,7 +219,7 @@ let doc = DocumentBuilder::new()
     .link_with_id(
         "team_bos",
         "Boston Bruins",
-        LinkTarget::Push(StackedDocument::TeamDetail { abbrev: "BOS".into() }),
+        LinkTarget::Push(StackedDocument::TeamDetail { abbrev: "BOS".into(), season: None }),
     )
     .when(show_details, |b| b.text("Additional details..."))
     .for_each(players.iter(), |b, player| b.text(format!("- {}", player.name)))

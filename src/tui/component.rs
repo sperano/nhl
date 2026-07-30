@@ -99,8 +99,8 @@ pub enum Effect {
     // Data fetch effects - returned by reducers to trigger async fetches
     /// Fetch boxscore data for a game
     FetchBoxscore(i64),
-    /// Fetch team roster/stats for a team
-    FetchTeamRosterStats(String),
+    /// Fetch team roster/stats for a team and season (`None` = latest)
+    FetchTeamRosterStats(String, Option<i32>),
     /// Fetch player stats
     FetchPlayerStats(i64),
     /// Fetch game details (period scores, etc.)
@@ -116,9 +116,10 @@ impl std::fmt::Debug for Effect {
             Effect::Batch(effects) => f.debug_tuple("Effect::Batch").field(effects).finish(),
             Effect::Async(_) => write!(f, "Effect::Async(<future>)"),
             Effect::FetchBoxscore(id) => f.debug_tuple("Effect::FetchBoxscore").field(id).finish(),
-            Effect::FetchTeamRosterStats(abbrev) => f
+            Effect::FetchTeamRosterStats(abbrev, season) => f
                 .debug_tuple("Effect::FetchTeamRosterStats")
                 .field(abbrev)
+                .field(season)
                 .finish(),
             Effect::FetchPlayerStats(id) => {
                 f.debug_tuple("Effect::FetchPlayerStats").field(id).finish()

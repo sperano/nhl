@@ -96,7 +96,11 @@ pub struct DataState {
     pub game_info: Arc<HashMap<i64, GameMatchup>>,
     pub period_scores: Arc<HashMap<i64, PeriodScores>>,
     pub boxscores: Arc<HashMap<i64, Boxscore>>,
-    pub team_roster_stats: Arc<HashMap<String, ClubStats>>,
+    /// Club stats per (team abbreviation, season id)
+    pub team_roster_stats: Arc<HashMap<(String, i32), ClubStats>>,
+    /// Regular-season season ids per team, sorted ascending (fetched with
+    /// the first "latest" roster load; drives [`/`]` season cycling)
+    pub team_seasons: Arc<HashMap<String, Vec<i32>>>,
     pub player_data: Arc<HashMap<i64, PlayerLanding>>,
 
     // Loading states
@@ -109,7 +113,7 @@ pub enum LoadingKey {
     Schedule(String), // GameDate formatted as string
     GameDetails(i64),
     Boxscore(i64),
-    TeamRosterStats(String), // Team abbreviation
+    TeamRosterStats(String, Option<i32>), // (team abbreviation, requested season; None = latest)
     PlayerStats(i64),
 }
 

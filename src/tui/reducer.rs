@@ -240,6 +240,7 @@ mod tests {
         let state = AppState::default();
         let doc = super::super::types::StackedDocument::TeamDetail {
             abbrev: "BOS".to_string(),
+            season: None,
         };
         let action = Action::PushDocument(doc.clone());
 

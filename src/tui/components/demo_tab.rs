@@ -281,6 +281,7 @@ impl Document for DemoDocument {
                 "Boston Bruins",
                 LinkTarget::Push(StackedDocument::TeamDetail {
                     abbrev: "BOS".to_string(),
+                    season: None,
                 }),
                 focus,
             )
@@ -290,6 +291,7 @@ impl Document for DemoDocument {
                 "Toronto Maple Leafs",
                 LinkTarget::Push(StackedDocument::TeamDetail {
                     abbrev: "TOR".to_string(),
+                    season: None,
                 }),
                 focus,
             )
@@ -299,6 +301,7 @@ impl Document for DemoDocument {
                 "New York Rangers",
                 LinkTarget::Push(StackedDocument::TeamDetail {
                     abbrev: "NYR".to_string(),
+                    season: None,
                 }),
                 focus,
             )
@@ -308,6 +311,7 @@ impl Document for DemoDocument {
                 "Montreal Canadiens",
                 LinkTarget::Push(StackedDocument::TeamDetail {
                     abbrev: "MTL".to_string(),
+                    season: None,
                 }),
                 focus,
             )
@@ -442,21 +446,25 @@ mod tests {
                 FocusableElement::at(0, 1, FocusableId::team_link("BOS")).with_link_target(
                     LinkTarget::Push(StackedDocument::TeamDetail {
                         abbrev: "BOS".to_string(),
+                        season: None,
                     }),
                 ),
                 FocusableElement::at(1, 1, FocusableId::team_link("TOR")).with_link_target(
                     LinkTarget::Push(StackedDocument::TeamDetail {
                         abbrev: "TOR".to_string(),
+                        season: None,
                     }),
                 ),
                 FocusableElement::at(2, 1, FocusableId::team_link("NYR")).with_link_target(
                     LinkTarget::Push(StackedDocument::TeamDetail {
                         abbrev: "NYR".to_string(),
+                        season: None,
                     }),
                 ),
                 FocusableElement::at(3, 1, FocusableId::team_link("MTL")).with_link_target(
                     LinkTarget::Push(StackedDocument::TeamDetail {
                         abbrev: "MTL".to_string(),
+                        season: None,
                     }),
                 ),
             ],
@@ -467,7 +475,9 @@ mod tests {
 
         // Should return PushDocument action for TeamDetail
         match effect {
-            Effect::Action(Action::PushDocument(StackedDocument::TeamDetail { abbrev })) => {
+            Effect::Action(Action::PushDocument(StackedDocument::TeamDetail {
+                abbrev, ..
+            })) => {
                 assert_eq!(abbrev, "BOS");
             }
             _ => panic!("Expected PushDocument(TeamDetail), got {:?}", effect),
@@ -523,6 +533,7 @@ mod tests {
             focusables: vec![FocusableElement::at(0, 1, FocusableId::team_link("BOS"))
                 .with_link_target(LinkTarget::Push(StackedDocument::TeamDetail {
                     abbrev: "BOS".to_string(),
+                    season: None,
                 }))],
             ..Default::default()
         };

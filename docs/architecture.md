@@ -119,7 +119,8 @@ pub enum Action {
     ScheduleLoaded(Result<DailySchedule, Arc<NHLApiError>>),
     GameDetailsLoaded(i64, Result<GameMatchup, Arc<NHLApiError>>),
     BoxscoreLoaded(i64, Result<Boxscore, Arc<NHLApiError>>),
-    TeamRosterStatsLoaded(String, Result<ClubStats, Arc<NHLApiError>>),
+    TeamRosterStatsLoaded { abbrev: String, requested_season: Option<i32>,
+                            result: Result<TeamRosterStatsPayload, Arc<NHLApiError>> },
     PlayerStatsLoaded(i64, Result<PlayerLanding, Arc<NHLApiError>>),
 
     FocusNext, FocusPrevious,
@@ -227,7 +228,7 @@ pub enum Effect {
     // Data-fetch effects returned directly by reducers/components, resolved
     // synchronously by Runtime::execute_effect (see below)
     FetchBoxscore(i64),
-    FetchTeamRosterStats(String),
+    FetchTeamRosterStats(String, Option<i32>),
     FetchPlayerStats(i64),
     FetchGameDetails(i64),
 }
@@ -256,10 +257,13 @@ exposes:
   `fetch_boxscore(id)`, `fetch_player_stats(id)` — each wraps a cached
   fetch (via `crate::cache::fetch_*_cached`) in `Effect::Async` and maps the
   result into the corresponding `*Loaded` action.
-- `fetch_team_roster_stats(abbrev)` — additionally resolves the current
-  season by calling `client.club_stats_season()` (uncached) before fetching
-  cached club stats for the most recent season with `GameType::RegularSeason`
-  data.
+- `fetch_team_roster_stats(abbrev, season)` — with `Some(id)`, fetches that
+  season's cached club stats directly. With `None` ("latest"), first calls
+  `client.club_stats_season()` (uncached) to resolve the most recent season
+  with `GameType::RegularSeason` data, and includes the team's full
+  regular-season id list in the payload so the reducer can store it in
+  `DataState::team_seasons` (which drives `[`/`]` season cycling in the
+  team detail view).
 
 ## Runtime
 

@@ -165,13 +165,13 @@ impl App {
                 };
                 BoxscoreDocument.view(&props, &())
             }
-            StackedDocument::TeamDetail { abbrev } => {
+            StackedDocument::TeamDetail { abbrev, season } => {
                 let props = TeamDetailDocumentProps {
                     document,
                     loading: state
                         .data
                         .loading
-                        .contains(&LoadingKey::TeamRosterStats(abbrev.clone())),
+                        .contains(&LoadingKey::TeamRosterStats(abbrev.clone(), *season)),
                     focused_id: doc_entry.nav.focused_id(),
                     scroll_offset: doc_entry.nav.scroll_offset,
                     animation_frame: state.system.animation_frame,

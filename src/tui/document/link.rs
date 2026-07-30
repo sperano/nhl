@@ -39,11 +39,12 @@ mod tests {
     fn test_link_target_push() {
         let doc = StackedDocument::TeamDetail {
             abbrev: "BOS".to_string(),
+            season: None,
         };
         let target = LinkTarget::Push(doc.clone());
 
         match target {
-            LinkTarget::Push(StackedDocument::TeamDetail { abbrev }) => {
+            LinkTarget::Push(StackedDocument::TeamDetail { abbrev, .. }) => {
                 assert_eq!(abbrev, "BOS")
             }
             _ => panic!("Expected Push(TeamDetail)"),
@@ -84,12 +85,15 @@ mod tests {
     fn test_link_target_equality() {
         let target1 = LinkTarget::Push(StackedDocument::TeamDetail {
             abbrev: "BOS".to_string(),
+            season: None,
         });
         let target2 = LinkTarget::Push(StackedDocument::TeamDetail {
             abbrev: "BOS".to_string(),
+            season: None,
         });
         let target3 = LinkTarget::Push(StackedDocument::TeamDetail {
             abbrev: "TOR".to_string(),
+            season: None,
         });
 
         assert_eq!(target1, target2);

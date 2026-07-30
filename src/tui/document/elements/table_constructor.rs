@@ -52,6 +52,7 @@ impl DocumentElement {
                         CellValue::TeamLink { team_abbrev, .. } => {
                             Some(LinkTarget::Push(StackedDocument::TeamDetail {
                                 abbrev: team_abbrev.clone(),
+                                season: None,
                             }))
                         }
                         _ => continue, // Skip non-link cells
@@ -131,13 +132,13 @@ mod tests {
 
         // Check link targets (contain team info for activation)
         match &focusable[0].link_target {
-            Some(LinkTarget::Push(StackedDocument::TeamDetail { abbrev })) => {
+            Some(LinkTarget::Push(StackedDocument::TeamDetail { abbrev, .. })) => {
                 assert_eq!(abbrev, "BOS")
             }
             other => panic!("Expected Push(TeamDetail), got {other:?}"),
         }
         match &focusable[1].link_target {
-            Some(LinkTarget::Push(StackedDocument::TeamDetail { abbrev })) => {
+            Some(LinkTarget::Push(StackedDocument::TeamDetail { abbrev, .. })) => {
                 assert_eq!(abbrev, "TOR")
             }
             other => panic!("Expected Push(TeamDetail), got {other:?}"),

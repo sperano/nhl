@@ -21,6 +21,16 @@ pub trait ComponentMessageTrait: Send + Sync + std::fmt::Debug {
     fn clone_box(&self) -> Box<dyn ComponentMessageTrait>;
 }
 
+/// Payload of a successful team roster stats fetch.
+#[derive(Debug, Clone)]
+pub struct TeamRosterStatsPayload {
+    /// The team's regular-season season ids, sorted ascending. `Some` only
+    /// when the effect had to resolve "latest" (requested season was `None`),
+    /// since that path fetches the season list anyway.
+    pub seasons: Option<Vec<i32>>,
+    pub stats: ClubStats,
+}
+
 /// Global actions - like Redux actions
 ///
 /// All state changes in the application happen through actions.
@@ -57,7 +67,13 @@ pub enum Action {
     ScheduleLoaded(Result<DailySchedule, Arc<NHLApiError>>),
     GameDetailsLoaded(i64, Result<GameMatchup, Arc<NHLApiError>>),
     BoxscoreLoaded(i64, Result<Boxscore, Arc<NHLApiError>>),
-    TeamRosterStatsLoaded(String, Result<ClubStats, Arc<NHLApiError>>),
+    TeamRosterStatsLoaded {
+        abbrev: String,
+        /// Season the fetch was requested with (`None` = latest); pairs with
+        /// the `LoadingKey::TeamRosterStats` entry inserted at dispatch time.
+        requested_season: Option<i32>,
+        result: Result<TeamRosterStatsPayload, Arc<NHLApiError>>,
+    },
     PlayerStatsLoaded(i64, Result<PlayerLanding, Arc<NHLApiError>>),
 
     // UI actions
@@ -121,9 +137,15 @@ impl Clone for Action {
             Self::ScheduleLoaded(result) => Self::ScheduleLoaded(result.clone()),
             Self::GameDetailsLoaded(id, result) => Self::GameDetailsLoaded(*id, result.clone()),
             Self::BoxscoreLoaded(id, result) => Self::BoxscoreLoaded(*id, result.clone()),
-            Self::TeamRosterStatsLoaded(abbrev, result) => {
-                Self::TeamRosterStatsLoaded(abbrev.clone(), result.clone())
-            }
+            Self::TeamRosterStatsLoaded {
+                abbrev,
+                requested_season,
+                result,
+            } => Self::TeamRosterStatsLoaded {
+                abbrev: abbrev.clone(),
+                requested_season: *requested_season,
+                result: result.clone(),
+            },
             Self::PlayerStatsLoaded(id, result) => Self::PlayerStatsLoaded(*id, result.clone()),
             Self::FocusNext => Self::FocusNext,
             Self::FocusPrevious => Self::FocusPrevious,

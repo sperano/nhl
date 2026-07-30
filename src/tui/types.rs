@@ -27,6 +27,10 @@ pub enum StackedDocument {
     },
     TeamDetail {
         abbrev: String,
+        /// Season to display (e.g. 20232024). `None` means "latest": the
+        /// first roster fetch resolves it, and the loaded reducer rewrites
+        /// this to the concrete season id.
+        season: Option<i32>,
     },
     PlayerDetail {
         player_id: i64,
@@ -60,7 +64,7 @@ impl StackedDocument {
                 "{}:{}-{}:{}",
                 away_abbrev, away_score, home_abbrev, home_score
             ),
-            Self::TeamDetail { abbrev } => abbrev.clone(),
+            Self::TeamDetail { abbrev, .. } => abbrev.clone(),
             Self::PlayerDetail {
                 sweater_number,
                 last_name,

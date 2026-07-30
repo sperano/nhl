@@ -384,6 +384,7 @@ mod tests {
     fn test_builder_link() {
         let target = LinkTarget::Push(StackedDocument::TeamDetail {
             abbrev: "BOS".to_string(),
+            season: None,
         });
         let elements = DocumentBuilder::new().link("Boston Bruins", target).build();
 
@@ -554,6 +555,7 @@ mod tests {
                     *name,
                     LinkTarget::Push(StackedDocument::TeamDetail {
                         abbrev: abbrev.to_string(),
+                        season: None,
                     }),
                 )
             })
