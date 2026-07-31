@@ -6,16 +6,19 @@
 use std::sync::Arc;
 
 use crossterm::event::{KeyCode, KeyEvent};
-use ratatui::buffer::Buffer;
-use ratatui::layout::Rect;
 
 use crate::component_message_impl;
-use crate::config::{Config, RenderContext};
-use crate::tui::component::{Component, Effect, Element, ElementWidget};
+use crate::config::Config;
+#[cfg(test)]
+use crate::config::RenderContext;
+use crate::tui::component::{Component, Effect, Element};
+#[cfg(test)]
+use crate::tui::component::ElementWidget;
 use crate::tui::components::{SettingsDocument, TabItem, TabbedPanel, TabbedPanelProps};
 #[cfg(test)]
 use crate::tui::document::FocusableElement;
-use crate::tui::document::{DocumentView, FocusableId};
+#[cfg(test)]
+use crate::tui::document::FocusableId;
 use crate::tui::document_nav::{DocumentNavMsg, DocumentNavState};
 use crate::tui::settings_helpers::ModalOption;
 use crate::tui::tab_component::{
@@ -23,6 +26,16 @@ use crate::tui::tab_component::{
     SUBTAB_CHROME_LINES,
 };
 use crate::tui::SettingsCategory;
+
+#[path = "settings_tab_view.rs"]
+mod settings_tab_view;
+use settings_tab_view::{SettingsTabWidget, SettingsTabWithModal};
+#[cfg(test)]
+use settings_tab_view::get_focusable_ids_for_category;
+#[cfg(test)]
+use ratatui::buffer::Buffer;
+#[cfg(test)]
+use ratatui::layout::Rect;
 
 /// Props for SettingsTab component
 #[derive(Clone)]
@@ -450,111 +463,6 @@ impl SettingsTab {
             focused: props.focused && state.has_item_focus(),
         }))
     }
-}
-
-/// Widget for rendering the Settings tab with modal overlay
-struct SettingsTabWithModal {
-    base_element: Element,
-    modal_options: Vec<String>,
-    modal_selected_index: usize,
-    modal_position_x: u16,
-    modal_position_y: u16,
-}
-
-impl ElementWidget for SettingsTabWithModal {
-    fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
-        use crate::tui::renderer::Renderer;
-        use crate::tui::widgets::ListModalWidget;
-
-        // Render the base element first
-        let mut renderer = Renderer::new();
-        renderer.render(self.base_element.clone(), area, buf, ctx);
-
-        // Render the modal on top
-        let modal = ListModalWidget::new(
-            self.modal_options.clone(),
-            self.modal_selected_index,
-            self.modal_position_x,
-            self.modal_position_y,
-        );
-        modal.render(area, buf, ctx);
-    }
-
-    fn clone_box(&self) -> Box<dyn ElementWidget> {
-        Box::new(SettingsTabWithModal {
-            base_element: self.base_element.clone(),
-            modal_options: self.modal_options.clone(),
-            modal_selected_index: self.modal_selected_index,
-            modal_position_x: self.modal_position_x,
-            modal_position_y: self.modal_position_y,
-        })
-    }
-
-    fn preferred_height(&self) -> Option<u16> {
-        None // Fills available space
-    }
-}
-
-/// Widget for rendering the Settings tab content
-struct SettingsTabWidget {
-    category: SettingsCategory,
-    config: Arc<Config>,
-    focused_id: Option<FocusableId>,
-    scroll_offset: u16,
-    viewport_height: u16,
-    /// Whether this widget has focus (affects dim/bright rendering)
-    focused: bool,
-}
-
-impl ElementWidget for SettingsTabWidget {
-    fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
-        // Create document for the current category
-        let doc = Arc::new(SettingsDocument::new(self.category, self.config.clone()));
-        let mut view = DocumentView::new(doc, area.height);
-
-        // Apply focus state
-        if let Some(id) = self.focused_id.clone() {
-            view.focus_id(id);
-        }
-
-        // Apply scroll offset
-        view.set_scroll_offset(self.scroll_offset);
-
-        // Create child RenderContext with our focus state
-        let child_ctx = ctx.child(self.focused);
-
-        view.render(area, buf, &child_ctx);
-    }
-
-    fn clone_box(&self) -> Box<dyn ElementWidget> {
-        Box::new(SettingsTabWidget {
-            category: self.category,
-            config: self.config.clone(),
-            focused_id: self.focused_id.clone(),
-            scroll_offset: self.scroll_offset,
-            viewport_height: self.viewport_height,
-            focused: self.focused,
-        })
-    }
-
-    fn preferred_height(&self) -> Option<u16> {
-        None // Fills available space
-    }
-}
-
-/// Helper to get focusable IDs for a settings category (for testing)
-///
-/// Reads focusable IDs from the real `SettingsDocument` rather than a hardcoded
-/// list, so this can't drift from actual navigation behavior.
-#[cfg(test)]
-fn get_focusable_ids_for_category(category: SettingsCategory) -> Vec<FocusableId> {
-    use crate::tui::document::{Document, FocusContext};
-
-    SettingsDocument::new(category, Arc::new(Config::default()))
-        .focusables(&FocusContext::default())
-        .into_iter()
-        .map(|f| f.id)
-        .collect()
 }
 
 #[cfg(test)]
