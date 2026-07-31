@@ -61,7 +61,12 @@ Use these slash commands for domain-specific help:
 ### Code Style
 - Use `anyhow::Result` for error handling
 - No unsafe code
-- Functions under 100 lines when possible
+- Size limits follow the global standard: functions ≤~50 lines, files ≤~500 lines
+- Justified size exceptions (don't split these):
+  - `src/fixtures.rs` mock-data builders (literal struct data, dev-only)
+  - Match-over-all-variants dispatchers near the limit (e.g. the
+    `DocumentElement` `Debug` impl, `key_to_action`) where splitting fights
+    the enum shape
 - Use imports, not full paths (`crate::foo::bar`)
 - Only comment non-obvious code
 - Be unicode-aware (no byte-length assumptions)
@@ -95,5 +100,5 @@ Plan and state files go in `.claude/work/` directory.
 - when i ask to write a report, write it in .claude/work/reports
 - when i ask to write a report, plan or any reference md file, add date and time in filename
 - update test_config_to_toml when adding new config attributes
-- never do any git add or commit
+- git add and commit are allowed; never push without being asked
 - when building, always use --feature development
