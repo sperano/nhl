@@ -255,6 +255,7 @@ fn test_find_next_link_column() {
             CellValue::TeamLink {
                 display: "Team".to_string(),
                 team_abbrev: "TOR".to_string(),
+                season: None,
             }
         }),
     ];
@@ -294,6 +295,7 @@ fn test_find_prev_link_column() {
             CellValue::TeamLink {
                 display: "Team".to_string(),
                 team_abbrev: "TOR".to_string(),
+                season: None,
             }
         }),
     ];
@@ -417,6 +419,7 @@ fn test_table_with_mixed_cell_types() {
             CellValue::TeamLink {
                 display: "Toronto".to_string(),
                 team_abbrev: "TOR".to_string(),
+                season: None,
             }
         }),
         ColumnDef::new("G", 4, Alignment::Right, |r: &TestRow| {
@@ -473,6 +476,7 @@ fn test_link_activation_team() {
         |_: &TestRow| CellValue::TeamLink {
             display: "Toronto Maple Leafs".to_string(),
             team_abbrev: "TOR".to_string(),
+            season: None,
         },
     )];
 
@@ -513,6 +517,7 @@ fn test_navigation_skips_text_columns() {
             CellValue::TeamLink {
                 display: "Team1".to_string(),
                 team_abbrev: "T1".to_string(),
+                season: None,
             }
         }),
         ColumnDef::new("Col4", 10, Alignment::Left, |_: &TestRow| {
@@ -522,6 +527,7 @@ fn test_navigation_skips_text_columns() {
             CellValue::TeamLink {
                 display: "Team2".to_string(),
                 team_abbrev: "T2".to_string(),
+                season: None,
             }
         }),
     ];

@@ -99,8 +99,18 @@ pub enum Effect {
     // Data fetch effects - returned by reducers to trigger async fetches
     /// Fetch boxscore data for a game
     FetchBoxscore(i64),
-    /// Fetch team roster/stats for a team and season (`None` = latest)
-    FetchTeamRosterStats(String, Option<i32>),
+    /// Fetch team roster/stats for a team and season (`None` = latest).
+    ///
+    /// `fetch_seasons` also fetches the team's available-seasons list so it
+    /// lands in the payload (needed when pushing a team directly at a
+    /// specific season, e.g. from a player's past-season row, before the
+    /// list is known). A `season: None` request always fetches the list,
+    /// regardless of this flag, since it needs it to resolve "latest".
+    FetchTeamRosterStats {
+        abbrev: String,
+        season: Option<i32>,
+        fetch_seasons: bool,
+    },
     /// Fetch player stats
     FetchPlayerStats(i64),
     /// Fetch game details (period scores, etc.)
@@ -116,10 +126,15 @@ impl std::fmt::Debug for Effect {
             Effect::Batch(effects) => f.debug_tuple("Effect::Batch").field(effects).finish(),
             Effect::Async(_) => write!(f, "Effect::Async(<future>)"),
             Effect::FetchBoxscore(id) => f.debug_tuple("Effect::FetchBoxscore").field(id).finish(),
-            Effect::FetchTeamRosterStats(abbrev, season) => f
-                .debug_tuple("Effect::FetchTeamRosterStats")
-                .field(abbrev)
-                .field(season)
+            Effect::FetchTeamRosterStats {
+                abbrev,
+                season,
+                fetch_seasons,
+            } => f
+                .debug_struct("Effect::FetchTeamRosterStats")
+                .field("abbrev", abbrev)
+                .field("season", season)
+                .field("fetch_seasons", fetch_seasons)
                 .finish(),
             Effect::FetchPlayerStats(id) => {
                 f.debug_tuple("Effect::FetchPlayerStats").field(id).finish()

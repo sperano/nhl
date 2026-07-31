@@ -49,12 +49,12 @@ impl DocumentElement {
                             sweater_number: *sweater_number,
                             last_name: last_name.clone(),
                         })),
-                        CellValue::TeamLink { team_abbrev, .. } => {
-                            Some(LinkTarget::Push(StackedDocument::TeamDetail {
-                                abbrev: team_abbrev.clone(),
-                                season: None,
-                            }))
-                        }
+                        CellValue::TeamLink {
+                            team_abbrev, season, ..
+                        } => Some(LinkTarget::Push(StackedDocument::TeamDetail {
+                            abbrev: team_abbrev.clone(),
+                            season: *season,
+                        })),
                         _ => continue, // Skip non-link cells
                     };
 
@@ -114,6 +114,7 @@ mod tests {
             |row: &(&str, &str)| CellValue::TeamLink {
                 display: row.0.to_string(),
                 team_abbrev: row.1.to_string(),
+                season: None,
             },
         )];
         let data = vec![("Bruins", "BOS"), ("Maple Leafs", "TOR")];

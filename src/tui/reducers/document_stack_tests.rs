@@ -26,10 +26,15 @@ fn test_push_document() {
         new_state.navigation.document_stack[0].nav.focus_index,
         Some(0)
     );
-    // Should return fetch effect since we don't have the data
+    // Should return fetch effect since we don't have the data; the seasons
+    // list is unknown so it must be requested too
     assert!(matches!(
         effect,
-        Effect::FetchTeamRosterStats(ref abbrev, None) if abbrev == "BOS"
+        Effect::FetchTeamRosterStats {
+            ref abbrev,
+            season: None,
+            fetch_seasons: true,
+        } if abbrev == "BOS"
     ));
 }
 
@@ -74,7 +79,11 @@ fn test_push_document_team_detail_marks_loading() {
 
     assert!(matches!(
         effect,
-        Effect::FetchTeamRosterStats(ref abbrev, None) if abbrev == "BOS"
+        Effect::FetchTeamRosterStats {
+            ref abbrev,
+            season: None,
+            ..
+        } if abbrev == "BOS"
     ));
     assert!(new_state
         .data
@@ -207,7 +216,11 @@ fn test_push_normalizes_latest_and_fetches_when_data_missing() {
     assert_eq!(top_season(&new_state), Some(20242025));
     assert!(matches!(
         effect,
-        Effect::FetchTeamRosterStats(ref a, Some(20242025)) if a == "BOS"
+        Effect::FetchTeamRosterStats {
+            ref abbrev,
+            season: Some(20242025),
+            fetch_seasons: false,
+        } if abbrev == "BOS"
     ));
     assert!(new_state
         .data
@@ -216,6 +229,50 @@ fn test_push_normalizes_latest_and_fetches_when_data_missing() {
             "BOS".to_string(),
             Some(20242025)
         )));
+}
+
+#[test]
+fn test_push_with_specific_season_keeps_it_and_requests_season_list() {
+    // Opening a team directly at a historical season (from a player's
+    // past-season row) before its season list is known: the season must be
+    // kept as-is (not normalized to latest) and the list requested.
+    let state = AppState::default();
+
+    let (new_state, effect) = push_team_detail(state, Some(20192020));
+
+    assert_eq!(top_season(&new_state), Some(20192020));
+    assert!(matches!(
+        effect,
+        Effect::FetchTeamRosterStats {
+            ref abbrev,
+            season: Some(20192020),
+            fetch_seasons: true,
+        } if abbrev == "BOS"
+    ));
+    assert!(new_state
+        .data
+        .loading
+        .contains(&LoadingKey::TeamRosterStats(
+            "BOS".to_string(),
+            Some(20192020)
+        )));
+}
+
+#[test]
+fn test_push_with_specific_season_and_known_list_skips_season_fetch() {
+    let state = state_with_seasons(&[]);
+
+    let (new_state, effect) = push_team_detail(state, Some(20222023));
+
+    assert_eq!(top_season(&new_state), Some(20222023));
+    assert!(matches!(
+        effect,
+        Effect::FetchTeamRosterStats {
+            ref abbrev,
+            season: Some(20222023),
+            fetch_seasons: false,
+        } if abbrev == "BOS"
+    ));
 }
 
 #[test]
@@ -237,7 +294,11 @@ fn test_cycle_prev_moves_season_resets_nav_and_fetches() {
     assert_eq!(nav.viewport_height, 24, "viewport height survives");
     assert!(matches!(
         effect,
-        Effect::FetchTeamRosterStats(ref a, Some(20232024)) if a == "BOS"
+        Effect::FetchTeamRosterStats {
+            ref abbrev,
+            season: Some(20232024),
+            fetch_seasons: false,
+        } if abbrev == "BOS"
     ));
     assert!(new_state
         .data

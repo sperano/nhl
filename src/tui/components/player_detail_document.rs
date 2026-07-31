@@ -96,9 +96,7 @@ impl PlayerDetailDocumentContent {
     fn skater_season_columns() -> Vec<ColumnDef<SeasonTotal>> {
         vec![
             ColumnDef::new("Season", 9, Alignment::Left, |s: &SeasonTotal| {
-                let season_str = s.season.to_string();
-                let formatted = format!("{}-{}", &season_str[0..4], &season_str[4..8]);
-                CellValue::Text(formatted)
+                CellValue::Text(s.season.to_string())
             }),
             ColumnDef::new("Team", 25, Alignment::Left, |s: &SeasonTotal| {
                 if let Some(ref common_name) = s.team_common_name {
@@ -106,6 +104,7 @@ impl PlayerDetailDocumentContent {
                         return CellValue::TeamLink {
                             display: s.team_name.default.clone(),
                             team_abbrev: abbrev.to_string(),
+                            season: Some(s.season.id()),
                         };
                     }
                 }
@@ -140,9 +139,7 @@ impl PlayerDetailDocumentContent {
     fn goalie_season_columns() -> Vec<ColumnDef<SeasonTotal>> {
         vec![
             ColumnDef::new("Season", 9, Alignment::Left, |s: &SeasonTotal| {
-                let season_str = s.season.to_string();
-                let formatted = format!("{}-{}", &season_str[0..4], &season_str[4..8]);
-                CellValue::Text(formatted)
+                CellValue::Text(s.season.to_string())
             }),
             ColumnDef::new("Team", 25, Alignment::Left, |s: &SeasonTotal| {
                 if let Some(ref common_name) = s.team_common_name {
@@ -150,6 +147,7 @@ impl PlayerDetailDocumentContent {
                         return CellValue::TeamLink {
                             display: s.team_name.default.clone(),
                             team_abbrev: abbrev.to_string(),
+                            season: Some(s.season.id()),
                         };
                     }
                 }

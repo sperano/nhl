@@ -181,6 +181,66 @@ fn test_document_focusable_ids() {
 }
 
 #[test]
+fn test_season_row_team_links_carry_that_row_season() {
+    use crate::tui::document::LinkTarget;
+    use crate::tui::types::StackedDocument;
+
+    let player = create_test_player(8479318, Position::Center);
+    let doc = PlayerDetailDocumentContent::new(Some(player), 8479318);
+
+    let targets: Vec<_> = doc
+        .focusables(&FocusContext::default())
+        .into_iter()
+        .map(|f| f.link_target)
+        .collect();
+
+    // Rows are sorted most-recent first: 2023-24, then 2022-23. Activating
+    // a row must open the team at that row's season, not the latest.
+    let expected = [Some(20232024), Some(20222023)];
+    assert_eq!(targets.len(), expected.len());
+    for (target, season) in targets.iter().zip(expected) {
+        match target {
+            Some(LinkTarget::Push(StackedDocument::TeamDetail {
+                abbrev,
+                season: link_season,
+            })) => {
+                assert_eq!(abbrev, "TOR");
+                assert_eq!(*link_season, season);
+            }
+            other => panic!("Expected Push(TeamDetail), got {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn test_season_column_formats_year_range() {
+    let season = SeasonTotal {
+        season: Season::new(2023),
+        game_type: nhl_api::GameType::RegularSeason,
+        league_abbrev: "NHL".to_string(),
+        team_name: LocalizedString {
+            default: "Toronto Maple Leafs".to_string(),
+        },
+        team_common_name: None,
+        sequence: Some(1),
+        games_played: 82,
+        goals: Some(40),
+        assists: Some(50),
+        points: Some(90),
+        plus_minus: Some(10),
+        pim: Some(20),
+    };
+
+    for columns in [
+        PlayerDetailDocumentContent::skater_season_columns(),
+        PlayerDetailDocumentContent::goalie_season_columns(),
+    ] {
+        let cell = (columns[0].cell_fn)(&season);
+        assert_eq!(cell.display_text(), "2023-2024");
+    }
+}
+
+#[test]
 fn test_document_builds_table_with_focus() {
     let player = create_test_player(8479318, Position::Center);
     let doc = PlayerDetailDocumentContent::new(Some(player), 8479318);

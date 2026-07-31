@@ -11,8 +11,8 @@ use nhl_api::{
     GameMatchup, GameOutcome, GameScheduleState, GameState, GameType, GoalieDecision, GoalieStats,
     Handedness, HomeRoad, LocalizedString, PeriodDescriptor, PeriodType, PlayByPlay, PlayEvent,
     PlayEventDetails, PlayEventType, PlayerByGameStats, PlayerGameLog, PlayerLanding,
-    PlayerSearchResult, Position, RosterSpot, ScheduleGame, ScheduleTeam, Season, SkaterStats,
-    Standing, TeamPlayerStats, ZoneCode,
+    PlayerSearchResult, Position, RosterSpot, ScheduleGame, ScheduleTeam, Season, SeasonTotal,
+    SkaterStats, Standing, TeamPlayerStats, ZoneCode,
 };
 
 /// Create mock standings data - reusing the test data structure
@@ -697,7 +697,62 @@ pub fn create_mock_player_landing(player_id: i64) -> PlayerLanding {
         player_slug: Some("connor-mcdavid-8478402".to_string()),
         featured_stats: None,
         career_totals: None,
-        season_totals: None,
+        season_totals: Some(vec![
+            SeasonTotal {
+                season: Season::new(2024),
+                game_type: GameType::RegularSeason,
+                league_abbrev: "NHL".to_string(),
+                team_name: LocalizedString {
+                    default: "Edmonton Oilers".to_string(),
+                },
+                team_common_name: Some(LocalizedString {
+                    default: "Oilers".to_string(),
+                }),
+                sequence: Some(1),
+                games_played: 50,
+                goals: Some(20),
+                assists: Some(55),
+                points: Some(75),
+                plus_minus: Some(15),
+                pim: Some(18),
+            },
+            SeasonTotal {
+                season: Season::new(2023),
+                game_type: GameType::RegularSeason,
+                league_abbrev: "NHL".to_string(),
+                team_name: LocalizedString {
+                    default: "Edmonton Oilers".to_string(),
+                },
+                team_common_name: Some(LocalizedString {
+                    default: "Oilers".to_string(),
+                }),
+                sequence: Some(1),
+                games_played: 76,
+                goals: Some(32),
+                assists: Some(68),
+                points: Some(100),
+                plus_minus: Some(21),
+                pim: Some(30),
+            },
+            SeasonTotal {
+                season: Season::new(2022),
+                game_type: GameType::RegularSeason,
+                league_abbrev: "NHL".to_string(),
+                team_name: LocalizedString {
+                    default: "Toronto Maple Leafs".to_string(),
+                },
+                team_common_name: Some(LocalizedString {
+                    default: "Maple Leafs".to_string(),
+                }),
+                sequence: Some(1),
+                games_played: 82,
+                goals: Some(44),
+                assists: Some(60),
+                points: Some(104),
+                plus_minus: Some(12),
+                pim: Some(26),
+            },
+        ]),
         awards: None,
         last_five_games: Some(vec![
             GameLog {

@@ -303,6 +303,7 @@ fn test_builder_table_with_links() {
         |row: &(&str, &str)| CellValue::TeamLink {
             display: row.0.to_string(),
             team_abbrev: row.1.to_string(),
+            season: None,
         },
     )];
     let data = vec![("Bruins", "BOS"), ("Leafs", "TOR")];

@@ -35,6 +35,10 @@ pub enum CellValue {
     TeamLink {
         display: String,
         team_abbrev: String,
+        /// Season id (`YYYYYYYY`) to open the team at, when the cell refers
+        /// to a specific season (e.g. a player's past-season row). `None`
+        /// opens the team at its latest season.
+        season: Option<i32>,
     },
 }
 
@@ -73,8 +77,12 @@ impl CellValue {
             Self::TeamLink {
                 display,
                 team_abbrev,
+                season,
             } => {
-                format!("TeamLink(display='{}', abbrev='{}')", display, team_abbrev)
+                format!(
+                    "TeamLink(display='{}', abbrev='{}', season={:?})",
+                    display, team_abbrev, season
+                )
             }
         }
     }
@@ -215,6 +223,7 @@ mod tests {
         let team_link = CellValue::TeamLink {
             display: "Edmonton Oilers".to_string(),
             team_abbrev: "EDM".to_string(),
+            season: None,
         };
         assert!(team_link.is_link());
     }
@@ -238,6 +247,7 @@ mod tests {
         let team_link = CellValue::TeamLink {
             display: "Edmonton Oilers".to_string(),
             team_abbrev: "EDM".to_string(),
+            season: None,
         };
         assert!(team_link.receives_selection_style());
     }
@@ -261,6 +271,7 @@ mod tests {
         let team_link = CellValue::TeamLink {
             display: "Edmonton Oilers".to_string(),
             team_abbrev: "EDM".to_string(),
+            season: None,
         };
         assert_eq!(team_link.display_text(), "Edmonton Oilers");
     }
@@ -287,10 +298,11 @@ mod tests {
         let team_link = CellValue::TeamLink {
             display: "Edmonton Oilers".to_string(),
             team_abbrev: "EDM".to_string(),
+            season: None,
         };
         assert_eq!(
             team_link.link_info(),
-            "TeamLink(display='Edmonton Oilers', abbrev='EDM')"
+            "TeamLink(display='Edmonton Oilers', abbrev='EDM', season=None)"
         );
     }
 

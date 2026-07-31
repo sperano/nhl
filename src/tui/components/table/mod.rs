@@ -95,6 +95,7 @@
 //!         CellValue::TeamLink {
 //!             display: s.team_common_name.default.clone(),
 //!             team_abbrev: s.team_abbrev.default.clone(),
+//!             season: None,
 //!         }
 //!     }),
 //!     ColumnDef::new("GP", 4, Alignment::Right, |s: &Standing| {

@@ -117,7 +117,16 @@ fn push_document(state: AppState, doc: StackedDocument) -> (AppState, Effect) {
                     abbrev, season
                 );
                 new_state.data.loading.insert(key);
-                Effect::FetchTeamRosterStats(abbrev.clone(), season)
+                // When landing directly on a specific season (e.g. from a
+                // player's past-season row) the team's season list may be
+                // unknown; fetch it too so season cycling and the
+                // current-season flag work.
+                let fetch_seasons = !new_state.data.team_seasons.contains_key(abbrev);
+                Effect::FetchTeamRosterStats {
+                    abbrev: abbrev.clone(),
+                    season,
+                    fetch_seasons,
+                }
             } else {
                 Effect::None
             }
@@ -209,7 +218,11 @@ fn cycle_team_detail_season(state: AppState, next: bool) -> (AppState, Effect) {
         new_state.data.loading.insert(key);
         return (
             new_state,
-            Effect::FetchTeamRosterStats(abbrev, Some(new_season)),
+            Effect::FetchTeamRosterStats {
+                abbrev,
+                season: Some(new_season),
+                fetch_seasons: false,
+            },
         );
     }
 

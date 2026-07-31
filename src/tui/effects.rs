@@ -83,51 +83,51 @@ impl DataEffects {
     /// Fetch team roster stats for a specific team and season (regular season).
     ///
     /// With `season: Some(id)`, fetches that season's stats directly (with
-    /// caching). With `None`, first fetches the team's available seasons,
-    /// resolves "latest" to the most recent one with regular season data, and
-    /// includes the full season list in the payload so the reducer can store
-    /// it for season cycling.
-    pub fn fetch_team_roster_stats(&self, team_abbrev: String, season: Option<i32>) -> Effect {
+    /// caching); `fetch_seasons` additionally fetches the team's available
+    /// seasons so the reducer can store them (needed when opening a team
+    /// directly at a specific season before its list is known). With
+    /// `season: None`, first fetches the available seasons, resolves
+    /// "latest" to the most recent one with regular season data, and always
+    /// includes the season list in the payload.
+    pub fn fetch_team_roster_stats(
+        &self,
+        team_abbrev: String,
+        season: Option<i32>,
+        fetch_seasons: bool,
+    ) -> Effect {
         let client = self.client.clone();
         let abbrev = team_abbrev.clone();
         Effect::Async(Box::pin(async move {
             let result = match season {
-                Some(id) => cache::fetch_club_stats_cached(client.as_ref(), &abbrev, id)
-                    .await
-                    .map(|stats| TeamRosterStatsPayload {
-                        seasons: None,
-                        stats,
-                    }),
-                None => {
-                    // Get available seasons for this team (not cached - small data)
-                    match client.club_stats_season(&abbrev).await {
-                        Ok(seasons) => {
-                            let mut ids: Vec<i32> = seasons
-                                .iter()
-                                .filter(|s| s.game_types.contains(&REGULAR_SEASON))
-                                .map(|s| s.season.id())
-                                .collect();
-                            ids.sort_unstable();
-
-                            match ids.last().copied() {
-                                Some(latest) => {
-                                    cache::fetch_club_stats_cached(client.as_ref(), &abbrev, latest)
-                                        .await
-                                        .map(|stats| TeamRosterStatsPayload {
-                                            seasons: Some(ids),
-                                            stats,
-                                        })
-                                }
-                                None => Err(nhl_api::NHLApiError::ApiError {
-                                    message: "No regular season data available for team"
-                                        .to_string(),
-                                    status_code: 404,
-                                }),
-                            }
-                        }
-                        Err(e) => Err(e),
-                    }
+                Some(id) => {
+                    // Best-effort: a failed season-list fetch degrades to
+                    // seasons staying unknown, not a roster load failure.
+                    let seasons = if fetch_seasons {
+                        fetch_regular_season_ids(client.as_ref(), &abbrev).await.ok()
+                    } else {
+                        None
+                    };
+                    cache::fetch_club_stats_cached(client.as_ref(), &abbrev, id)
+                        .await
+                        .map(|stats| TeamRosterStatsPayload { seasons, stats })
                 }
+                None => match fetch_regular_season_ids(client.as_ref(), &abbrev).await {
+                    Ok(ids) => match ids.last().copied() {
+                        Some(latest) => {
+                            cache::fetch_club_stats_cached(client.as_ref(), &abbrev, latest)
+                                .await
+                                .map(|stats| TeamRosterStatsPayload {
+                                    seasons: Some(ids),
+                                    stats,
+                                })
+                        }
+                        None => Err(nhl_api::NHLApiError::ApiError {
+                            message: "No regular season data available for team".to_string(),
+                            status_code: 404,
+                        }),
+                    },
+                    Err(e) => Err(e),
+                },
             };
 
             Action::TeamRosterStatsLoaded {
@@ -156,6 +156,22 @@ impl DataEffects {
             Action::BoxscoreLoaded(game_id, result.map_err(Arc::new))
         }))
     }
+}
+
+/// Fetch the team's season ids that have regular-season data, sorted
+/// ascending (not cached - small data).
+async fn fetch_regular_season_ids(
+    client: &dyn NHLDataProvider,
+    abbrev: &str,
+) -> Result<Vec<i32>, nhl_api::NHLApiError> {
+    let seasons = client.club_stats_season(abbrev).await?;
+    let mut ids: Vec<i32> = seasons
+        .iter()
+        .filter(|s| s.game_types.contains(&REGULAR_SEASON))
+        .map(|s| s.season.id())
+        .collect();
+    ids.sort_unstable();
+    Ok(ids)
 }
 
 #[cfg(test)]
@@ -309,7 +325,7 @@ mod tests {
     async fn test_fetch_team_roster_stats_latest_resolves_seasons_via_mock() {
         let effects = DataEffects::new(Arc::new(crate::dev::mock_client::MockClient::new()));
 
-        let effect = effects.fetch_team_roster_stats("TOR".to_string(), None);
+        let effect = effects.fetch_team_roster_stats("TOR".to_string(), None, false);
         let Effect::Async(future) = effect else {
             panic!("expected Async effect");
         };
@@ -335,7 +351,7 @@ mod tests {
     async fn test_fetch_team_roster_stats_specific_season_skips_season_list() {
         let effects = DataEffects::new(Arc::new(crate::dev::mock_client::MockClient::new()));
 
-        let effect = effects.fetch_team_roster_stats("TOR".to_string(), Some(20232024));
+        let effect = effects.fetch_team_roster_stats("TOR".to_string(), Some(20232024), false);
         let Effect::Async(future) = effect else {
             panic!("expected Async effect");
         };
@@ -349,6 +365,33 @@ mod tests {
                 assert_eq!(requested_season, Some(20232024));
                 let payload = result.expect("mock fetch succeeds");
                 assert_eq!(payload.seasons, None);
+                assert_eq!(payload.stats.season.id(), 20232024);
+            }
+            other => panic!("expected TeamRosterStatsLoaded, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_fetch_team_roster_stats_specific_season_with_fetch_seasons_includes_list() {
+        let effects = DataEffects::new(Arc::new(crate::dev::mock_client::MockClient::new()));
+
+        // Opening a team directly at a historical season (e.g. from a
+        // player's past-season row) must also deliver the season list so
+        // cycling and the current-season flag work.
+        let effect = effects.fetch_team_roster_stats("TOR".to_string(), Some(20232024), true);
+        let Effect::Async(future) = effect else {
+            panic!("expected Async effect");
+        };
+
+        match future.await {
+            Action::TeamRosterStatsLoaded {
+                requested_season,
+                result,
+                ..
+            } => {
+                assert_eq!(requested_season, Some(20232024));
+                let payload = result.expect("mock fetch succeeds");
+                assert_eq!(payload.seasons, Some(vec![20232024, 20242025]));
                 assert_eq!(payload.stats.season.id(), 20232024);
             }
             other => panic!("expected TeamRosterStatsLoaded, got {other:?}"),
