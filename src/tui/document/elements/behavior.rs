@@ -10,7 +10,8 @@ use crate::big_digits::BIG_DIGIT_HEIGHT;
 use crate::config::RenderContext;
 use crate::tui::component::ElementWidget;
 use crate::tui::document::focus::{FocusableElement, FocusableId, RowPosition};
-use crate::tui::widgets::StandaloneWidget;
+use crate::tui::document::link::LinkTarget;
+use crate::tui::widgets::{ScoreBox, StandaloneWidget};
 
 use super::render::{
     self, render_group, render_heading, render_link, render_row, render_section_title,
@@ -75,106 +76,126 @@ impl DocumentElement {
                 target,
                 id,
                 ..
-            } => {
-                out.push(FocusableElement {
-                    id: FocusableId::link(id),
-                    y: y_offset,
-                    height: 1,
-                    // Display width, not char count: render_link draws the label
-                    // with real glyph widths, so the rect must match what's on
-                    // screen for wide glyphs (CJK, emoji).
-                    rect: Rect::new(0, y_offset, display.width() as u16, 1),
-                    link_target: Some(target.clone()),
-                    row_position: None,
-                });
+            } => out.push(Self::link_focusable(display, target, id, y_offset)),
+            Self::Group { children, .. } => Self::collect_focusable_group(children, out, y_offset),
+            Self::Custom { focusable, .. }
+            | Self::Table { focusable, .. }
+            | Self::TeamBoxscore { focusable, .. } => {
+                push_adjusted_focusable(focusable, y_offset, out)
             }
-            Self::Group { children, .. } => {
-                let mut child_offset = y_offset;
-                for child in children {
-                    child.collect_focusable(out, child_offset);
-                    child_offset += child.height();
-                }
-            }
-            Self::Custom { focusable, .. } => {
-                // Add focusable elements with adjusted y positions
-                for elem in focusable {
-                    let mut adjusted = elem.clone();
-                    adjusted.y += y_offset;
-                    adjusted.rect.y += y_offset;
-                    out.push(adjusted);
-                }
-            }
-            Self::Table { focusable, .. } => {
-                for elem in focusable {
-                    let mut adjusted = elem.clone();
-                    adjusted.y += y_offset;
-                    adjusted.rect.y += y_offset;
-                    out.push(adjusted);
-                }
-            }
-            Self::Row { children, .. } => {
-                // Collect left to right - all elements from first child, then second, etc.
-                // Set row_position so left/right navigation can jump between children
-                for (child_idx, child) in children.iter().enumerate() {
-                    let start_idx = out.len();
-                    child.collect_focusable(out, y_offset);
-                    // Tag each element with its row position
-                    for (idx_within_child, elem) in out[start_idx..].iter_mut().enumerate() {
-                        elem.row_position = Some(RowPosition {
-                            row_y: y_offset,
-                            child_idx,
-                            idx_within_child,
-                        });
-                    }
-                }
-            }
+            Self::Row { children, .. } => Self::collect_focusable_row(children, out, y_offset),
             Self::ScoreBoxElement {
                 game_id,
                 score_box,
                 link_target,
                 ..
-            } => {
-                // ScoreBox is a single focusable element with typed GameLink ID
-                let height = score_box.preferred_height().unwrap_or(6);
-                let width = score_box.preferred_width().unwrap_or(25);
-                out.push(FocusableElement {
-                    id: FocusableId::game_link(*game_id),
-                    y: y_offset,
-                    height,
-                    rect: Rect::new(0, y_offset, width, height),
-                    link_target: Some(link_target.clone()),
-                    row_position: None,
-                });
-            }
+            } => out.push(Self::score_box_focusable(
+                *game_id, score_box, link_target, y_offset,
+            )),
             Self::Indented { element, .. } => {
                 // Delegate to inner element (margin doesn't affect focusable collection)
                 element.collect_focusable(out, y_offset);
             }
-            Self::TeamBoxscore { focusable, .. } => {
-                // Add focusable elements with adjusted y positions
-                for elem in focusable {
-                    let mut adjusted = elem.clone();
-                    adjusted.y += y_offset;
-                    adjusted.rect.y += y_offset;
-                    out.push(adjusted);
-                }
-            }
             Self::Tabs {
                 tabs, active_index, ..
-            } => {
-                // Only collect focusable elements from the active tab
-                if let Some(tab) = tabs.get(*active_index) {
-                    // Content starts after tab bar
-                    let content_y = y_offset + TAB_BAR_HEIGHT;
-                    let mut content_offset = content_y;
-                    for child in &tab.content {
-                        child.collect_focusable(out, content_offset);
-                        content_offset += child.height();
-                    }
-                }
-            }
+            } => Self::collect_focusable_tabs(tabs, *active_index, out, y_offset),
             _ => {}
         }
+    }
+
+    fn link_focusable(display: &str, target: &LinkTarget, id: &str, y_offset: u16) -> FocusableElement {
+        FocusableElement {
+            id: FocusableId::link(id),
+            y: y_offset,
+            height: 1,
+            // Display width, not char count: render_link draws the label
+            // with real glyph widths, so the rect must match what's on
+            // screen for wide glyphs (CJK, emoji).
+            rect: Rect::new(0, y_offset, display.width() as u16, 1),
+            link_target: Some(target.clone()),
+            row_position: None,
+        }
+    }
+
+    fn collect_focusable_group(
+        children: &[DocumentElement],
+        out: &mut Vec<FocusableElement>,
+        y_offset: u16,
+    ) {
+        let mut child_offset = y_offset;
+        for child in children {
+            child.collect_focusable(out, child_offset);
+            child_offset += child.height();
+        }
+    }
+
+    /// Collect a row's children left to right, then tag each element with its
+    /// `row_position` so left/right navigation can jump between children.
+    fn collect_focusable_row(
+        children: &[DocumentElement],
+        out: &mut Vec<FocusableElement>,
+        y_offset: u16,
+    ) {
+        for (child_idx, child) in children.iter().enumerate() {
+            let start_idx = out.len();
+            child.collect_focusable(out, y_offset);
+            for (idx_within_child, elem) in out[start_idx..].iter_mut().enumerate() {
+                elem.row_position = Some(RowPosition {
+                    row_y: y_offset,
+                    child_idx,
+                    idx_within_child,
+                });
+            }
+        }
+    }
+
+    fn score_box_focusable(
+        game_id: i64,
+        score_box: &ScoreBox,
+        link_target: &LinkTarget,
+        y_offset: u16,
+    ) -> FocusableElement {
+        // ScoreBox is a single focusable element with typed GameLink ID
+        let height = score_box.preferred_height().unwrap_or(6);
+        let width = score_box.preferred_width().unwrap_or(25);
+        FocusableElement {
+            id: FocusableId::game_link(game_id),
+            y: y_offset,
+            height,
+            rect: Rect::new(0, y_offset, width, height),
+            link_target: Some(link_target.clone()),
+            row_position: None,
+        }
+    }
+
+    /// Only the active tab's content is focusable, offset past the tab bar.
+    fn collect_focusable_tabs(
+        tabs: &[super::DocTabDef],
+        active_index: usize,
+        out: &mut Vec<FocusableElement>,
+        y_offset: u16,
+    ) {
+        if let Some(tab) = tabs.get(active_index) {
+            let content_y = y_offset + TAB_BAR_HEIGHT;
+            let mut content_offset = content_y;
+            for child in &tab.content {
+                child.collect_focusable(out, content_offset);
+                content_offset += child.height();
+            }
+        }
+    }
+}
+
+/// Copy `focusable` into `out`, shifting each element's `y` and `rect.y` by
+/// `y_offset`. Shared by the composite variants (`Custom`, `Table`,
+/// `TeamBoxscore`) that carry pre-computed focusable elements relative to
+/// their own top-left corner.
+fn push_adjusted_focusable(focusable: &[FocusableElement], y_offset: u16, out: &mut Vec<FocusableElement>) {
+    for elem in focusable {
+        let mut adjusted = elem.clone();
+        adjusted.y += y_offset;
+        adjusted.rect.y += y_offset;
+        out.push(adjusted);
     }
 }
 
@@ -195,57 +216,31 @@ impl DocumentElement {
 
     fn render_unclipped(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
         match self {
-            Self::Text { content, style } => {
-                render_text(content, *style, area, buf, ctx);
-            }
-            Self::Heading { level, content } => {
-                render_heading(*level, content, area, buf, ctx);
-            }
+            Self::Text { content, style } => render_text(content, *style, area, buf, ctx),
+            Self::Heading { level, content } => render_heading(*level, content, area, buf, ctx),
             Self::SectionTitle { content, underline } => {
-                render_section_title(content, *underline, area, buf, ctx);
+                render_section_title(content, *underline, area, buf, ctx)
             }
             Self::Link {
                 display, focused, ..
-            } => {
-                render_link(display, *focused, area, buf, ctx);
-            }
-            Self::Separator => {
-                render_separator(area, buf, ctx);
-            }
+            } => render_link(display, *focused, area, buf, ctx),
+            Self::Separator => render_separator(area, buf, ctx),
             Self::Spacer { .. } => {
                 // Just empty space, nothing to render
             }
-            Self::Group { children, style } => {
-                render_group(children, *style, area, buf, ctx);
-            }
-            Self::Custom { render_fn, .. } => {
-                render_fn(area, buf, ctx);
-            }
-            Self::Table { widget, .. } => {
-                widget.render(area, buf, ctx);
-            }
+            Self::Group { children, style } => render_group(children, *style, area, buf, ctx),
+            Self::Custom { render_fn, .. } => render_fn(area, buf, ctx),
+            Self::Table { widget, .. } => widget.render(area, buf, ctx),
             Self::Row {
                 children,
                 gap,
                 align,
-            } => {
-                render_row(children, *gap, *align, area, buf, ctx);
-            }
+            } => render_row(children, *gap, *align, area, buf, ctx),
             Self::ScoreBoxElement {
                 score_box, focused, ..
-            } => {
-                // Clone and set selection based on focus state
-                let mut box_to_render = score_box.clone();
-                box_to_render.selected = *focused;
-                box_to_render.render(area, buf, ctx);
-            }
+            } => Self::render_score_box(score_box, *focused, area, buf, ctx),
             Self::Indented { element, margin } => {
-                // Render inner element with adjusted area (shifted right by margin)
-                if area.width > *margin {
-                    let indented_area =
-                        Rect::new(area.x + margin, area.y, area.width - margin, area.height);
-                    element.render(indented_area, buf, ctx);
-                }
+                Self::render_indented(element, *margin, area, buf, ctx)
             }
             Self::TeamBoxscore {
                 team_name,
@@ -253,25 +248,42 @@ impl DocumentElement {
                 defense_table,
                 goalies_table,
                 ..
-            } => {
-                render_team_boxscore(
-                    team_name,
-                    forwards_table,
-                    defense_table,
-                    goalies_table,
-                    area,
-                    buf,
-                    ctx,
-                );
-            }
-            Self::BigScoreElement { big_score } => {
-                big_score.render(area, buf, ctx);
-            }
+            } => render_team_boxscore(
+                team_name,
+                forwards_table,
+                defense_table,
+                goalies_table,
+                area,
+                buf,
+                ctx,
+            ),
+            Self::BigScoreElement { big_score } => big_score.render(area, buf, ctx),
             Self::Tabs {
                 tabs, active_index, ..
-            } => {
-                render::render_tabs(tabs, *active_index, area, buf, ctx);
-            }
+            } => render::render_tabs(tabs, *active_index, area, buf, ctx),
+        }
+    }
+
+    fn render_score_box(
+        score_box: &ScoreBox,
+        focused: bool,
+        area: Rect,
+        buf: &mut Buffer,
+        ctx: &RenderContext,
+    ) {
+        // Clone and set selection based on focus state
+        let mut box_to_render = score_box.clone();
+        box_to_render.selected = focused;
+        box_to_render.render(area, buf, ctx);
+    }
+
+    /// Render `element` shifted right by `margin`, dropping it entirely if
+    /// the area is too narrow to hold any margin at all.
+    fn render_indented(element: &DocumentElement, margin: u16, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
+        if area.width > margin {
+            let indented_area =
+                Rect::new(area.x + margin, area.y, area.width - margin, area.height);
+            element.render(indented_area, buf, ctx);
         }
     }
 }

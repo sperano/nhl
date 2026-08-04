@@ -125,41 +125,14 @@ impl Runtime {
             Effect::None | Effect::Handled => {
                 // Nothing to do
             }
-            Effect::FetchBoxscore(game_id) => {
-                debug!("EFFECT: Executing boxscore fetch for game_id={}", game_id);
-                let fetch_effect = self.data_effects.fetch_boxscore(game_id);
-                let _ = self.effect_tx.send(fetch_effect);
-            }
+            Effect::FetchBoxscore(game_id) => self.dispatch_fetch_boxscore(game_id),
             Effect::FetchTeamRosterStats {
                 abbrev,
                 season,
                 fetch_seasons,
-            } => {
-                debug!(
-                    "EFFECT: Executing team roster stats fetch for team={} season={:?}",
-                    abbrev, season
-                );
-                let fetch_effect =
-                    self.data_effects
-                        .fetch_team_roster_stats(abbrev, season, fetch_seasons);
-                let _ = self.effect_tx.send(fetch_effect);
-            }
-            Effect::FetchPlayerStats(player_id) => {
-                debug!(
-                    "EFFECT: Executing player stats fetch for player_id={}",
-                    player_id
-                );
-                let fetch_effect = self.data_effects.fetch_player_stats(player_id);
-                let _ = self.effect_tx.send(fetch_effect);
-            }
-            Effect::FetchGameDetails(game_id) => {
-                debug!(
-                    "EFFECT: Executing game details fetch for game_id={}",
-                    game_id
-                );
-                let fetch_effect = self.data_effects.fetch_game_details(game_id);
-                let _ = self.effect_tx.send(fetch_effect);
-            }
+            } => self.dispatch_fetch_team_roster_stats(abbrev, season, fetch_seasons),
+            Effect::FetchPlayerStats(player_id) => self.dispatch_fetch_player_stats(player_id),
+            Effect::FetchGameDetails(game_id) => self.dispatch_fetch_game_details(game_id),
             Effect::Batch(effects) => {
                 // Execute each effect in the batch
                 for e in effects {
@@ -172,6 +145,46 @@ impl Runtime {
                 let _ = self.effect_tx.send(effect);
             }
         }
+    }
+
+    fn dispatch_fetch_boxscore(&self, game_id: i64) {
+        debug!("EFFECT: Executing boxscore fetch for game_id={}", game_id);
+        let fetch_effect = self.data_effects.fetch_boxscore(game_id);
+        let _ = self.effect_tx.send(fetch_effect);
+    }
+
+    fn dispatch_fetch_team_roster_stats(
+        &self,
+        abbrev: String,
+        season: Option<i32>,
+        fetch_seasons: bool,
+    ) {
+        debug!(
+            "EFFECT: Executing team roster stats fetch for team={} season={:?}",
+            abbrev, season
+        );
+        let fetch_effect = self
+            .data_effects
+            .fetch_team_roster_stats(abbrev, season, fetch_seasons);
+        let _ = self.effect_tx.send(fetch_effect);
+    }
+
+    fn dispatch_fetch_player_stats(&self, player_id: i64) {
+        debug!(
+            "EFFECT: Executing player stats fetch for player_id={}",
+            player_id
+        );
+        let fetch_effect = self.data_effects.fetch_player_stats(player_id);
+        let _ = self.effect_tx.send(fetch_effect);
+    }
+
+    fn dispatch_fetch_game_details(&self, game_id: i64) {
+        debug!(
+            "EFFECT: Executing game details fetch for game_id={}",
+            game_id
+        );
+        let fetch_effect = self.data_effects.fetch_game_details(game_id);
+        let _ = self.effect_tx.send(fetch_effect);
     }
 
     /// Process all pending actions in the queue

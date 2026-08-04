@@ -153,6 +153,22 @@ pub fn format_game_stats_table(
         bar_width,
     ));
     output.push_str(&format_faceoff_pct_row(away_stats, home_stats, bar_width));
+    output.push_str(&format_remaining_stat_bar_rows(
+        away_stats, home_stats, bar_width,
+    ));
+
+    output
+}
+
+/// Format the stat-bar rows after shots-on-goal and face-off %.
+#[cfg(feature = "game_stats")]
+fn format_remaining_stat_bar_rows(
+    away_stats: &TeamGameStats,
+    home_stats: &TeamGameStats,
+    bar_width: usize,
+) -> String {
+    let mut output = String::new();
+
     // Power Play Goals (nhl-api 0.8 removed power_play_opportunities: boxscore
     // data has no valid source for it, so a percentage can't be computed)
     output.push_str(&format_stat_bar_row(
@@ -195,10 +211,8 @@ pub fn format_game_stats_table(
     output
 }
 
-pub fn format_boxscore(boxscore: &Boxscore, display: &DisplayConfig) -> String {
-    let mut output = String::new();
-
-    // Display game header
+/// Format the game header block: title, date/venue, and status/period/clock lines.
+fn format_game_header(output: &mut String, boxscore: &Boxscore, display: &DisplayConfig) {
     let header = format!(
         "{} @ {}",
         boxscore.away_team.common_name.default, boxscore.home_team.common_name.default
@@ -215,72 +229,94 @@ pub fn format_boxscore(boxscore: &Boxscore, display: &DisplayConfig) -> String {
     if boxscore.clock.running || !boxscore.clock.in_intermission {
         output.push_str(&format!("Time: {}\n", boxscore.clock.time_remaining));
     }
+}
 
-    // Display score
-    let score_header = format!(
+/// Format a two-row "Team / value" comparison section (used for Score and SOG).
+#[allow(clippy::too_many_arguments)]
+fn format_team_stat_section(
+    output: &mut String,
+    label: &str,
+    away_abbrev: &str,
+    away_value: i32,
+    home_abbrev: &str,
+    home_value: i32,
+    display: &DisplayConfig,
+) {
+    let section_header = format!(
         "{:<label_w$} {:>score_w$}",
         "Team",
-        "Score",
+        label,
         label_w = BOXSCORE_LABEL_WIDTH,
         score_w = BOXSCORE_SCORE_WIDTH
     );
     output.push_str(&format!(
         "\n{}",
-        format_header(&score_header, false, display)
+        format_header(&section_header, false, display)
     ));
     output.push_str(&format!(
         "{:<label_w$} {:>score_w$}\n",
-        boxscore.away_team.abbrev,
+        away_abbrev,
+        away_value,
+        label_w = BOXSCORE_LABEL_WIDTH,
+        score_w = BOXSCORE_SCORE_WIDTH
+    ));
+    output.push_str(&format!(
+        "{:<label_w$} {:>score_w$}\n",
+        home_abbrev,
+        home_value,
+        label_w = BOXSCORE_LABEL_WIDTH,
+        score_w = BOXSCORE_SCORE_WIDTH
+    ));
+}
+
+/// Append the game-stats comparison table when the `game_stats` feature is enabled;
+/// a no-op otherwise (the boxscore data has no reliable source for these stats
+/// without it).
+#[cfg(feature = "game_stats")]
+fn format_game_stats_section(output: &mut String, boxscore: &Boxscore, display: &DisplayConfig) {
+    let away_team_stats =
+        TeamGameStats::from_team_player_stats(&boxscore.player_by_game_stats.away_team);
+    let home_team_stats =
+        TeamGameStats::from_team_player_stats(&boxscore.player_by_game_stats.home_team);
+    output.push_str(&format_game_stats_table(
+        &boxscore.away_team.abbrev,
+        &boxscore.home_team.abbrev,
+        &away_team_stats,
+        &home_team_stats,
+        display,
+    ));
+}
+
+#[cfg(not(feature = "game_stats"))]
+fn format_game_stats_section(_output: &mut String, _boxscore: &Boxscore, _display: &DisplayConfig) {
+}
+
+pub fn format_boxscore(boxscore: &Boxscore, display: &DisplayConfig) -> String {
+    let mut output = String::new();
+
+    format_game_header(&mut output, boxscore, display);
+
+    format_team_stat_section(
+        &mut output,
+        "Score",
+        &boxscore.away_team.abbrev,
         boxscore.away_team.score,
-        label_w = BOXSCORE_LABEL_WIDTH,
-        score_w = BOXSCORE_SCORE_WIDTH
-    ));
-    output.push_str(&format!(
-        "{:<label_w$} {:>score_w$}\n",
-        boxscore.home_team.abbrev,
+        &boxscore.home_team.abbrev,
         boxscore.home_team.score,
-        label_w = BOXSCORE_LABEL_WIDTH,
-        score_w = BOXSCORE_SCORE_WIDTH
-    ));
-
-    // Display shots on goal
-    let sog_header = format!(
-        "{:<label_w$} {:>score_w$}",
-        "Team",
-        "SOG",
-        label_w = BOXSCORE_LABEL_WIDTH,
-        score_w = BOXSCORE_SCORE_WIDTH
+        display,
     );
-    output.push_str(&format!("\n{}", format_header(&sog_header, false, display)));
-    output.push_str(&format!(
-        "{:<label_w$} {:>score_w$}\n",
-        boxscore.away_team.abbrev,
-        boxscore.away_team.sog,
-        label_w = BOXSCORE_LABEL_WIDTH,
-        score_w = BOXSCORE_SCORE_WIDTH
-    ));
-    output.push_str(&format!(
-        "{:<label_w$} {:>score_w$}\n",
-        boxscore.home_team.abbrev,
-        boxscore.home_team.sog,
-        label_w = BOXSCORE_LABEL_WIDTH,
-        score_w = BOXSCORE_SCORE_WIDTH
-    ));
 
-    #[cfg(feature = "game_stats")]
-    {
-        let away_team_stats =
-            TeamGameStats::from_team_player_stats(&boxscore.player_by_game_stats.away_team);
-        let home_team_stats =
-            TeamGameStats::from_team_player_stats(&boxscore.player_by_game_stats.home_team);
-        output.push_str(&format_game_stats_table(
-            &boxscore.away_team.abbrev,
-            &boxscore.home_team.abbrev,
-            &away_team_stats,
-            &home_team_stats,
-            display,
-        ));
-    }
+    format_team_stat_section(
+        &mut output,
+        "SOG",
+        &boxscore.away_team.abbrev,
+        boxscore.away_team.sog,
+        &boxscore.home_team.abbrev,
+        boxscore.home_team.sog,
+        display,
+    );
+
+    format_game_stats_section(&mut output, boxscore, display);
 
     // Display player stats using extracted helper functions
     format_team_stats(

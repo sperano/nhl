@@ -20,7 +20,36 @@ pub async fn run(
     let date_str = game_date.to_api_string();
     let season = get_season_for_date(&game_date);
 
-    // Search for the player
+    let player = find_player(client, player_name).await?;
+
+    // Get the player's game log for the season
+    let game_log = client
+        .player_game_log(player.player_id, season, GameType::RegularSeason)
+        .await
+        .context("Failed to fetch player game log")?;
+
+    // Find the game for the specified date
+    let Some(log_stats) = game_log.game_log.iter().find(|g| g.game_date == date_str) else {
+        println!("No data for {} on {}", player.name, date_str);
+        return Ok(());
+    };
+
+    let boxscore_stats = fetch_boxscore_stats_for_player(client, &game_date, &player).await?;
+
+    print_player_game_stats(&player, log_stats, boxscore_stats.as_ref(), config);
+
+    Ok(())
+}
+
+/// Search for a player by name and resolve to a single match.
+///
+/// Extracted from `run` to isolate the search/filter/disambiguation chain. On an
+/// ambiguous match it prints the candidates and exits the process (`std::process::exit`),
+/// matching the original CLI behavior of not returning to the caller in that case.
+async fn find_player(
+    client: &dyn NHLDataProvider,
+    player_name: &str,
+) -> Result<PlayerSearchResult> {
     let search_results = client
         .search_player(player_name, Some(10))
         .await
@@ -37,40 +66,16 @@ pub async fn run(
         bail!("No players found matching '{}'", player_name);
     }
 
-    let player = match resolve_single_match(&matching, player_name) {
-        Some(player) => player,
+    match resolve_single_match(&matching, player_name) {
+        Some(player) => Ok(player.clone()),
         None => std::process::exit(1),
-    };
-    let player_id = player.player_id;
-
-    // Get the player's game log for the season
-    let game_log = client
-        .player_game_log(player_id, season, GameType::RegularSeason)
-        .await
-        .context("Failed to fetch player game log")?;
-
-    // Find the game for the specified date
-    let game_entry = game_log.game_log.iter().find(|g| g.game_date == date_str);
-
-    let log_stats = match game_entry {
-        Some(stats) => stats,
-        None => {
-            println!("No data for {} on {}", player.name, date_str);
-            return Ok(());
-        }
-    };
-
-    let boxscore_stats = fetch_boxscore_stats_for_player(client, &game_date, player).await?;
-
-    print_player_game_stats(player, log_stats, boxscore_stats.as_ref(), config);
-
-    Ok(())
+    }
 }
 
 /// If there is exactly one matching player, return it. If there are several,
 /// print them (so the caller can be more specific) and return `None`.
 ///
-/// Extracted from `run` to keep the ambiguous-match printing separate from
+/// Extracted from `find_player` to keep the ambiguous-match printing separate from
 /// the main control flow.
 fn resolve_single_match<'a>(
     matching: &[&'a PlayerSearchResult],
@@ -219,8 +224,6 @@ fn format_player_game_stats(
     boxscore_stats: Option<&SkaterStats>,
     box_chars: &BoxChars,
 ) -> String {
-    let box_width = 50;
-
     let team = player.team_abbrev.as_deref().unwrap_or("N/A");
     let number = player
         .sweater_number
@@ -235,27 +238,7 @@ fn format_player_game_stats(
     );
 
     let mut output = String::new();
-
-    // Player header
-    output.push_str(&format!(
-        "\n{}{}{}\n",
-        box_chars.top_left,
-        box_chars.horizontal.repeat(box_width),
-        box_chars.top_right
-    ));
-    output.push_str(&format!(
-        "{} {:<width$} {}\n",
-        box_chars.vertical,
-        content,
-        box_chars.vertical,
-        width = box_width - 2
-    ));
-    output.push_str(&format!(
-        "{}{}{}\n",
-        box_chars.bottom_left,
-        box_chars.horizontal.repeat(box_width),
-        box_chars.bottom_right
-    ));
+    output.push_str(&format_player_header_box(&content, box_chars));
 
     // Game info
     let opponent = if log_stats.home_road_flag == nhl_api::HomeRoad::Home {
@@ -276,6 +259,34 @@ fn format_player_game_stats(
     output
 }
 
+/// Build the boxed player header (name, number, team, position) shown at the top.
+fn format_player_header_box(content: &str, box_chars: &BoxChars) -> String {
+    let box_width = 50;
+    let mut output = String::new();
+
+    output.push_str(&format!(
+        "\n{}{}{}\n",
+        box_chars.top_left,
+        box_chars.horizontal.repeat(box_width),
+        box_chars.top_right
+    ));
+    output.push_str(&format!(
+        "{} {:<width$} {}\n",
+        box_chars.vertical,
+        content,
+        box_chars.vertical,
+        width = box_width - 2
+    ));
+    output.push_str(&format!(
+        "{}{}{}\n",
+        box_chars.bottom_left,
+        box_chars.horizontal.repeat(box_width),
+        box_chars.bottom_right
+    ));
+
+    output
+}
+
 /// Build the skater stats table (header row, separator, and value row) as a string.
 ///
 /// Extracted from `print_skater_stats` so the two formatting branches (with and
@@ -285,51 +296,67 @@ fn format_skater_stats_table(
     boxscore: Option<&SkaterStats>,
     box_chars: &BoxChars,
 ) -> String {
+    match boxscore {
+        Some(bs) => format_skater_stats_table_with_boxscore(log, bs, box_chars),
+        None => format_skater_stats_table_basic(log, box_chars),
+    }
+}
+
+/// Full stats table including boxscore-derived stats (hits, blocks, FO%, giveaways, takeaways).
+fn format_skater_stats_table_with_boxscore(
+    log: &GameLog,
+    bs: &SkaterStats,
+    box_chars: &BoxChars,
+) -> String {
     let pim = log.pim.unwrap_or(0);
     let mut output = String::new();
 
-    if let Some(bs) = boxscore {
-        // Full stats with boxscore data
-        output.push_str(&format!(
-            "{:>2} {:>2} {:>2} {:>3} {:>3} {:>3} {:>3} {:>3} {:>3} {:>4} {:>2} {:>2} {:>6}\n",
-            "G", "A", "P", "+/-", "PIM", "SOG", "PPP", "HIT", "BLK", "FO%", "GV", "TK", "TOI"
-        ));
-        output.push_str(&format!("{}\n", box_chars.horizontal.repeat(52)));
-        output.push_str(&format!(
-            "{:>2} {:>2} {:>2} {:>3} {:>3} {:>3} {:>3} {:>3} {:>3} {:>4.0} {:>2} {:>2} {:>6}\n",
-            log.goals,
-            log.assists,
-            log.points,
-            format_plus_minus(log.plus_minus),
-            pim,
-            log.shots,
-            log.power_play_points,
-            bs.hits,
-            bs.blocked_shots,
-            bs.faceoff_winning_pctg,
-            bs.giveaways,
-            bs.takeaways,
-            log.toi
-        ));
-    } else {
-        // Basic stats without boxscore
-        output.push_str(&format!(
-            "{:>3} {:>3} {:>3} {:>4} {:>4} {:>4} {:>4} {:>7}\n",
-            "G", "A", "P", "+/-", "PIM", "SOG", "PPP", "TOI"
-        ));
-        output.push_str(&format!("{}\n", box_chars.horizontal.repeat(42)));
-        output.push_str(&format!(
-            "{:>3} {:>3} {:>3} {:>4} {:>4} {:>4} {:>4} {:>7}\n",
-            log.goals,
-            log.assists,
-            log.points,
-            format_plus_minus(log.plus_minus),
-            pim,
-            log.shots,
-            log.power_play_points,
-            log.toi
-        ));
-    }
+    output.push_str(&format!(
+        "{:>2} {:>2} {:>2} {:>3} {:>3} {:>3} {:>3} {:>3} {:>3} {:>4} {:>2} {:>2} {:>6}\n",
+        "G", "A", "P", "+/-", "PIM", "SOG", "PPP", "HIT", "BLK", "FO%", "GV", "TK", "TOI"
+    ));
+    output.push_str(&format!("{}\n", box_chars.horizontal.repeat(52)));
+    output.push_str(&format!(
+        "{:>2} {:>2} {:>2} {:>3} {:>3} {:>3} {:>3} {:>3} {:>3} {:>4.0} {:>2} {:>2} {:>6}\n",
+        log.goals,
+        log.assists,
+        log.points,
+        format_plus_minus(log.plus_minus),
+        pim,
+        log.shots,
+        log.power_play_points,
+        bs.hits,
+        bs.blocked_shots,
+        bs.faceoff_winning_pctg,
+        bs.giveaways,
+        bs.takeaways,
+        log.toi
+    ));
+
+    output
+}
+
+/// Basic stats table when boxscore data isn't available.
+fn format_skater_stats_table_basic(log: &GameLog, box_chars: &BoxChars) -> String {
+    let pim = log.pim.unwrap_or(0);
+    let mut output = String::new();
+
+    output.push_str(&format!(
+        "{:>3} {:>3} {:>3} {:>4} {:>4} {:>4} {:>4} {:>7}\n",
+        "G", "A", "P", "+/-", "PIM", "SOG", "PPP", "TOI"
+    ));
+    output.push_str(&format!("{}\n", box_chars.horizontal.repeat(42)));
+    output.push_str(&format!(
+        "{:>3} {:>3} {:>3} {:>4} {:>4} {:>4} {:>4} {:>7}\n",
+        log.goals,
+        log.assists,
+        log.points,
+        format_plus_minus(log.plus_minus),
+        pim,
+        log.shots,
+        log.power_play_points,
+        log.toi
+    ));
 
     output
 }

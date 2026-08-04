@@ -7,6 +7,15 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::tui::document_nav::DocumentNavMsg;
 
+/// Picks between a plain navigation message and its Shift-modified scroll variant.
+fn shift_toggle(has_shift: bool, plain: DocumentNavMsg, shifted: DocumentNavMsg) -> DocumentNavMsg {
+    if has_shift {
+        shifted
+    } else {
+        plain
+    }
+}
+
 /// Convert a KeyEvent to a DocumentNavMsg for standard document navigation
 ///
 /// This handles the common navigation patterns used across:
@@ -43,46 +52,36 @@ pub fn key_to_nav_msg(key: KeyEvent) -> Option<DocumentNavMsg> {
 
     match key.code {
         // Tab key for focus navigation
-        KeyCode::Tab => {
-            if has_shift {
-                Some(DocumentNavMsg::FocusPrev)
-            } else {
-                Some(DocumentNavMsg::FocusNext)
-            }
-        }
+        KeyCode::Tab => Some(shift_toggle(
+            has_shift,
+            DocumentNavMsg::FocusNext,
+            DocumentNavMsg::FocusPrev,
+        )),
         KeyCode::BackTab => Some(DocumentNavMsg::FocusPrev),
 
         // Up/Down arrows - focus when no shift, scroll when shift
-        KeyCode::Up => {
-            if has_shift {
-                Some(DocumentNavMsg::ScrollUp(1))
-            } else {
-                Some(DocumentNavMsg::FocusPrev)
-            }
-        }
-        KeyCode::Down => {
-            if has_shift {
-                Some(DocumentNavMsg::ScrollDown(1))
-            } else {
-                Some(DocumentNavMsg::FocusNext)
-            }
-        }
+        KeyCode::Up => Some(shift_toggle(
+            has_shift,
+            DocumentNavMsg::FocusPrev,
+            DocumentNavMsg::ScrollUp(1),
+        )),
+        KeyCode::Down => Some(shift_toggle(
+            has_shift,
+            DocumentNavMsg::FocusNext,
+            DocumentNavMsg::ScrollDown(1),
+        )),
 
         // Left/Right arrows - row navigation when no shift, scroll when shift
-        KeyCode::Left => {
-            if has_shift {
-                Some(DocumentNavMsg::ScrollUp(1))
-            } else {
-                Some(DocumentNavMsg::FocusLeft)
-            }
-        }
-        KeyCode::Right => {
-            if has_shift {
-                Some(DocumentNavMsg::ScrollDown(1))
-            } else {
-                Some(DocumentNavMsg::FocusRight)
-            }
-        }
+        KeyCode::Left => Some(shift_toggle(
+            has_shift,
+            DocumentNavMsg::FocusLeft,
+            DocumentNavMsg::ScrollUp(1),
+        )),
+        KeyCode::Right => Some(shift_toggle(
+            has_shift,
+            DocumentNavMsg::FocusRight,
+            DocumentNavMsg::ScrollDown(1),
+        )),
 
         // Page navigation
         KeyCode::PageUp => Some(DocumentNavMsg::PageUp),

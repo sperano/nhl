@@ -31,50 +31,75 @@ pub(super) fn render_row(
     let has_preferred_widths = children.iter().all(|c| get_preferred_width(c).is_some());
 
     if has_preferred_widths {
-        // Calculate total width of all children
-        let total_children_width: u16 = children.iter().filter_map(get_preferred_width).sum();
-        let num_gaps = children.len().saturating_sub(1) as u16;
-        let total_gaps_width = gap * num_gaps;
-        let total_content_width = total_children_width + total_gaps_width;
-
-        // Calculate starting x offset and actual gap based on alignment
-        let (start_x, actual_gap) = match align {
-            RowAlignment::Left => (area.x, gap),
-            RowAlignment::Spread => {
-                // Calculate maximum gap to spread children across available width
-                let remaining_space = area.width.saturating_sub(total_children_width);
-                let actual_gap = remaining_space
-                    .checked_div(num_gaps)
-                    .map_or(0, |g| g.max(gap));
-                (area.x, actual_gap)
-            }
-            RowAlignment::Center => {
-                // Center the group of children with minimum gap between them
-                let left_margin = area.width.saturating_sub(total_content_width) / 2;
-                (area.x + left_margin, gap)
-            }
-        };
-
-        let mut x_offset = start_x;
-        for child in children {
-            let child_width = get_preferred_width(child).unwrap_or(0);
-            let child_area = Rect::new(x_offset, area.y, child_width, area.height);
-            child.render(child_area, buf, ctx);
-            x_offset += child_width + actual_gap;
-        }
+        render_row_fixed_widths(children, gap, align, area, buf, ctx);
     } else {
-        // Distribute space equally for flexible elements
-        let num_children = children.len() as u16;
-        let total_gap = gap * (num_children.saturating_sub(1));
-        let available_width = area.width.saturating_sub(total_gap);
-        let child_width = available_width / num_children;
+        render_row_equal_widths(children, gap, area, buf, ctx);
+    }
+}
 
-        let mut x_offset = area.x;
-        for child in children {
-            let child_area = Rect::new(x_offset, area.y, child_width, area.height);
-            child.render(child_area, buf, ctx);
-            x_offset += child_width + gap;
+/// Lay out children that each report a preferred width (e.g. `ScoreBoxElement`,
+/// `TeamBoxscore`), positioning them per `align` instead of splitting the
+/// area evenly.
+fn render_row_fixed_widths(
+    children: &[DocumentElement],
+    gap: u16,
+    align: RowAlignment,
+    area: Rect,
+    buf: &mut Buffer,
+    ctx: &RenderContext,
+) {
+    // Calculate total width of all children
+    let total_children_width: u16 = children.iter().filter_map(get_preferred_width).sum();
+    let num_gaps = children.len().saturating_sub(1) as u16;
+    let total_gaps_width = gap * num_gaps;
+    let total_content_width = total_children_width + total_gaps_width;
+
+    // Calculate starting x offset and actual gap based on alignment
+    let (start_x, actual_gap) = match align {
+        RowAlignment::Left => (area.x, gap),
+        RowAlignment::Spread => {
+            // Calculate maximum gap to spread children across available width
+            let remaining_space = area.width.saturating_sub(total_children_width);
+            let actual_gap = remaining_space
+                .checked_div(num_gaps)
+                .map_or(0, |g| g.max(gap));
+            (area.x, actual_gap)
         }
+        RowAlignment::Center => {
+            // Center the group of children with minimum gap between them
+            let left_margin = area.width.saturating_sub(total_content_width) / 2;
+            (area.x + left_margin, gap)
+        }
+    };
+
+    let mut x_offset = start_x;
+    for child in children {
+        let child_width = get_preferred_width(child).unwrap_or(0);
+        let child_area = Rect::new(x_offset, area.y, child_width, area.height);
+        child.render(child_area, buf, ctx);
+        x_offset += child_width + actual_gap;
+    }
+}
+
+/// Lay out children with no preferred width by splitting the area evenly
+/// between them.
+fn render_row_equal_widths(
+    children: &[DocumentElement],
+    gap: u16,
+    area: Rect,
+    buf: &mut Buffer,
+    ctx: &RenderContext,
+) {
+    let num_children = children.len() as u16;
+    let total_gap = gap * (num_children.saturating_sub(1));
+    let available_width = area.width.saturating_sub(total_gap);
+    let child_width = available_width / num_children;
+
+    let mut x_offset = area.x;
+    for child in children {
+        let child_area = Rect::new(x_offset, area.y, child_width, area.height);
+        child.render(child_area, buf, ctx);
+        x_offset += child_width + gap;
     }
 }
 

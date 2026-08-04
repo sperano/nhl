@@ -138,34 +138,8 @@ impl Component for ScoresTab {
 
         // Handle tab-specific messages
         match msg {
-            ScoresTabMsg::NavigateLeft => {
-                // Navigate left in the date window
-                if state.selected_date_index > 0 {
-                    // Move within the window
-                    state.selected_date_index -= 1;
-                    state.game_date = state.game_date.add_days(-1);
-                } else {
-                    // At left edge - shift window left
-                    state.game_date = state.game_date.add_days(-1);
-                    // selected_date_index stays at 0
-                }
-                // Refresh schedule for new date (also updates global state and clears old data)
-                Effect::Action(Action::RefreshSchedule(state.game_date.clone()))
-            }
-            ScoresTabMsg::NavigateRight => {
-                // Navigate right in the date window
-                if state.selected_date_index < DATE_WINDOW_SIZE - 1 {
-                    // Move within the window
-                    state.selected_date_index += 1;
-                    state.game_date = state.game_date.add_days(1);
-                } else {
-                    // At right edge - shift window right
-                    state.game_date = state.game_date.add_days(1);
-                    // selected_date_index stays at DATE_WINDOW_SIZE - 1
-                }
-                // Refresh schedule for new date (also updates global state and clears old data)
-                Effect::Action(Action::RefreshSchedule(state.game_date.clone()))
-            }
+            ScoresTabMsg::NavigateLeft => Self::navigate_date(state, -1),
+            ScoresTabMsg::NavigateRight => Self::navigate_date(state, 1),
             ScoresTabMsg::EnterBoxSelection => enter_item_focus(state),
             ScoresTabMsg::ExitBoxSelection => exit_item_focus(state, Effect::None),
 
@@ -190,6 +164,26 @@ impl Component for ScoresTab {
 }
 
 impl ScoresTab {
+    /// Move the date window by `direction` days (-1 for left, +1 for right).
+    ///
+    /// Shifts `selected_date_index` within the window until it hits the
+    /// corresponding edge, then keeps sliding the whole window instead.
+    fn navigate_date(state: &mut ScoresTabState, direction: i64) -> Effect {
+        let at_edge = if direction < 0 {
+            state.selected_date_index == 0
+        } else {
+            state.selected_date_index == DATE_WINDOW_SIZE - 1
+        };
+
+        if !at_edge {
+            state.selected_date_index = (state.selected_date_index as i64 + direction) as usize;
+        }
+        state.game_date = state.game_date.add_days(direction);
+
+        // Refresh schedule for new date (also updates global state and clears old data)
+        Effect::Action(Action::RefreshSchedule(state.game_date.clone()))
+    }
+
     /// Render date tabs using component state for UI, props for data
     fn render_date_tabs(&self, props: &ScoresTabProps, state: &ScoresTabState) -> Element {
         // Calculate the date window using component state

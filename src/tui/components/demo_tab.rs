@@ -236,16 +236,9 @@ impl DemoDocument {
             .text("Player statistics placeholder.")
             .build()
     }
-}
 
-impl Document for DemoDocument {
-    fn build(&self, focus: &FocusContext) -> Vec<DocumentElement> {
-        // Build the Standings tab content
-        let standings_content = self.build_standings_tab_content(focus);
-
-        // Build the Players tab content
-        let players_content = self.build_players_tab_content();
-
+    /// Title + intro text at the top of the demo document
+    fn build_intro() -> DocumentBuilder {
         DocumentBuilder::new()
             .heading(1, "Document System Demo")
             .spacer(1)
@@ -254,15 +247,11 @@ impl Document for DemoDocument {
             .spacer(1)
             .separator()
             .spacer(1)
-            // Embedded tabs demonstrating tabs-within-documents
-            .tabs_with_focus(
-                DEMO_TABS_ID,
-                vec![
-                    ("standings", "Standings", standings_content),
-                    ("players", "Players", players_content),
-                ],
-                focus,
-            )
+    }
+
+    /// "Features" section listing document-system capabilities
+    fn add_features_section(builder: DocumentBuilder) -> DocumentBuilder {
+        builder
             .spacer(1)
             .separator()
             .spacer(1)
@@ -272,6 +261,11 @@ impl Document for DemoDocument {
             .text("- Left/Right arrows switch between embedded tabs")
             .text("- Autoscrolling keeps the focused element visible")
             .text("- Smart padding positions elements comfortably in view")
+    }
+
+    /// "Example Links" section demonstrating focusable link elements
+    fn add_example_links(builder: DocumentBuilder, focus: &FocusContext) -> DocumentBuilder {
+        builder
             .spacer(1)
             .heading(2, "Example Links")
             .text("These links demonstrate focusable elements:")
@@ -315,6 +309,11 @@ impl Document for DemoDocument {
                 }),
                 focus,
             )
+    }
+
+    /// "Implementation Notes" section closing the demo document
+    fn add_implementation_notes(builder: DocumentBuilder) -> DocumentBuilder {
+        builder
             .spacer(1)
             .separator()
             .spacer(1)
@@ -332,7 +331,30 @@ impl Document for DemoDocument {
             .text("focus state for rendering and interaction.")
             .spacer(1)
             .text("End of demo document.")
-            .build()
+    }
+}
+
+impl Document for DemoDocument {
+    fn build(&self, focus: &FocusContext) -> Vec<DocumentElement> {
+        // Build the Standings tab content
+        let standings_content = self.build_standings_tab_content(focus);
+
+        // Build the Players tab content
+        let players_content = self.build_players_tab_content();
+
+        let builder = Self::build_intro().tabs_with_focus(
+            DEMO_TABS_ID,
+            vec![
+                ("standings", "Standings", standings_content),
+                ("players", "Players", players_content),
+            ],
+            focus,
+        );
+        let builder = Self::add_features_section(builder);
+        let builder = Self::add_example_links(builder, focus);
+        let builder = Self::add_implementation_notes(builder);
+
+        builder.build()
     }
 
     fn title(&self) -> Cow<'static, str> {

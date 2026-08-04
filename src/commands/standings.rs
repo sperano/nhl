@@ -294,6 +294,43 @@ fn format_league_view(sorted_standings: Vec<Standing>, display: &DisplayConfig) 
     output
 }
 
+/// Format a division's top-3 teams as a header block plus a trailing blank-line
+/// separator. Returns an empty vec (no header, no separator) if the division has no
+/// teams, matching the original "skip empty divisions entirely" behavior.
+fn top3_division_lines(div_name: &str, teams: &[Standing], display: &DisplayConfig) -> Vec<String> {
+    let top3: Vec<_> = teams.iter().take(3).cloned().collect();
+    if top3.is_empty() {
+        return Vec::new();
+    }
+    let mut lines = format_group_with_header(div_name, &top3, display);
+    lines.push(String::new()); // Blank line after division
+    lines
+}
+
+/// Insert the horizontal playoff-cutoff line after the 2nd wildcard team's row, if
+/// there are at least two wildcard teams.
+fn insert_playoff_cutoff_line(
+    lines: &mut Vec<String>,
+    wildcard_team_count: usize,
+    display: &DisplayConfig,
+) {
+    if wildcard_team_count < 2 {
+        return;
+    }
+    // Header has 3 lines (title, underline, blank) + table header (2 lines) + teams
+    let cutoff_line_idx = 3 + 2 + 2; // After 2nd team row
+    if lines.len() > cutoff_line_idx {
+        lines.insert(
+            cutoff_line_idx,
+            display
+                .box_chars
+                .horizontal
+                .repeat(STANDINGS_COLUMN_WIDTH)
+                .to_string(),
+        );
+    }
+}
+
 /// Helper to format wildcard groups for a conference
 fn format_wildcard_conference(
     div1_name: &str,
@@ -304,19 +341,8 @@ fn format_wildcard_conference(
 ) -> Vec<String> {
     let mut lines = Vec::new();
 
-    // Division 1 - top 3
-    let div1_top3: Vec<_> = div1_teams.iter().take(3).cloned().collect();
-    if !div1_top3.is_empty() {
-        lines.extend(format_group_with_header(div1_name, &div1_top3, display));
-        lines.push(String::new()); // Blank line after division
-    }
-
-    // Division 2 - top 3
-    let div2_top3: Vec<_> = div2_teams.iter().take(3).cloned().collect();
-    if !div2_top3.is_empty() {
-        lines.extend(format_group_with_header(div2_name, &div2_top3, display));
-        lines.push(String::new()); // Blank line after division
-    }
+    lines.extend(top3_division_lines(div1_name, div1_teams, display));
+    lines.extend(top3_division_lines(div2_name, div2_teams, display));
 
     // Remaining teams (wildcards and out of playoffs) - sorted by points
     let div1_remaining: Vec<_> = div1_teams.iter().skip(3).cloned().collect();
@@ -331,26 +357,21 @@ fn format_wildcard_conference(
             &wildcard_teams,
             display,
         ));
-
-        // Add playoff cutoff line after 2nd wildcard team (if there are at least 2)
-        if wildcard_teams.len() >= 2 {
-            // Find the line with the 2nd wildcard team (accounting for header lines)
-            // Header has 3 lines (title, underline, blank) + table header (2 lines) + teams
-            let cutoff_line_idx = 3 + 2 + 2; // After 2nd team row
-            if lines.len() > cutoff_line_idx {
-                lines.insert(
-                    cutoff_line_idx,
-                    display
-                        .box_chars
-                        .horizontal
-                        .repeat(STANDINGS_COLUMN_WIDTH)
-                        .to_string(),
-                );
-            }
-        }
+        insert_playoff_cutoff_line(&mut lines, wildcard_teams.len(), display);
     }
 
     lines
+}
+
+/// Filter standings to one division and sort by points, descending.
+fn division_teams_sorted(standings: &[Standing], division_name: &str) -> Vec<Standing> {
+    let mut teams: Vec<_> = standings
+        .iter()
+        .filter(|s| s.division_name == division_name)
+        .cloned()
+        .collect();
+    teams.sort_by_points_desc();
+    teams
 }
 
 /// Formats standings in wildcard view with two-column layout
@@ -360,33 +381,10 @@ fn format_wildcard_view(
     display: &DisplayConfig,
 ) -> String {
     // Group teams by division
-    let mut atlantic: Vec<_> = sorted_standings
-        .iter()
-        .filter(|s| s.division_name == "Atlantic")
-        .cloned()
-        .collect();
-    atlantic.sort_by_points_desc();
-
-    let mut metropolitan: Vec<_> = sorted_standings
-        .iter()
-        .filter(|s| s.division_name == "Metropolitan")
-        .cloned()
-        .collect();
-    metropolitan.sort_by_points_desc();
-
-    let mut central: Vec<_> = sorted_standings
-        .iter()
-        .filter(|s| s.division_name == "Central")
-        .cloned()
-        .collect();
-    central.sort_by_points_desc();
-
-    let mut pacific: Vec<_> = sorted_standings
-        .iter()
-        .filter(|s| s.division_name == "Pacific")
-        .cloned()
-        .collect();
-    pacific.sort_by_points_desc();
+    let atlantic = division_teams_sorted(&sorted_standings, "Atlantic");
+    let metropolitan = division_teams_sorted(&sorted_standings, "Metropolitan");
+    let central = division_teams_sorted(&sorted_standings, "Central");
+    let pacific = division_teams_sorted(&sorted_standings, "Pacific");
 
     // Build Eastern Conference wildcard groups
     let eastern_lines = format_wildcard_conference(

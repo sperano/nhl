@@ -29,7 +29,7 @@ use crate::tui::SettingsCategory;
 
 #[path = "settings_tab_view.rs"]
 mod settings_tab_view;
-use settings_tab_view::{SettingsTabWidget, SettingsTabWithModal};
+use settings_tab_view::{wrap_with_modal, SettingsTabWidget};
 #[cfg(test)]
 use settings_tab_view::get_focusable_ids_for_category;
 #[cfg(test)]
@@ -163,8 +163,6 @@ impl Component for SettingsTab {
     }
 
     fn update(&mut self, msg: Self::Message, state: &mut Self::State) -> Effect {
-        use crate::tui::action::{Action, SettingsAction};
-
         // Handle common tab messages (DocNav, UpdateViewportHeight)
         // Note: NavigateUp is NOT in common for SettingsTab due to special modal handling
         if let Some(effect) = handle_common_message(msg.as_common(), state) {
@@ -174,122 +172,17 @@ impl Component for SettingsTab {
         // Handle tab-specific messages
         match msg {
             SettingsTabMsg::Key(key) => self.handle_key(key, state),
-
-            SettingsTabMsg::NavigateUp => {
-                // Priority 1: Close modal if open
-                if state.modal.is_some() {
-                    state.modal = None;
-                    return Effect::Handled;
-                }
-                // Priority 2: Clear item focus if active
-                if state.has_item_focus() {
-                    state.clear_item_focus();
-                    return Effect::Handled;
-                }
-                // Otherwise let it bubble up
-                Effect::None
-            }
-
+            SettingsTabMsg::NavigateUp => Self::handle_navigate_up(state),
             SettingsTabMsg::NavigateCategoryLeft(config) => {
-                state.selected_category = match state.selected_category {
-                    SettingsCategory::Logging => SettingsCategory::Data,
-                    SettingsCategory::Display => SettingsCategory::Logging,
-                    SettingsCategory::Data => SettingsCategory::Display,
-                };
-                Self::rebuild_doc_nav_for_category(state, config);
-                Effect::None
+                Self::handle_navigate_category_left(state, config)
             }
             SettingsTabMsg::NavigateCategoryRight(config) => {
-                state.selected_category = match state.selected_category {
-                    SettingsCategory::Logging => SettingsCategory::Display,
-                    SettingsCategory::Display => SettingsCategory::Data,
-                    SettingsCategory::Data => SettingsCategory::Logging,
-                };
-                Self::rebuild_doc_nav_for_category(state, config);
-                Effect::None
+                Self::handle_navigate_category_right(state, config)
             }
             SettingsTabMsg::ActivateSetting(config) => {
-                use crate::tui::document::LinkTarget;
-                use crate::tui::settings_helpers::{
-                    find_initial_modal_index, get_setting_modal_options,
-                };
-
-                let Some(focus_idx) = state.doc_nav().focus_index else {
-                    return Effect::None;
-                };
-
-                // The setting's own link declares whether Enter should toggle
-                // it directly or open a selection modal (see settings_document.rs);
-                // this used to be re-derived here from a hardcoded list of key
-                // names kept in sync by hand.
-                match state.doc_nav().focused_link_target().cloned() {
-                    Some(LinkTarget::ToggleSetting(key)) => {
-                        Effect::Action(Action::SettingsAction(SettingsAction::ToggleBoolean(key)))
-                    }
-                    Some(LinkTarget::EditSetting(key)) => {
-                        let options = get_setting_modal_options(&key);
-                        let selected_index = find_initial_modal_index(&config, &key);
-
-                        let position_y = state
-                            .doc_nav()
-                            .focusables
-                            .get(focus_idx)
-                            .map(|f| f.y)
-                            .unwrap_or(0);
-                        let position_x = 10;
-
-                        state.modal = Some(ModalState {
-                            options,
-                            selected_index,
-                            setting_key: key,
-                            position_x,
-                            position_y,
-                        });
-
-                        Effect::None
-                    }
-                    _ => Effect::None,
-                }
+                Self::handle_activate_setting(state, config)
             }
-            SettingsTabMsg::Modal(modal_msg) => {
-                if let Some(modal) = &mut state.modal {
-                    match modal_msg {
-                        ModalMsg::Up => {
-                            modal.selected_index = modal.selected_index.saturating_sub(1);
-                            Effect::None
-                        }
-                        ModalMsg::Down => {
-                            modal.selected_index = (modal.selected_index + 1)
-                                .min(modal.options.len().saturating_sub(1));
-                            Effect::None
-                        }
-                        ModalMsg::Cancel => {
-                            state.modal = None;
-                            Effect::None
-                        }
-                        ModalMsg::Confirm => {
-                            // Get the selected option's ID (not display name)
-                            let selected_id = modal
-                                .options
-                                .get(modal.selected_index)
-                                .map(|opt| opt.id.clone())
-                                .unwrap_or_default();
-                            let setting_key = modal.setting_key.clone();
-
-                            // Close the modal
-                            state.modal = None;
-
-                            // Dispatch action to update the setting
-                            Effect::Action(Action::SettingsAction(SettingsAction::UpdateSetting {
-                                key: setting_key,
-                                value: selected_id,
-                            }))
-                        }
-                    }
-                } else {
-                    Effect::None
-                }
-            }
+            SettingsTabMsg::Modal(modal_msg) => Self::handle_modal_msg(state, modal_msg),
 
             // Common messages already handled above
             SettingsTabMsg::DocNav(_) | SettingsTabMsg::UpdateViewportHeight(_) => {
@@ -299,8 +192,231 @@ impl Component for SettingsTab {
     }
 
     fn view(&self, props: &Self::Props, state: &Self::State) -> Element {
-        // Create tabs for each category
-        let tabs = vec![
+        let tabs = self.build_category_tabs(props, state);
+        let active_key = self.category_to_key(state.selected_category);
+
+        let base_element = TabbedPanel.view(
+            &TabbedPanelProps {
+                active_key,
+                tabs,
+                focused: props.focused && !state.has_item_focus(),
+                content_has_focus: props.focused && state.has_item_focus(),
+            },
+            &(),
+        );
+
+        wrap_with_modal(base_element, state.modal.as_ref())
+    }
+}
+
+impl SettingsTab {
+    /// Handle key events when this tab is focused
+    fn handle_key(&mut self, key: KeyEvent, state: &mut SettingsTabState) -> Effect {
+        if state.modal.is_some() {
+            return self.handle_modal_key(key, state);
+        }
+
+        if state.doc_nav.focus_index.is_some() {
+            self.handle_item_focus_key(key, state)
+        } else {
+            Self::handle_category_selection_key(key, state)
+        }
+    }
+
+    /// Handle a key press while the list-selection modal is open
+    fn handle_modal_key(&mut self, key: KeyEvent, state: &mut SettingsTabState) -> Effect {
+        match key.code {
+            KeyCode::Up => self.update(SettingsTabMsg::Modal(ModalMsg::Up), state),
+            KeyCode::Down => self.update(SettingsTabMsg::Modal(ModalMsg::Down), state),
+            KeyCode::Enter => self.update(SettingsTabMsg::Modal(ModalMsg::Confirm), state),
+            KeyCode::Esc => self.update(SettingsTabMsg::Modal(ModalMsg::Cancel), state),
+            _ => Effect::None,
+        }
+    }
+
+    /// Handle a key press while an item has focus (browsing settings within the document)
+    fn handle_item_focus_key(&mut self, key: KeyEvent, state: &mut SettingsTabState) -> Effect {
+        use crate::tui::action::{Action, SettingsAction};
+        use crate::tui::nav_handler::key_to_nav_msg;
+
+        // Handle Escape to clear item focus
+        if key.code == KeyCode::Esc {
+            return self.update(SettingsTabMsg::NavigateUp, state);
+        }
+
+        // Try standard navigation first (handles Tab, arrows, PageUp/Down, etc.)
+        if let Some(nav_msg) = key_to_nav_msg(key) {
+            return crate::tui::document_nav::handle_message(&mut state.doc_nav, &nav_msg);
+        }
+
+        // Handle Enter to activate the setting
+        match key.code {
+            KeyCode::Enter => {
+                // We need access to config, which is in props
+                // This will be handled by dispatching an action
+                Effect::Action(Action::SettingsAction(SettingsAction::ToggleBoolean(
+                    "placeholder".to_string(),
+                )))
+            }
+            _ => Effect::None,
+        }
+    }
+
+    /// Handle a key press while in category-selection mode (no item focused)
+    fn handle_category_selection_key(key: KeyEvent, state: &mut SettingsTabState) -> Effect {
+        match key.code {
+            // NOTE: `SettingsTabMsg::Key` (and thus `handle_key`) is never
+            // actually dispatched today - real Settings key routing lives in
+            // `keys.rs::handle_settings_tab_keys`, which has access to
+            // `state.system.config` to build `NavigateCategoryLeft/Right`.
+            // This arm exists only to keep this dead path's `match`
+            // exhaustive; it intentionally does not fabricate a `Config`.
+            KeyCode::Left | KeyCode::Right => Effect::None,
+            KeyCode::Down | KeyCode::Enter => {
+                // Enter browse mode
+                if !state.doc_nav.focusables.is_empty() {
+                    state.doc_nav.focus_index = Some(0);
+                }
+                Effect::None
+            }
+            _ => Effect::None,
+        }
+    }
+
+    /// Close the modal (if open) or clear item focus (if active); otherwise let the
+    /// navigate-up request bubble up to the caller.
+    fn handle_navigate_up(state: &mut SettingsTabState) -> Effect {
+        // Priority 1: Close modal if open
+        if state.modal.is_some() {
+            state.modal = None;
+            return Effect::Handled;
+        }
+        // Priority 2: Clear item focus if active
+        if state.has_item_focus() {
+            state.clear_item_focus();
+            return Effect::Handled;
+        }
+        // Otherwise let it bubble up
+        Effect::None
+    }
+
+    /// Cycle to the previous category (wrapping) and rebuild focus metadata.
+    fn handle_navigate_category_left(state: &mut SettingsTabState, config: Config) -> Effect {
+        state.selected_category = match state.selected_category {
+            SettingsCategory::Logging => SettingsCategory::Data,
+            SettingsCategory::Display => SettingsCategory::Logging,
+            SettingsCategory::Data => SettingsCategory::Display,
+        };
+        Self::rebuild_doc_nav_for_category(state, config);
+        Effect::None
+    }
+
+    /// Cycle to the next category (wrapping) and rebuild focus metadata.
+    fn handle_navigate_category_right(state: &mut SettingsTabState, config: Config) -> Effect {
+        state.selected_category = match state.selected_category {
+            SettingsCategory::Logging => SettingsCategory::Display,
+            SettingsCategory::Display => SettingsCategory::Data,
+            SettingsCategory::Data => SettingsCategory::Logging,
+        };
+        Self::rebuild_doc_nav_for_category(state, config);
+        Effect::None
+    }
+
+    /// Activate the currently focused setting: toggle it directly, or open the
+    /// selection modal, depending on what its link target declares.
+    fn handle_activate_setting(state: &mut SettingsTabState, config: Config) -> Effect {
+        use crate::tui::action::{Action, SettingsAction};
+        use crate::tui::document::LinkTarget;
+        use crate::tui::settings_helpers::{find_initial_modal_index, get_setting_modal_options};
+
+        let Some(focus_idx) = state.doc_nav().focus_index else {
+            return Effect::None;
+        };
+
+        // The setting's own link declares whether Enter should toggle
+        // it directly or open a selection modal (see settings_document.rs);
+        // this used to be re-derived here from a hardcoded list of key
+        // names kept in sync by hand.
+        match state.doc_nav().focused_link_target().cloned() {
+            Some(LinkTarget::ToggleSetting(key)) => {
+                Effect::Action(Action::SettingsAction(SettingsAction::ToggleBoolean(key)))
+            }
+            Some(LinkTarget::EditSetting(key)) => {
+                let options = get_setting_modal_options(&key);
+                let selected_index = find_initial_modal_index(&config, &key);
+
+                let position_y = state
+                    .doc_nav()
+                    .focusables
+                    .get(focus_idx)
+                    .map(|f| f.y)
+                    .unwrap_or(0);
+                let position_x = 10;
+
+                state.modal = Some(ModalState {
+                    options,
+                    selected_index,
+                    setting_key: key,
+                    position_x,
+                    position_y,
+                });
+
+                Effect::None
+            }
+            _ => Effect::None,
+        }
+    }
+
+    /// Handle modal navigation/confirmation messages while the modal is open.
+    fn handle_modal_msg(state: &mut SettingsTabState, modal_msg: ModalMsg) -> Effect {
+        use crate::tui::action::{Action, SettingsAction};
+
+        let Some(modal) = &mut state.modal else {
+            return Effect::None;
+        };
+
+        match modal_msg {
+            ModalMsg::Up => {
+                modal.selected_index = modal.selected_index.saturating_sub(1);
+                Effect::None
+            }
+            ModalMsg::Down => {
+                modal.selected_index =
+                    (modal.selected_index + 1).min(modal.options.len().saturating_sub(1));
+                Effect::None
+            }
+            ModalMsg::Cancel => {
+                state.modal = None;
+                Effect::None
+            }
+            ModalMsg::Confirm => {
+                // Get the selected option's ID (not display name)
+                let selected_id = modal
+                    .options
+                    .get(modal.selected_index)
+                    .map(|opt| opt.id.clone())
+                    .unwrap_or_default();
+                let setting_key = modal.setting_key.clone();
+
+                // Close the modal
+                state.modal = None;
+
+                // Dispatch action to update the setting
+                Effect::Action(Action::SettingsAction(SettingsAction::UpdateSetting {
+                    key: setting_key,
+                    value: selected_id,
+                }))
+            }
+        }
+    }
+
+    /// Build the `TabItem`s for `view`, one per settings category
+    fn build_category_tabs(
+        &self,
+        props: &SettingsTabProps,
+        state: &SettingsTabState,
+    ) -> Vec<TabItem> {
+        vec![
             TabItem::new(
                 "logging",
                 "Logging",
@@ -316,108 +432,7 @@ impl Component for SettingsTab {
                 "Data",
                 self.render_settings_document(SettingsCategory::Data, props, state),
             ),
-        ];
-
-        // Active key based on selected category
-        let active_key = self.category_to_key(state.selected_category);
-
-        // Create the base element (tabbed panel)
-        let base_element = TabbedPanel.view(
-            &TabbedPanelProps {
-                active_key,
-                tabs,
-                focused: props.focused && !state.has_item_focus(),
-                content_has_focus: props.focused && state.has_item_focus(),
-            },
-            &(),
-        );
-
-        // If modal is open, wrap in a widget that renders both the base and the modal
-        if let Some(modal) = &state.modal {
-            // Extract display names for the modal widget
-            let display_names: Vec<String> = modal
-                .options
-                .iter()
-                .map(|opt| opt.display_name.clone())
-                .collect();
-
-            Element::Widget(Box::new(SettingsTabWithModal {
-                base_element,
-                modal_options: display_names,
-                modal_selected_index: modal.selected_index,
-                modal_position_x: modal.position_x,
-                modal_position_y: modal.position_y,
-            }))
-        } else {
-            base_element
-        }
-    }
-}
-
-impl SettingsTab {
-    /// Handle key events when this tab is focused
-    fn handle_key(&mut self, key: KeyEvent, state: &mut SettingsTabState) -> Effect {
-        use crate::tui::action::{Action, SettingsAction};
-        use crate::tui::nav_handler::key_to_nav_msg;
-
-        // If modal is open, handle modal navigation
-        if state.modal.is_some() {
-            return match key.code {
-                KeyCode::Up => self.update(SettingsTabMsg::Modal(ModalMsg::Up), state),
-                KeyCode::Down => self.update(SettingsTabMsg::Modal(ModalMsg::Down), state),
-                KeyCode::Enter => self.update(SettingsTabMsg::Modal(ModalMsg::Confirm), state),
-                KeyCode::Esc => self.update(SettingsTabMsg::Modal(ModalMsg::Cancel), state),
-                _ => Effect::None,
-            };
-        }
-
-        // Check if an item has focus
-        let has_item_focus = state.doc_nav.focus_index.is_some();
-
-        if has_item_focus {
-            // Item focus mode - navigate settings
-
-            // Handle Escape to clear item focus
-            if key.code == KeyCode::Esc {
-                return self.update(SettingsTabMsg::NavigateUp, state);
-            }
-
-            // Try standard navigation first (handles Tab, arrows, PageUp/Down, etc.)
-            if let Some(nav_msg) = key_to_nav_msg(key) {
-                return crate::tui::document_nav::handle_message(&mut state.doc_nav, &nav_msg);
-            }
-
-            // Handle Enter to activate the setting
-            match key.code {
-                KeyCode::Enter => {
-                    // We need access to config, which is in props
-                    // This will be handled by dispatching an action
-                    Effect::Action(Action::SettingsAction(SettingsAction::ToggleBoolean(
-                        "placeholder".to_string(),
-                    )))
-                }
-                _ => Effect::None,
-            }
-        } else {
-            // Category selection mode
-            match key.code {
-                // NOTE: `SettingsTabMsg::Key` (and thus `handle_key`) is never
-                // actually dispatched today - real Settings key routing lives in
-                // `keys.rs::handle_settings_tab_keys`, which has access to
-                // `state.system.config` to build `NavigateCategoryLeft/Right`.
-                // This arm exists only to keep this dead path's `match`
-                // exhaustive; it intentionally does not fabricate a `Config`.
-                KeyCode::Left | KeyCode::Right => Effect::None,
-                KeyCode::Down | KeyCode::Enter => {
-                    // Enter browse mode
-                    if !state.doc_nav.focusables.is_empty() {
-                        state.doc_nav.focus_index = Some(0);
-                    }
-                    Effect::None
-                }
-                _ => Effect::None,
-            }
-        }
+        ]
     }
 
     /// Rebuild `doc_nav`'s focus metadata for `state.selected_category`,

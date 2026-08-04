@@ -126,17 +126,7 @@ fn format_detailed_score(matchup: &GameMatchup) -> String {
     let mut output = String::new();
     output.push_str(&build_box_border('┌'));
 
-    let score_summary = format!(
-        "{:<team_width$} {:>2}{:^status_width$}{:>2}  {:<team_width$}",
-        away_abbrev,
-        away_score,
-        short_status_label(matchup.game_state),
-        home_score,
-        home_abbrev,
-        team_width = TEAM_ABBREV_WIDTH,
-        status_width = STATUS_LABEL_WIDTH
-    );
-    output.push_str(&content_line(&score_summary));
+    output.push_str(&content_line(&format_score_summary_line(matchup)));
 
     let status_text = format_game_status(
         matchup.game_state,
@@ -150,9 +140,48 @@ fn format_detailed_score(matchup: &GameMatchup) -> String {
     output.push_str(&content_line(&build_period_header(max_period)));
     output.push_str(&content_line(&build_period_header_separator(max_period)));
 
-    // Real per-period scores come from the game summary's scoring-by-period breakdown.
-    // If the summary isn't available yet (e.g. moments after puck drop), fall back to
-    // showing dashes for every period rather than fabricating data.
+    output.push_str(&format_period_score_rows(
+        matchup,
+        away_abbrev,
+        home_abbrev,
+        away_score,
+        home_score,
+        max_period,
+    ));
+
+    output.push_str(&build_box_border('└'));
+
+    output
+}
+
+/// Build the "AWAY  score STATUS score  HOME" summary line shown at the top of the box.
+fn format_score_summary_line(matchup: &GameMatchup) -> String {
+    format!(
+        "{:<team_width$} {:>2}{:^status_width$}{:>2}  {:<team_width$}",
+        matchup.away_team.abbrev,
+        matchup.away_team.score,
+        short_status_label(matchup.game_state),
+        matchup.home_team.score,
+        matchup.home_team.abbrev,
+        team_width = TEAM_ABBREV_WIDTH,
+        status_width = STATUS_LABEL_WIDTH
+    )
+}
+
+/// Build both teams' period-by-period score rows (each wrapped in `content_line`).
+///
+/// Real per-period scores come from the game summary's scoring-by-period breakdown.
+/// If the summary isn't available yet (e.g. moments after puck drop), falls back to
+/// showing dashes for every period rather than fabricating data.
+fn format_period_score_rows(
+    matchup: &GameMatchup,
+    away_abbrev: &str,
+    home_abbrev: &str,
+    away_score: i32,
+    home_score: i32,
+    max_period: i32,
+) -> String {
+    let mut output = String::new();
     match &matchup.summary {
         Some(summary) => {
             let period_scores = extract_period_scores(summary);
@@ -188,9 +217,6 @@ fn format_detailed_score(matchup: &GameMatchup) -> String {
             )));
         }
     }
-
-    output.push_str(&build_box_border('└'));
-
     output
 }
 
@@ -247,6 +273,28 @@ fn build_period_header_separator(max_period: i32) -> String {
 /// data is available at all. Columns for periods beyond `max_period` (i.e. periods that
 /// haven't happened yet) always show a dash, since showing "0" there would misleadingly
 /// imply the period is over.
+/// Value (or "-" placeholder) for one period's score cell.
+///
+/// Columns for periods beyond `max_period` (i.e. periods that haven't happened yet)
+/// always show a dash, since showing "0" there would misleadingly imply the period
+/// is over.
+fn period_row_value(
+    periods: &[i32],
+    has_data: bool,
+    period_num: i32,
+    index: usize,
+    max_period: i32,
+) -> String {
+    if has_data && period_num <= max_period {
+        periods
+            .get(index)
+            .map(|score| score.to_string())
+            .unwrap_or_else(|| "-".to_string())
+    } else {
+        "-".to_string()
+    }
+}
+
 fn format_period_row(
     team_abbrev: &str,
     periods: &[i32],
@@ -261,46 +309,23 @@ fn format_period_row(
         width = TEAM_ABBREV_WIDTH
     );
 
-    let period_value = |period_num: i32, index: usize| -> String {
-        if has_data && period_num <= max_period {
-            periods
-                .get(index)
-                .map(|score| score.to_string())
-                .unwrap_or_else(|| "-".to_string())
-        } else {
-            "-".to_string()
-        }
+    let cell = |period_num: i32, index: usize| {
+        format!(
+            "{:^width$}",
+            period_row_value(periods, has_data, period_num, index, max_period),
+            width = PERIOD_COL_WIDTH
+        )
     };
 
-    row.push_str(&format!(
-        "{:^width$}",
-        period_value(1, 0),
-        width = PERIOD_COL_WIDTH
-    ));
-    row.push_str(&format!(
-        "{:^width$}",
-        period_value(2, 1),
-        width = PERIOD_COL_WIDTH
-    ));
-    row.push_str(&format!(
-        "{:^width$}",
-        period_value(3, 2),
-        width = PERIOD_COL_WIDTH
-    ));
+    row.push_str(&cell(1, 0));
+    row.push_str(&cell(2, 1));
+    row.push_str(&cell(3, 2));
 
     if max_period > REGULATION_PERIODS {
-        row.push_str(&format!(
-            "{:^width$}",
-            period_value(OVERTIME_PERIOD_NUMBER, OVERTIME_INDEX),
-            width = PERIOD_COL_WIDTH
-        ));
+        row.push_str(&cell(OVERTIME_PERIOD_NUMBER, OVERTIME_INDEX));
     }
     if max_period > OVERTIME_PERIOD_NUMBER {
-        row.push_str(&format!(
-            "{:^width$}",
-            period_value(SHOOTOUT_PERIOD_NUMBER, SHOOTOUT_INDEX),
-            width = PERIOD_COL_WIDTH
-        ));
+        row.push_str(&cell(SHOOTOUT_PERIOD_NUMBER, SHOOTOUT_INDEX));
     }
 
     row.push_str(&format!("{:^width$}", total_score, width = TOTAL_COL_WIDTH));

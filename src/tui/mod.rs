@@ -142,9 +142,31 @@ fn needs_animation(state: &AppState) -> bool {
             })
 }
 
+/// Saves a just-captured screenshot buffer to disk and dispatches a status message
+/// action reporting success or failure.
+#[cfg(feature = "development")]
+fn save_screenshot_and_notify(runtime: &mut Runtime, buffer: ratatui::buffer::Buffer) {
+    let counter = get_next_screenshot_counter();
+    let filename = format!("nhl-screenshot-{:03}.txt", counter);
+    let area = ratatui::layout::Rect::new(0, 0, buffer.area().width, buffer.area().height);
+    if let Err(e) = crate::dev::screenshot::save_buffer_screenshot(&buffer, area, &filename) {
+        tracing::error!("Failed to save screenshot: {}", e);
+        runtime.dispatch(Action::SetStatusMessage {
+            message: format!("Failed to save screenshot: {}", e),
+            is_error: true,
+        });
+    } else {
+        tracing::info!("Screenshot saved to {}", filename);
+        runtime.dispatch(Action::SetStatusMessage {
+            message: format!("Screenshot saved: {}", filename),
+            is_error: false,
+        });
+    }
+}
+
 /// Renders the current virtual tree to the terminal. In development builds, if a
-/// screenshot was requested, captures the freshly-rendered buffer and saves it to disk,
-/// dispatching a status message action to report success or failure.
+/// screenshot was requested, captures the freshly-rendered buffer and saves it via
+/// `save_screenshot_and_notify`.
 ///
 /// Returns `true` when a screenshot was just saved, so the caller can force one more
 /// dirty render pass to display the resulting status message.
@@ -191,22 +213,7 @@ fn render_frame(
     #[cfg(feature = "development")]
     if let Some(buffer) = screenshot_buffer {
         *screenshot_requested = false;
-        let counter = get_next_screenshot_counter();
-        let filename = format!("nhl-screenshot-{:03}.txt", counter);
-        let area = ratatui::layout::Rect::new(0, 0, buffer.area().width, buffer.area().height);
-        if let Err(e) = crate::dev::screenshot::save_buffer_screenshot(&buffer, area, &filename) {
-            tracing::error!("Failed to save screenshot: {}", e);
-            runtime.dispatch(Action::SetStatusMessage {
-                message: format!("Failed to save screenshot: {}", e),
-                is_error: true,
-            });
-        } else {
-            tracing::info!("Screenshot saved to {}", filename);
-            runtime.dispatch(Action::SetStatusMessage {
-                message: format!("Screenshot saved: {}", filename),
-                is_error: false,
-            });
-        }
+        save_screenshot_and_notify(runtime, buffer);
         return Ok(true);
     }
 
@@ -309,24 +316,122 @@ fn dispatch_key_action(runtime: &mut Runtime, key: KeyEvent, dirty: &mut bool) -
     }
 }
 
-/// Main entry point for TUI mode
-pub async fn run(client: Arc<dyn NHLDataProvider>, config: Config) -> Result<(), io::Error> {
-    let mut terminal = setup_terminal()?;
-
-    // Create DataEffects handler
+/// Builds the initial `Runtime` (state, `DataEffects` handler) and kicks off the
+/// first data load.
+fn init_runtime(client: Arc<dyn NHLDataProvider>, config: Config) -> Runtime {
     let data_effects = Arc::new(DataEffects::new(client));
 
-    // Create initial AppState with config
     let mut initial_state = AppState::default();
     initial_state.system.config = config.clone();
     initial_state.system.reset_status_message();
 
-    // Create runtime with DataEffects
     let mut runtime = Runtime::new(initial_state, data_effects);
-
-    // Trigger initial data load
     runtime.dispatch(Action::RefreshData);
+    runtime
+}
 
+/// Outcome of polling for and handling a single keyboard event.
+enum KeyPollOutcome {
+    /// No key event arrived, or one was handled without quitting: keep looping.
+    Continue,
+    /// `Action::Quit` was dispatched: the event loop should exit.
+    Quit,
+}
+
+/// Polls for a keyboard event within `poll_timeout_ms` and, if one arrives, handles it:
+/// in development builds, Shift-S is intercepted to request a screenshot; otherwise the
+/// key is converted to an action and dispatched via `dispatch_key_action`.
+fn poll_and_handle_key(
+    runtime: &mut Runtime,
+    poll_timeout_ms: u64,
+    dirty: &mut bool,
+    #[cfg(feature = "development")] screenshot_requested: &mut bool,
+) -> Result<KeyPollOutcome, io::Error> {
+    if !event::poll(Duration::from_millis(poll_timeout_ms))? {
+        return Ok(KeyPollOutcome::Continue);
+    }
+    let Event::Key(key) = event::read()? else {
+        return Ok(KeyPollOutcome::Continue);
+    };
+
+    #[cfg(feature = "development")]
+    {
+        use crossterm::event::{KeyCode, KeyModifiers};
+        if key.code == KeyCode::Char('S') && key.modifiers.contains(KeyModifiers::SHIFT) {
+            tracing::info!("Screenshot requested via Shift-S");
+            *screenshot_requested = true;
+            return Ok(KeyPollOutcome::Continue);
+        }
+    }
+
+    // Convert key to action, dispatch it, and check for quit
+    let (dispatched, should_quit) = dispatch_key_action(runtime, key, dirty);
+
+    if dispatched && !should_quit {
+        tracing::debug!("ACTION: Continuing loop for immediate re-render");
+    }
+
+    if should_quit {
+        tracing::debug!("ACTION: Quitting application");
+        return Ok(KeyPollOutcome::Quit);
+    }
+
+    Ok(KeyPollOutcome::Continue)
+}
+
+/// Forces a dirty pass when a screenshot is pending, then renders the frame if dirty.
+fn render_step(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    runtime: &mut Runtime,
+    doc_cache: &std::cell::RefCell<DocumentRenderCache>,
+    dirty: &mut bool,
+    last_render_at: &mut Instant,
+    #[cfg(feature = "development")] screenshot_requested: &mut bool,
+) -> Result<(), io::Error> {
+    #[cfg(feature = "development")]
+    {
+        if *screenshot_requested {
+            *dirty = true; // force a draw so we have a buffer to capture
+        }
+        maybe_render_frame(
+            terminal,
+            runtime,
+            doc_cache,
+            dirty,
+            last_render_at,
+            screenshot_requested,
+        )
+    }
+    #[cfg(not(feature = "development"))]
+    maybe_render_frame(terminal, runtime, doc_cache, dirty, last_render_at)
+}
+
+/// Advances the loading animation via `tick`, then polls for and handles a keyboard
+/// event with a timeout chosen for smoother animation while it's running.
+fn animate_and_poll_key(
+    runtime: &mut Runtime,
+    dirty: &mut bool,
+    last_render_at: Instant,
+    #[cfg(feature = "development")] screenshot_requested: &mut bool,
+) -> Result<KeyPollOutcome, io::Error> {
+    let should_animate = tick(runtime, dirty, last_render_at);
+
+    // Poll for keyboard events - use shorter timeout when animating for smoother animation
+    let poll_timeout = if should_animate { 50 } else { 100 };
+    #[cfg(feature = "development")]
+    return poll_and_handle_key(runtime, poll_timeout, dirty, screenshot_requested);
+    #[cfg(not(feature = "development"))]
+    poll_and_handle_key(runtime, poll_timeout, dirty)
+}
+
+/// Runs the main TUI loop until the user quits: syncs runtime state from completed
+/// effects, renders when dirty, advances the loading animation, and polls for and
+/// handles keyboard input.
+fn event_loop(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    runtime: &mut Runtime,
+    doc_cache: &std::cell::RefCell<DocumentRenderCache>,
+) -> Result<(), io::Error> {
     #[cfg(feature = "development")]
     let mut screenshot_requested = false;
 
@@ -336,37 +441,20 @@ pub async fn run(client: Arc<dyn NHLDataProvider>, config: Config) -> Result<(),
     let mut dirty = true; // must render once at startup
     let mut last_render_at = Instant::now();
 
-    // Cross-frame document render cache: reuses each document's full-height
-    // render while its inputs are unchanged, so scrolling and the idle 1Hz
-    // status-bar redraw don't rebuild documents. See DocumentRenderCache.
-    let doc_cache = std::cell::RefCell::new(DocumentRenderCache::default());
-
-    // Main loop
     loop {
-        let actions_processed = sync_runtime_state(&mut runtime, &terminal, &mut dirty)?;
+        let actions_processed = sync_runtime_state(runtime, terminal, &mut dirty)?;
 
         #[cfg(feature = "development")]
-        if screenshot_requested {
-            dirty = true; // force a draw so we have a buffer to capture
-        }
-
-        #[cfg(feature = "development")]
-        maybe_render_frame(
-            &mut terminal,
-            &mut runtime,
-            &doc_cache,
+        render_step(
+            terminal,
+            runtime,
+            doc_cache,
             &mut dirty,
             &mut last_render_at,
             &mut screenshot_requested,
         )?;
         #[cfg(not(feature = "development"))]
-        maybe_render_frame(
-            &mut terminal,
-            &mut runtime,
-            &doc_cache,
-            &mut dirty,
-            &mut last_render_at,
-        )?;
+        render_step(terminal, runtime, doc_cache, &mut dirty, &mut last_render_at)?;
 
         // If actions were processed, continue loop immediately to check for more
         // This ensures UI updates immediately when async data arrives
@@ -378,39 +466,30 @@ pub async fn run(client: Arc<dyn NHLDataProvider>, config: Config) -> Result<(),
             continue;
         }
 
-        let should_animate = tick(&mut runtime, &mut dirty, last_render_at);
+        #[cfg(feature = "development")]
+        let outcome = animate_and_poll_key(runtime, &mut dirty, last_render_at, &mut screenshot_requested)?;
+        #[cfg(not(feature = "development"))]
+        let outcome = animate_and_poll_key(runtime, &mut dirty, last_render_at)?;
 
-        // Poll for keyboard events - use shorter timeout when animating for smoother animation
-        let poll_timeout = if should_animate { 50 } else { 100 };
-        if event::poll(Duration::from_millis(poll_timeout))? {
-            if let Event::Key(key) = event::read()? {
-                #[cfg(feature = "development")]
-                {
-                    use crossterm::event::{KeyCode, KeyModifiers};
-                    if key.code == KeyCode::Char('S') && key.modifiers.contains(KeyModifiers::SHIFT)
-                    {
-                        tracing::info!("Screenshot requested via Shift-S");
-                        screenshot_requested = true;
-                        continue;
-                    }
-                }
-
-                // Convert key to action, dispatch it, and check for quit
-                let (dispatched, should_quit) = dispatch_key_action(&mut runtime, key, &mut dirty);
-
-                // Trigger immediate re-render to show state changes
-                if dispatched && !should_quit {
-                    tracing::debug!("ACTION: Continuing loop for immediate re-render");
-                    continue;
-                }
-
-                if should_quit {
-                    tracing::debug!("ACTION: Quitting application");
-                    break;
-                }
-            }
+        if matches!(outcome, KeyPollOutcome::Quit) {
+            break;
         }
     }
+
+    Ok(())
+}
+
+/// Main entry point for TUI mode
+pub async fn run(client: Arc<dyn NHLDataProvider>, config: Config) -> Result<(), io::Error> {
+    let mut terminal = setup_terminal()?;
+    let mut runtime = init_runtime(client, config);
+
+    // Cross-frame document render cache: reuses each document's full-height
+    // render while its inputs are unchanged, so scrolling and the idle 1Hz
+    // status-bar redraw don't rebuild documents. See DocumentRenderCache.
+    let doc_cache = std::cell::RefCell::new(DocumentRenderCache::default());
+
+    event_loop(&mut terminal, &mut runtime, &doc_cache)?;
 
     restore_terminal(&mut terminal)?;
 

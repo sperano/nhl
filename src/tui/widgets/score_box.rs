@@ -7,8 +7,9 @@
 //! Width: 25 characters, Height: 6 rows
 
 use crate::config::{RenderContext, SELECTION_STYLE_MODIFIER, THEMELESS_SELECTION_STYLE_MODIFIER};
+use crate::formatting::BoxChars;
 use crate::layout_constants::{SCORE_BOX_HEIGHT, SCORE_BOX_WIDTH};
-use ratatui::{buffer::Buffer, layout::Rect};
+use ratatui::{buffer::Buffer, layout::Rect, style::Style};
 
 use super::StandaloneWidget;
 
@@ -143,23 +144,11 @@ impl ScoreBox {
     }
 }
 
-impl StandaloneWidget for ScoreBox {
-    fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
-        // Ensure we have enough space
-        if area.width < SCORE_BOX_WIDTH || area.height < SCORE_BOX_HEIGHT {
-            return;
-        }
-
-        // Fill area with background color first
-        let score_box_area = Rect::new(area.x, area.y, SCORE_BOX_WIDTH, SCORE_BOX_HEIGHT);
-        buf.set_style(score_box_area, ctx.base_style());
-
-        let bc = ctx.box_chars();
-        let x = area.x;
-        let y = area.y;
-
-        // Styles: fg3 for box chars, fg2 for team names and scores
-        // When selected, both box and text use fg2 with reverse video
+impl ScoreBox {
+    /// Status/box-char/text styles for the current selection state: fg3 for box chars,
+    /// fg2 for team names and scores; when selected, both box and text use fg2 with
+    /// reverse video (or the themeless selection modifier if no theme is set).
+    fn styles(&self, ctx: &RenderContext) -> (Style, Style, Style) {
         let status_style = ctx.text_style(); // Status line never changes
         let (box_style, text_style) = if self.selected {
             let selected = if let Some(theme) = ctx.theme() {
@@ -175,43 +164,55 @@ impl StandaloneWidget for ScoreBox {
         } else {
             (ctx.boxchar_style(), ctx.text_style()) // fg3 for box, fg2 for text
         };
+        (status_style, box_style, text_style)
+    }
 
-        // Row 0: Status line with leading space (never reversed)
-        let status_text = format!(" {}", self.status.display());
-        buf.set_string(x, y, &status_text, status_style);
-
-        // Row 1: Top border ╔══════════════════╤════╗
-        // Width breakdown: ╔ (1) + ═×TOP_BORDER_NAME_SEGMENT + ╤ (1) + ═×SCORE_FIELD_WIDTH + ╗ (1) = 25
-        let top_border = format!(
+    /// Renders the top (`╔══...╤══╗`) or bottom (`╚══...╧══╝`) double-line border.
+    fn render_border(buf: &mut Buffer, x: u16, y: u16, bc: &BoxChars, style: Style, top: bool) {
+        let (left, junction, right) = if top {
+            (bc.double_top_left, bc.double_top_junction, bc.double_top_right)
+        } else {
+            (
+                bc.double_bottom_left,
+                bc.double_bottom_junction,
+                bc.double_bottom_right,
+            )
+        };
+        // Width breakdown: corner (1) + ═×TOP_BORDER_NAME_SEGMENT + junction (1) +
+        // ═×SCORE_FIELD_WIDTH + corner (1) = 25
+        let border = format!(
             "{}{}{}{}{}",
-            bc.double_top_left,
+            left,
             bc.double_horizontal.repeat(TOP_BORDER_NAME_SEGMENT),
-            bc.double_top_junction,
+            junction,
             bc.double_horizontal.repeat(SCORE_FIELD_WIDTH as usize),
-            bc.double_top_right
+            right
         );
-        buf.set_string(x, y + 1, &top_border, box_style);
+        buf.set_string(x, y, &border, style);
+    }
 
-        // Row 2: Away team ║ Team Name        │ SS ║
-        // Render box chars and content separately for different styles
-        buf.set_string(x, y + 2, bc.double_vertical, box_style);
-        buf.set_string(x + 1, y + 2, " ", box_style);
-        buf.set_string(
-            x + 2,
-            y + 2,
-            Self::format_team_name(&self.away_team),
-            text_style,
-        );
-        buf.set_string(x + SEPARATOR_COL, y + 2, bc.vertical, box_style);
-        buf.set_string(
-            x + SCORE_COL,
-            y + 2,
-            Self::format_score(self.away_score),
-            text_style,
-        );
-        buf.set_string(x + RIGHT_BORDER_COL, y + 2, bc.double_vertical, box_style);
+    /// Renders one team row: `║ Team Name        │ SS ║`.
+    #[allow(clippy::too_many_arguments)]
+    fn render_team_row(
+        buf: &mut Buffer,
+        x: u16,
+        y: u16,
+        bc: &BoxChars,
+        box_style: Style,
+        text_style: Style,
+        team_name: &str,
+        score: Option<i32>,
+    ) {
+        buf.set_string(x, y, bc.double_vertical, box_style);
+        buf.set_string(x + 1, y, " ", box_style);
+        buf.set_string(x + 2, y, Self::format_team_name(team_name), text_style);
+        buf.set_string(x + SEPARATOR_COL, y, bc.vertical, box_style);
+        buf.set_string(x + SCORE_COL, y, Self::format_score(score), text_style);
+        buf.set_string(x + RIGHT_BORDER_COL, y, bc.double_vertical, box_style);
+    }
 
-        // Row 3: Separator ╟──────────────────┼────╢
+    /// Renders the separator row between the two teams: `╟──────────────────┼────╢`.
+    fn render_separator(buf: &mut Buffer, x: u16, y: u16, bc: &BoxChars, style: Style) {
         let separator = format!(
             "{}{}{}{}{}",
             bc.mixed_left_junction,
@@ -220,36 +221,53 @@ impl StandaloneWidget for ScoreBox {
             bc.horizontal.repeat(SCORE_FIELD_WIDTH as usize),
             bc.mixed_right_junction
         );
-        buf.set_string(x, y + 3, &separator, box_style);
+        buf.set_string(x, y, &separator, style);
+    }
+}
 
-        // Row 4: Home team ║ Team Name        │ SS ║
-        buf.set_string(x, y + 4, bc.double_vertical, box_style);
-        buf.set_string(x + 1, y + 4, " ", box_style);
-        buf.set_string(
-            x + 2,
-            y + 4,
-            Self::format_team_name(&self.home_team),
-            text_style,
-        );
-        buf.set_string(x + SEPARATOR_COL, y + 4, bc.vertical, box_style);
-        buf.set_string(
-            x + SCORE_COL,
-            y + 4,
-            Self::format_score(self.home_score),
-            text_style,
-        );
-        buf.set_string(x + RIGHT_BORDER_COL, y + 4, bc.double_vertical, box_style);
+impl StandaloneWidget for ScoreBox {
+    fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
+        // Ensure we have enough space
+        if area.width < SCORE_BOX_WIDTH || area.height < SCORE_BOX_HEIGHT {
+            return;
+        }
 
-        // Row 5: Bottom border ╚══════════════════╧════╝
-        let bottom_border = format!(
-            "{}{}{}{}{}",
-            bc.double_bottom_left,
-            bc.double_horizontal.repeat(TOP_BORDER_NAME_SEGMENT),
-            bc.double_bottom_junction,
-            bc.double_horizontal.repeat(SCORE_FIELD_WIDTH as usize),
-            bc.double_bottom_right
+        // Fill area with background color first
+        let score_box_area = Rect::new(area.x, area.y, SCORE_BOX_WIDTH, SCORE_BOX_HEIGHT);
+        buf.set_style(score_box_area, ctx.base_style());
+
+        let bc = ctx.box_chars();
+        let x = area.x;
+        let y = area.y;
+        let (status_style, box_style, text_style) = self.styles(ctx);
+
+        // Row 0: Status line with leading space (never reversed)
+        let status_text = format!(" {}", self.status.display());
+        buf.set_string(x, y, &status_text, status_style);
+
+        Self::render_border(buf, x, y + 1, bc, box_style, true);
+        Self::render_team_row(
+            buf,
+            x,
+            y + 2,
+            bc,
+            box_style,
+            text_style,
+            &self.away_team,
+            self.away_score,
         );
-        buf.set_string(x, y + 5, &bottom_border, box_style);
+        Self::render_separator(buf, x, y + 3, bc, box_style);
+        Self::render_team_row(
+            buf,
+            x,
+            y + 4,
+            bc,
+            box_style,
+            text_style,
+            &self.home_team,
+            self.home_score,
+        );
+        Self::render_border(buf, x, y + 5, bc, box_style, false);
     }
 
     fn preferred_width(&self) -> Option<u16> {

@@ -29,8 +29,12 @@ pub fn handle_global_keys(key_code: KeyCode) -> Option<Action> {
     }
 }
 
-/// Handle ESC key with priority-based navigation up through focus hierarchy
-pub fn handle_esc_key(state: &AppState, component_states: &ComponentStateStore) -> Option<Action> {
+/// Priorities 1-2 of the ESC hierarchy: close a stacked document, then close the
+/// settings modal, if either is open.
+fn esc_priority_stack_layers(
+    state: &AppState,
+    component_states: &ComponentStateStore,
+) -> Option<Action> {
     use crate::tui::components::settings_tab::{ModalMsg, SettingsTabMsg};
 
     // Priority 1: If there's a document on the stack, close it
@@ -47,6 +51,17 @@ pub fn handle_esc_key(state: &AppState, component_states: &ComponentStateStore) 
             message: Box::new(SettingsTabMsg::Modal(ModalMsg::Cancel)),
         });
     }
+
+    None
+}
+
+/// Priorities 3-4.6 of the ESC hierarchy: clear whichever tab currently has
+/// item/content focus.
+fn esc_priority_tab_focus(
+    state: &AppState,
+    component_states: &ComponentStateStore,
+) -> Option<Action> {
+    use crate::tui::components::settings_tab::SettingsTabMsg;
 
     // Priority 3: If in box selection mode on Scores tab, exit to date subtabs
     if has_scores_item_focus(state, component_states) {
@@ -83,6 +98,19 @@ pub fn handle_esc_key(state: &AppState, component_states: &ComponentStateStore) 
             path: DEMO_TAB_PATH.to_string(),
             message: Box::new(DemoTabMsg::ExitFocus),
         });
+    }
+
+    None
+}
+
+/// Handle ESC key with priority-based navigation up through focus hierarchy
+pub fn handle_esc_key(state: &AppState, component_states: &ComponentStateStore) -> Option<Action> {
+    if let Some(action) = esc_priority_stack_layers(state, component_states) {
+        return Some(action);
+    }
+
+    if let Some(action) = esc_priority_tab_focus(state, component_states) {
+        return Some(action);
     }
 
     // Priority 5: If content is focused, return to tab bar

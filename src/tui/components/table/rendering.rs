@@ -51,90 +51,119 @@ impl TableWidget {
         buf.set_style(area, ctx.base_style());
 
         let mut y = area.y;
+        y = self.render_header_row(area, buf, ctx, y);
+        y = self.render_separator_row(area, buf, ctx, y);
+        self.render_data_rows(area, buf, ctx, y);
+    }
 
-        // Render column headers
-        if y < area.bottom() {
-            let mut x = area.x + SELECTOR_WIDTH as u16;
+    /// Render column headers at `y`; returns the next unused row
+    fn render_header_row(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext, y: u16) -> u16 {
+        if y >= area.bottom() {
+            return y;
+        }
 
-            let col_header_style = ctx.text_style().add_modifier(Modifier::BOLD);
+        let mut x = area.x + SELECTOR_WIDTH as u16;
+        let col_header_style = ctx.text_style().add_modifier(Modifier::BOLD);
 
-            for (col_idx, header) in self.column_headers.iter().enumerate() {
-                // A set_string that *starts* outside the buffer panics (unlike
-                // one that merely extends past the edge, which truncates), so
-                // stop once the next column would begin out of bounds.
-                if x >= buf.area.right() {
-                    break;
-                }
-                let width = self.column_widths[col_idx];
-                let align = self.column_aligns[col_idx];
-                let formatted = self.format_cell(header, width, align);
-                buf.set_string(x, y, &formatted, col_header_style);
-                x += width as u16 + 2;
+        for (col_idx, header) in self.column_headers.iter().enumerate() {
+            // A set_string that *starts* outside the buffer panics (unlike
+            // one that merely extends past the edge, which truncates), so
+            // stop once the next column would begin out of bounds.
+            if x >= buf.area.right() {
+                break;
             }
-            y += 1;
+            let width = self.column_widths[col_idx];
+            let align = self.column_aligns[col_idx];
+            let formatted = self.format_cell(header, width, align);
+            buf.set_string(x, y, &formatted, col_header_style);
+            x += width as u16 + 2;
         }
 
-        // Render separator line under headers
-        if y < area.bottom() {
-            let total_width: usize = self.column_widths.iter().sum::<usize>()
-                + (self.column_widths.len().saturating_sub(1) * 2);
+        y + 1
+    }
 
-            let separator = ctx.box_chars().horizontal.repeat(total_width);
-            let separator_line = format!("{}{}", " ".repeat(SELECTOR_WIDTH), separator);
-
-            buf.set_string(area.x, y, &separator_line, ctx.boxchar_style());
-            y += 1;
+    /// Render the separator line under the headers at `y`; returns the next unused row
+    fn render_separator_row(
+        &self,
+        area: Rect,
+        buf: &mut Buffer,
+        ctx: &RenderContext,
+        y: u16,
+    ) -> u16 {
+        if y >= area.bottom() {
+            return y;
         }
 
-        // Render rows
+        let total_width: usize = self.column_widths.iter().sum::<usize>()
+            + (self.column_widths.len().saturating_sub(1) * 2);
+
+        let separator = ctx.box_chars().horizontal.repeat(total_width);
+        let separator_line = format!("{}{}", " ".repeat(SELECTOR_WIDTH), separator);
+
+        buf.set_string(area.x, y, &separator_line, ctx.boxchar_style());
+
+        y + 1
+    }
+
+    /// Render each data row starting at `y`, stopping once the area is full
+    fn render_data_rows(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext, mut y: u16) {
         for (row_idx, row_cells) in self.cell_data.iter().enumerate() {
             if y >= area.bottom() {
                 break;
             }
+            self.render_data_row(area, buf, ctx, y, row_idx, row_cells);
+            y += 1;
+        }
+    }
 
-            let is_row_focused = self.focused_row == Some(row_idx);
+    /// Render a single data row (selector indicator + cells) at `y`
+    fn render_data_row(
+        &self,
+        area: Rect,
+        buf: &mut Buffer,
+        ctx: &RenderContext,
+        y: u16,
+        row_idx: usize,
+        row_cells: &[CellValue],
+    ) {
+        let is_row_focused = self.focused_row == Some(row_idx);
 
-            // Render selector indicator
-            let selector = if is_row_focused {
-                format!("{} ", ctx.box_chars().selector)
-            } else {
-                " ".repeat(SELECTOR_WIDTH)
-            };
+        // Render selector indicator
+        let selector = if is_row_focused {
+            format!("{} ", ctx.box_chars().selector)
+        } else {
+            " ".repeat(SELECTOR_WIDTH)
+        };
+        buf.set_string(area.x, y, &selector, ctx.boxchar_style());
 
-            // Render selector
-            buf.set_string(area.x, y, &selector, ctx.boxchar_style());
+        // Render cells
+        let mut x = area.x + SELECTOR_WIDTH as u16;
+        for (col_idx, cell_value) in row_cells.iter().enumerate() {
+            // Same out-of-bounds start guard as the header loop above.
+            if x >= buf.area.right() {
+                break;
+            }
+            let width = self.column_widths[col_idx];
+            let align = self.column_aligns[col_idx];
+            let cell_text = cell_value.display_text();
+            let formatted = self.format_cell(cell_text, width, align);
 
-            // Render cells
-            let mut x = area.x + SELECTOR_WIDTH as u16;
-            for (col_idx, cell_value) in row_cells.iter().enumerate() {
-                // Same out-of-bounds start guard as the header loop above.
-                if x >= buf.area.right() {
-                    break;
-                }
-                let width = self.column_widths[col_idx];
-                let align = self.column_aligns[col_idx];
-                let cell_text = cell_value.display_text();
-                let formatted = self.format_cell(cell_text, width, align);
+            let style = self.get_cell_style(is_row_focused, cell_value, ctx);
 
-                let style = self.get_cell_style(is_row_focused, cell_value, ctx);
+            buf.set_string(x, y, &formatted, style);
 
-                buf.set_string(x, y, &formatted, style);
+            // Style the gap if current cell is styled AND next cell is also styled
+            let next_cell = row_cells.get(col_idx + 1);
+            let current_styled = is_row_focused && cell_value.receives_selection_style();
+            let next_styled = next_cell
+                .map(|c| is_row_focused && c.receives_selection_style())
+                .unwrap_or(false);
 
-                // Style the gap if current cell is styled AND next cell is also styled
-                let next_cell = row_cells.get(col_idx + 1);
-                let current_styled = is_row_focused && cell_value.receives_selection_style();
-                let next_styled = next_cell
-                    .map(|c| is_row_focused && c.receives_selection_style())
-                    .unwrap_or(false);
-
-                if current_styled && next_styled && (x + width as u16) < buf.area.right() {
-                    buf.set_string(x + width as u16, y, "  ", style);
-                }
-
-                x += width as u16 + 2;
+            if current_styled && next_styled && (x + width as u16) < buf.area.right() {
+                buf.set_string(x + width as u16, y, "  ", style);
             }
 
-            y += 1;
+            x += width as u16 + 2;
         }
     }
 }

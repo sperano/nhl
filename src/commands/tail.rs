@@ -107,32 +107,10 @@ pub async fn follow(
 
         if first_fetch {
             print_header(&pbp);
-
-            // Show initial plays
-            let plays = get_filtered_plays(&pbp, filter);
-            let recent: Vec<_> = plays.into_iter().rev().take(count).collect();
-
-            for play in recent.into_iter().rev() {
-                seen_event_ids.insert(play.event_id);
-                print_play(&pbp, play, verbose);
-            }
-
+            print_initial_plays(&pbp, filter, count, verbose, &mut seen_event_ids);
             first_fetch = false;
         } else {
-            // Show only new plays
-            let plays = get_filtered_plays(&pbp, filter);
-            let mut new_plays: Vec<_> = plays
-                .into_iter()
-                .filter(|p| !seen_event_ids.contains(&p.event_id))
-                .collect();
-
-            // Sort by event_id to show in order
-            new_plays.sort_by_key(|p| p.event_id);
-
-            for play in &new_plays {
-                seen_event_ids.insert(play.event_id);
-                print_play(&pbp, play, verbose);
-            }
+            print_new_plays(&pbp, filter, verbose, &mut seen_event_ids);
         }
 
         // Flush stdout to ensure output appears immediately
@@ -140,15 +118,7 @@ pub async fn follow(
 
         // Check if game is over
         if pbp.game_state.is_final() {
-            println!(
-                "\n{}Game ended: {} {} - {} {}{}",
-                colors::BOLD,
-                pbp.away_team.abbrev,
-                pbp.away_team.score,
-                pbp.home_team.abbrev,
-                pbp.home_team.score,
-                colors::RESET
-            );
+            print_game_ended_message(&pbp);
             break;
         }
 
@@ -156,6 +126,59 @@ pub async fn follow(
     }
 
     Ok(())
+}
+
+/// Print the initial batch of (already-filtered) plays on the first fetch, marking
+/// each one as seen so later polls only report new plays.
+fn print_initial_plays(
+    pbp: &PlayByPlay,
+    filter: &EventFilter,
+    count: usize,
+    verbose: bool,
+    seen_event_ids: &mut HashSet<i64>,
+) {
+    let plays = get_filtered_plays(pbp, filter);
+    let recent: Vec<_> = plays.into_iter().rev().take(count).collect();
+
+    for play in recent.into_iter().rev() {
+        seen_event_ids.insert(play.event_id);
+        print_play(pbp, play, verbose);
+    }
+}
+
+/// Print any plays not yet in `seen_event_ids`, in event order, marking each as seen.
+fn print_new_plays(
+    pbp: &PlayByPlay,
+    filter: &EventFilter,
+    verbose: bool,
+    seen_event_ids: &mut HashSet<i64>,
+) {
+    let plays = get_filtered_plays(pbp, filter);
+    let mut new_plays: Vec<_> = plays
+        .into_iter()
+        .filter(|p| !seen_event_ids.contains(&p.event_id))
+        .collect();
+
+    // Sort by event_id to show in order
+    new_plays.sort_by_key(|p| p.event_id);
+
+    for play in &new_plays {
+        seen_event_ids.insert(play.event_id);
+        print_play(pbp, play, verbose);
+    }
+}
+
+/// Print the "Game ended: ..." final score line shown when `follow` stops polling.
+fn print_game_ended_message(pbp: &PlayByPlay) {
+    println!(
+        "\n{}Game ended: {} {} - {} {}{}",
+        colors::BOLD,
+        pbp.away_team.abbrev,
+        pbp.away_team.score,
+        pbp.home_team.abbrev,
+        pbp.home_team.score,
+        colors::RESET
+    );
 }
 
 /// Print the game header

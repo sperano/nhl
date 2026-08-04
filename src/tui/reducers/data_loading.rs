@@ -93,6 +93,68 @@ pub fn reduce_data_loading(
     }
 }
 
+/// Applies a successful standings load: stores the data, clears any matching error,
+/// and rebuilds the demo (dev builds) and standings tabs' focusable metadata.
+fn apply_standings_loaded(
+    new_state: &mut AppState,
+    standings: Vec<nhl_api::Standing>,
+    component_states: &mut crate::tui::component_store::ComponentStateStore,
+) {
+    debug!("DATA: Loaded {} standings", standings.len());
+    new_state.data.standings = Arc::new(Some(standings.clone()));
+    clear_error_with_prefix(new_state, STANDINGS_ERROR_PREFIX);
+    new_state.data.loading.remove(&LoadingKey::Standings);
+
+    // Rebuild demo document focusable data in component state
+    #[cfg(feature = "development")]
+    {
+        use crate::tui::components::demo_tab::DemoDocument;
+        use crate::tui::document::FocusContext;
+        use crate::tui::document_nav::DocumentNavState;
+        if let Some(demo_state) = component_states.get_mut::<DocumentNavState>(DEMO_TAB_PATH) {
+            let demo_doc = DemoDocument::new(Some(standings.clone()));
+            demo_state.sync_focusables(&demo_doc, &FocusContext::default());
+        }
+    }
+
+    // Rebuild standings document focusable data in component state
+    rebuild_standings_focusable_metadata(new_state, component_states);
+}
+
+/// Applies a failed standings load: reports the error and clears focusable data in the
+/// demo (dev builds) and standings tabs since there's no data to show.
+fn apply_standings_error(
+    new_state: &mut AppState,
+    e: Arc<nhl_api::NHLApiError>,
+    component_states: &mut crate::tui::component_store::ComponentStateStore,
+) {
+    debug!("DATA: Failed to load standings: {}", e);
+    new_state
+        .system
+        .set_status_error_message(format!("{} {}", STANDINGS_ERROR_PREFIX, e));
+    new_state.data.loading.remove(&LoadingKey::Standings);
+
+    // Rebuild demo focusable data for empty standings case
+    #[cfg(feature = "development")]
+    {
+        use crate::tui::components::demo_tab::DemoDocument;
+        use crate::tui::document::FocusContext;
+        use crate::tui::document_nav::DocumentNavState;
+        if let Some(demo_state) = component_states.get_mut::<DocumentNavState>(DEMO_TAB_PATH) {
+            let demo_doc = DemoDocument::new(None);
+            demo_state.sync_focusables(&demo_doc, &FocusContext::default());
+        }
+    }
+
+    // Clear standings focusable data in component state on error
+    use crate::tui::components::standings_tab::StandingsTabState;
+    if let Some(standings_state) =
+        component_states.get_mut::<StandingsTabState>(STANDINGS_TAB_PATH)
+    {
+        standings_state.doc_nav.focusables.clear();
+    }
+}
+
 fn handle_standings_loaded(
     state: AppState,
     result: Result<Vec<nhl_api::Standing>, Arc<nhl_api::NHLApiError>>,
@@ -101,61 +163,70 @@ fn handle_standings_loaded(
     let mut new_state = state;
 
     match result {
-        Ok(standings) => {
-            debug!("DATA: Loaded {} standings", standings.len());
-            new_state.data.standings = Arc::new(Some(standings.clone()));
-            clear_error_with_prefix(&mut new_state, STANDINGS_ERROR_PREFIX);
-            new_state.data.loading.remove(&LoadingKey::Standings);
-
-            // Rebuild demo document focusable data in component state
-            #[cfg(feature = "development")]
-            {
-                use crate::tui::components::demo_tab::DemoDocument;
-                use crate::tui::document::FocusContext;
-                use crate::tui::document_nav::DocumentNavState;
-                if let Some(demo_state) =
-                    component_states.get_mut::<DocumentNavState>(DEMO_TAB_PATH)
-                {
-                    let demo_doc = DemoDocument::new(Some(standings.clone()));
-                    demo_state.sync_focusables(&demo_doc, &FocusContext::default());
-                }
-            }
-
-            // Rebuild standings document focusable data in component state
-            rebuild_standings_focusable_metadata(&new_state, component_states);
-        }
-        Err(e) => {
-            debug!("DATA: Failed to load standings: {}", e);
-            new_state
-                .system
-                .set_status_error_message(format!("{} {}", STANDINGS_ERROR_PREFIX, e));
-            new_state.data.loading.remove(&LoadingKey::Standings);
-
-            // Rebuild demo focusable data for empty standings case
-            #[cfg(feature = "development")]
-            {
-                use crate::tui::components::demo_tab::DemoDocument;
-                use crate::tui::document::FocusContext;
-                use crate::tui::document_nav::DocumentNavState;
-                if let Some(demo_state) =
-                    component_states.get_mut::<DocumentNavState>(DEMO_TAB_PATH)
-                {
-                    let demo_doc = DemoDocument::new(None);
-                    demo_state.sync_focusables(&demo_doc, &FocusContext::default());
-                }
-            }
-
-            // Clear standings focusable data in component state on error
-            use crate::tui::components::standings_tab::StandingsTabState;
-            if let Some(standings_state) =
-                component_states.get_mut::<StandingsTabState>(STANDINGS_TAB_PATH)
-            {
-                standings_state.doc_nav.focusables.clear();
-            }
-        }
+        Ok(standings) => apply_standings_loaded(&mut new_state, standings, component_states),
+        Err(e) => apply_standings_error(&mut new_state, e, component_states),
     }
 
     (new_state, Effect::None)
+}
+
+/// Rebuilds the Scores tab's focusable metadata from a freshly loaded schedule.
+///
+/// Single sync call fills position/height/id/row-position/link-target together --
+/// link_target is load-bearing for ActivateGame (Enter on a focused box pushes the
+/// target's boxscore document), so a sync site can no longer forget it.
+fn rebuild_scores_focusable_metadata(
+    new_state: &AppState,
+    component_states: &mut crate::tui::component_store::ComponentStateStore,
+    schedule: &nhl_api::DailySchedule,
+) {
+    use crate::tui::components::score_boxes_document::ScoreBoxesDocument;
+    use crate::tui::components::scores_tab::ScoresTabState;
+    use crate::tui::document::FocusContext;
+
+    if let Some(scores_state) = component_states.get_mut::<ScoresTabState>(SCORES_TAB_PATH) {
+        // Calculate boxes_per_row from terminal width
+        let boxes_per_row =
+            ScoreBoxesDocument::boxes_per_row_for_width(new_state.system.terminal_width);
+
+        // Create the document to extract focusable metadata
+        // animation_frame doesn't affect focusable positions, so use 0
+        let doc = ScoreBoxesDocument::new(
+            Arc::new(Some(schedule.clone())),
+            new_state.data.game_info.clone(),
+            boxes_per_row,
+            scores_state.game_date.clone(),
+            0,
+        );
+
+        scores_state
+            .doc_nav
+            .sync_focusables(&doc, &FocusContext::default());
+    }
+}
+
+/// Returns fetch effects for every schedule game that has already started, so its
+/// per-game detail view has data as soon as it's opened.
+fn game_details_fetch_effects(schedule: &nhl_api::DailySchedule) -> Effect {
+    let mut effects = Vec::new();
+    for game in &schedule.games {
+        // Only fetch details for games that have started
+        if game.game_state != nhl_api::GameState::Future
+            && game.game_state != nhl_api::GameState::PreGame
+        {
+            debug!(
+                "DATA: Requesting game details fetch for game_id={}",
+                game.id
+            );
+            effects.push(Effect::FetchGameDetails(game.id.into()));
+        }
+    }
+
+    if effects.is_empty() {
+        Effect::None
+    } else {
+        Effect::Batch(effects)
+    }
 }
 
 fn handle_schedule_loaded(
@@ -172,57 +243,10 @@ fn handle_schedule_loaded(
             clear_error_with_prefix(&mut new_state, SCHEDULE_ERROR_PREFIX);
             // TODO: Remove Schedule loading key - needs date string
 
-            // Rebuild scores tab focusable metadata from the document
-            use crate::tui::components::score_boxes_document::ScoreBoxesDocument;
-            use crate::tui::components::scores_tab::ScoresTabState;
-            use crate::tui::document::FocusContext;
-
-            if let Some(scores_state) = component_states.get_mut::<ScoresTabState>(SCORES_TAB_PATH)
-            {
-                // Calculate boxes_per_row from terminal width
-                let boxes_per_row =
-                    ScoreBoxesDocument::boxes_per_row_for_width(new_state.system.terminal_width);
-
-                // Create the document to extract focusable metadata
-                // animation_frame doesn't affect focusable positions, so use 0
-                let doc = ScoreBoxesDocument::new(
-                    Arc::new(Some(schedule.clone())),
-                    new_state.data.game_info.clone(),
-                    boxes_per_row,
-                    scores_state.game_date.clone(),
-                    0,
-                );
-
-                // Single sync call fills position/height/id/row-position/link-target
-                // together -- link_target is load-bearing for ActivateGame (Enter on
-                // a focused box pushes the target's boxscore document), so a sync
-                // site can no longer forget it.
-                scores_state
-                    .doc_nav
-                    .sync_focusables(&doc, &FocusContext::default());
-            }
-
+            rebuild_scores_focusable_metadata(&new_state, component_states, &schedule);
             // Return fetch effects for started games
             // This eliminates the need for runtime to compare old/new state
-            let mut effects = Vec::new();
-            for game in &schedule.games {
-                // Only fetch details for games that have started
-                if game.game_state != nhl_api::GameState::Future
-                    && game.game_state != nhl_api::GameState::PreGame
-                {
-                    debug!(
-                        "DATA: Requesting game details fetch for game_id={}",
-                        game.id
-                    );
-                    effects.push(Effect::FetchGameDetails(game.id.into()));
-                }
-            }
-
-            let combined_effect = if effects.is_empty() {
-                Effect::None
-            } else {
-                Effect::Batch(effects)
-            };
+            let combined_effect = game_details_fetch_effects(&schedule);
 
             return (new_state, combined_effect);
         }
@@ -319,6 +343,46 @@ fn handle_boxscore_loaded(
     (new_state, Effect::None)
 }
 
+/// Applies a successful team roster stats load: stores the roster and (if resolved from
+/// a "latest" request) the season list, resolves any pending same-team stack entries
+/// whose season was still unknown, and clears any matching error.
+fn apply_team_roster_loaded(
+    new_state: &mut AppState,
+    team_abbrev: String,
+    requested_season: Option<i32>,
+    payload: TeamRosterStatsPayload,
+) {
+    let resolved_season = payload.stats.season.id();
+    debug!(
+        "DATA: Loaded roster for team {} season {}",
+        team_abbrev, resolved_season
+    );
+    if let Some(seasons) = payload.seasons {
+        Arc::make_mut(&mut new_state.data.team_seasons).insert(team_abbrev.clone(), seasons);
+    }
+    // Focusable metadata is populated on-demand by handle_stacked_document_key
+    Arc::make_mut(&mut new_state.data.team_roster_stats)
+        .insert((team_abbrev.clone(), resolved_season), payload.stats);
+    new_state
+        .data
+        .loading
+        .remove(&LoadingKey::TeamRosterStats(
+            team_abbrev.clone(),
+            requested_season,
+        ));
+    // A "latest" request has now resolved to a concrete season: give every
+    // pending TeamDetail entry for this team its identity, so season cycling
+    // and the loading-key lookup have a real id.
+    for entry in &mut new_state.navigation.document_stack {
+        if let StackedDocument::TeamDetail { abbrev, season } = &mut entry.document {
+            if *abbrev == team_abbrev && season.is_none() {
+                *season = Some(resolved_season);
+            }
+        }
+    }
+    clear_error_with_prefix(new_state, TEAM_ROSTER_ERROR_PREFIX);
+}
+
 fn handle_team_roster_loaded(
     state: AppState,
     team_abbrev: String,
@@ -328,35 +392,7 @@ fn handle_team_roster_loaded(
     let mut new_state = state;
 
     match result {
-        Ok(payload) => {
-            let resolved_season = payload.stats.season.id();
-            debug!(
-                "DATA: Loaded roster for team {} season {}",
-                team_abbrev, resolved_season
-            );
-            if let Some(seasons) = payload.seasons {
-                Arc::make_mut(&mut new_state.data.team_seasons)
-                    .insert(team_abbrev.clone(), seasons);
-            }
-            // Focusable metadata is populated on-demand by handle_stacked_document_key
-            Arc::make_mut(&mut new_state.data.team_roster_stats)
-                .insert((team_abbrev.clone(), resolved_season), payload.stats);
-            new_state.data.loading.remove(&LoadingKey::TeamRosterStats(
-                team_abbrev.clone(),
-                requested_season,
-            ));
-            // A "latest" request has now resolved to a concrete season: give
-            // every pending TeamDetail entry for this team its identity, so
-            // season cycling and the loading-key lookup have a real id.
-            for entry in &mut new_state.navigation.document_stack {
-                if let StackedDocument::TeamDetail { abbrev, season } = &mut entry.document {
-                    if *abbrev == team_abbrev && season.is_none() {
-                        *season = Some(resolved_season);
-                    }
-                }
-            }
-            clear_error_with_prefix(&mut new_state, TEAM_ROSTER_ERROR_PREFIX);
-        }
+        Ok(payload) => apply_team_roster_loaded(&mut new_state, team_abbrev, requested_season, payload),
         Err(e) => {
             debug!(
                 "DATA: Failed to load team roster for {}: {}",

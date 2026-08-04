@@ -16,6 +16,28 @@ use crate::tui::components::SettingsDocument;
 use crate::tui::document::{DocumentView, FocusableId};
 use crate::tui::SettingsCategory;
 
+/// If `modal` is open, wrap `base_element` in a widget that renders both the
+/// base content and the modal; otherwise return `base_element` unchanged.
+pub(crate) fn wrap_with_modal(base_element: Element, modal: Option<&super::ModalState>) -> Element {
+    let Some(modal) = modal else {
+        return base_element;
+    };
+
+    let display_names: Vec<String> = modal
+        .options
+        .iter()
+        .map(|opt| opt.display_name.clone())
+        .collect();
+
+    Element::Widget(Box::new(SettingsTabWithModal {
+        base_element,
+        modal_options: display_names,
+        modal_selected_index: modal.selected_index,
+        modal_position_x: modal.position_x,
+        modal_position_y: modal.position_y,
+    }))
+}
+
 /// Widget for rendering the Settings tab with modal overlay
 pub(crate) struct SettingsTabWithModal {
     pub(crate) base_element: Element,

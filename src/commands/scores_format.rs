@@ -67,6 +67,53 @@ pub fn format_period_text(period_type: Option<PeriodType>, period_number: i32) -
     }
 }
 
+/// Total column count for the score table (base columns plus OT/SO if present)
+fn total_score_columns(has_ot: bool, has_so: bool) -> usize {
+    BASE_SCORE_COLUMNS + has_ot as usize + has_so as usize
+}
+
+/// Build both teams' score rows back-to-back.
+#[allow(clippy::too_many_arguments)]
+fn build_team_rows(
+    away_team: &str,
+    home_team: &str,
+    away_score: Option<i32>,
+    home_score: Option<i32>,
+    away_periods: Option<&Vec<i32>>,
+    home_periods: Option<&Vec<i32>>,
+    has_ot: bool,
+    has_so: bool,
+    total_cols: usize,
+    max_width: usize,
+    should_show_period: &impl Fn(i32) -> bool,
+    box_chars: &BoxChars,
+) -> String {
+    let mut output = String::new();
+    output.push_str(&build_team_row(
+        away_team,
+        away_score,
+        away_periods,
+        has_ot,
+        has_so,
+        total_cols,
+        max_width,
+        should_show_period,
+        box_chars,
+    ));
+    output.push_str(&build_team_row(
+        home_team,
+        home_score,
+        home_periods,
+        has_ot,
+        has_so,
+        total_cols,
+        max_width,
+        should_show_period,
+        box_chars,
+    ));
+    output
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn build_score_table(
     away_team: &str,
@@ -83,10 +130,7 @@ pub fn build_score_table(
     let mut output = String::new();
 
     // Calculate column count based on actual periods, but we'll pad to max width later
-    let base_cols = BASE_SCORE_COLUMNS; // empty, 1, 2, 3, T
-    let ot_cols = if has_ot { 1 } else { 0 };
-    let so_cols = if has_so { 1 } else { 0 };
-    let total_cols = base_cols + ot_cols + so_cols;
+    let total_cols = total_score_columns(has_ot, has_so);
     let max_width = GAME_BOX_WIDTH as usize; // Width with all 5 periods
 
     // Helper to check if a period should show score or dash
@@ -99,20 +143,12 @@ pub fn build_score_table(
         has_ot, has_so, total_cols, max_width, box_chars,
     ));
     output.push_str(&build_middle_border(total_cols, max_width, box_chars));
-    output.push_str(&build_team_row(
+    output.push_str(&build_team_rows(
         away_team,
-        away_score,
-        away_periods,
-        has_ot,
-        has_so,
-        total_cols,
-        max_width,
-        &should_show_period,
-        box_chars,
-    ));
-    output.push_str(&build_team_row(
         home_team,
+        away_score,
         home_score,
+        away_periods,
         home_periods,
         has_ot,
         has_so,
@@ -230,6 +266,23 @@ fn build_header_row(
     row
 }
 
+/// Compute the display value for one period cell. Shows "-" when the period hasn't
+/// been reached yet (per `should_show_period`) or when no per-period data is available.
+fn period_cell_value(
+    periods: Option<&Vec<i32>>,
+    period_num: i32,
+    index: usize,
+    should_show_period: &impl Fn(i32) -> bool,
+) -> String {
+    if !should_show_period(period_num) {
+        return "-".to_string();
+    }
+    periods
+        .and_then(|p| p.get(index))
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "-".to_string())
+}
+
 /// Render period scores for a team
 fn render_team_periods(
     output: &mut String,
@@ -239,85 +292,28 @@ fn render_team_periods(
     should_show_period: &impl Fn(i32) -> bool,
     box_chars: &BoxChars,
 ) {
-    if let Some(periods) = periods {
-        // Period 1
-        let p1_value = if should_show_period(1) {
-            periods
-                .get(PERIOD_1_INDEX)
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| "-".to_string())
-        } else {
-            "-".to_string()
-        };
-        output.push_str(&format!("{:^width$}", p1_value, width = PERIOD_COL_WIDTH));
+    let cell = |period_num: i32, index: usize| {
+        format!(
+            "{:^width$}",
+            period_cell_value(periods, period_num, index, should_show_period),
+            width = PERIOD_COL_WIDTH
+        )
+    };
+
+    output.push_str(&cell(1, PERIOD_1_INDEX));
+    output.push_str(box_chars.vertical);
+    output.push_str(&cell(2, PERIOD_2_INDEX));
+    output.push_str(box_chars.vertical);
+    output.push_str(&cell(3, PERIOD_3_INDEX));
+
+    if has_ot {
         output.push_str(box_chars.vertical);
+        output.push_str(&cell(OVERTIME_PERIOD_NUM, OVERTIME_INDEX));
+    }
 
-        // Period 2
-        let p2_value = if should_show_period(2) {
-            periods
-                .get(PERIOD_2_INDEX)
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| "-".to_string())
-        } else {
-            "-".to_string()
-        };
-        output.push_str(&format!("{:^width$}", p2_value, width = PERIOD_COL_WIDTH));
+    if has_so {
         output.push_str(box_chars.vertical);
-
-        // Period 3
-        let p3_value = if should_show_period(3) {
-            periods
-                .get(PERIOD_3_INDEX)
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| "-".to_string())
-        } else {
-            "-".to_string()
-        };
-        output.push_str(&format!("{:^width$}", p3_value, width = PERIOD_COL_WIDTH));
-
-        if has_ot {
-            output.push_str(box_chars.vertical);
-            let ot_value = if should_show_period(OVERTIME_PERIOD_NUM) {
-                periods
-                    .get(OVERTIME_INDEX)
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| "-".to_string())
-            } else {
-                "-".to_string()
-            };
-            output.push_str(&format!("{:^width$}", ot_value, width = PERIOD_COL_WIDTH));
-        }
-
-        if has_so {
-            output.push_str(box_chars.vertical);
-            let so_value = if should_show_period(SHOOTOUT_PERIOD_NUM) {
-                periods
-                    .get(SHOOTOUT_INDEX)
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| "-".to_string())
-            } else {
-                "-".to_string()
-            };
-            output.push_str(&format!("{:^width$}", so_value, width = PERIOD_COL_WIDTH));
-        }
-    } else {
-        output.push_str(&format!("{:^width$}", "-", width = PERIOD_COL_WIDTH)); // P1
-        output.push_str(box_chars.vertical);
-        output.push_str(&format!("{:^width$}", "-", width = PERIOD_COL_WIDTH)); // P2
-        output.push_str(box_chars.vertical);
-        output.push_str(&format!("{:^width$}", "-", width = PERIOD_COL_WIDTH)); // P3
-
-        if has_ot {
-            output.push_str(box_chars.vertical);
-            output.push_str(&format!("{:^width$}", "-", width = PERIOD_COL_WIDTH));
-            // OT
-        }
-
-        if has_so {
-            output.push_str(box_chars.vertical);
-            output.push_str(&format!("{:^width$}", "-", width = PERIOD_COL_WIDTH));
-            // SO
-        }
+        output.push_str(&cell(SHOOTOUT_PERIOD_NUM, SHOOTOUT_INDEX));
     }
 }
 
@@ -365,6 +361,42 @@ fn build_team_row(
     row
 }
 
+/// Ensure `away_periods`/`home_periods` have enough slots for this period's score, and
+/// update the has_ot/has_so flags based on its type.
+fn track_period_slot(
+    period_type: Option<PeriodType>,
+    away_periods: &mut Vec<i32>,
+    home_periods: &mut Vec<i32>,
+    has_ot: &mut bool,
+    has_so: &mut bool,
+) {
+    if period_type == Some(PeriodType::Overtime) {
+        *has_ot = true;
+        // Ensure we have enough slots (up to OVERTIME_INDEX + 1)
+        if away_periods.len() < OVERTIME_INDEX + 1 {
+            away_periods.push(0);
+            home_periods.push(0);
+        }
+    } else if period_type == Some(PeriodType::Shootout) {
+        *has_so = true;
+        // Ensure we have enough slots (up to SHOOTOUT_INDEX + 1)
+        while away_periods.len() < SHOOTOUT_INDEX + 1 {
+            away_periods.push(0);
+            home_periods.push(0);
+        }
+    }
+}
+
+/// Index within `away_periods`/`home_periods` where this period's score belongs.
+fn period_score_index(period_type: Option<PeriodType>, period_num: usize) -> usize {
+    match period_type {
+        // Missing period type (historical data) is treated as regulation
+        Some(PeriodType::Regulation) | None => (period_num - 1).min(PERIOD_3_INDEX), // P1=0, P2=1, P3=2
+        Some(PeriodType::Overtime) => OVERTIME_INDEX,
+        Some(PeriodType::Shootout) => SHOOTOUT_INDEX,
+    }
+}
+
 /// Extract period scores from GameSummary
 pub fn extract_period_scores(summary: &GameSummary) -> PeriodScores {
     let mut away_periods = vec![0, 0, 0]; // P1, P2, P3
@@ -376,24 +408,14 @@ pub fn extract_period_scores(summary: &GameSummary) -> PeriodScores {
     let mut prev_home_score = 0;
 
     for period in &summary.scoring {
-        let period_num = period.period_descriptor.number as usize;
-
-        // Determine if this is OT or SO
-        if period.period_descriptor.period_type == Some(PeriodType::Overtime) {
-            has_ot = true;
-            // Ensure we have enough slots (up to OVERTIME_INDEX + 1)
-            if away_periods.len() < OVERTIME_INDEX + 1 {
-                away_periods.push(0);
-                home_periods.push(0);
-            }
-        } else if period.period_descriptor.period_type == Some(PeriodType::Shootout) {
-            has_so = true;
-            // Ensure we have enough slots (up to SHOOTOUT_INDEX + 1)
-            while away_periods.len() < SHOOTOUT_INDEX + 1 {
-                away_periods.push(0);
-                home_periods.push(0);
-            }
-        }
+        let period_type = period.period_descriptor.period_type;
+        track_period_slot(
+            period_type,
+            &mut away_periods,
+            &mut home_periods,
+            &mut has_ot,
+            &mut has_so,
+        );
 
         // Get the final score after this period (from last goal)
         if let Some(last_goal) = period.goals.last() {
@@ -404,13 +426,7 @@ pub fn extract_period_scores(summary: &GameSummary) -> PeriodScores {
             let away_goals_in_period = period_away_score - prev_away_score;
             let home_goals_in_period = period_home_score - prev_home_score;
 
-            // Store in the appropriate slot
-            let idx = match period.period_descriptor.period_type {
-                // Missing period type (historical data) is treated as regulation
-                Some(PeriodType::Regulation) | None => (period_num - 1).min(PERIOD_3_INDEX), // P1=0, P2=1, P3=2
-                Some(PeriodType::Overtime) => OVERTIME_INDEX,
-                Some(PeriodType::Shootout) => SHOOTOUT_INDEX,
-            };
+            let idx = period_score_index(period_type, period.period_descriptor.number as usize);
 
             if idx < away_periods.len() {
                 away_periods[idx] = away_goals_in_period;

@@ -223,6 +223,13 @@ impl Document for BoxscoreDocumentContent {
 
 /// Column definitions for game-level skater stats
 fn game_skater_columns() -> Vec<ColumnDef<SkaterStats>> {
+    let mut columns = skater_scoring_columns();
+    columns.extend(skater_possession_columns());
+    columns
+}
+
+/// Identity columns (#, player, position) plus core scoring stats
+fn skater_scoring_columns() -> Vec<ColumnDef<SkaterStats>> {
     vec![
         ColumnDef::new("#", 2, Alignment::Right, |s: &SkaterStats| {
             CellValue::StyledText(s.sweater_number.to_string())
@@ -256,6 +263,12 @@ fn game_skater_columns() -> Vec<ColumnDef<SkaterStats>> {
         ColumnDef::new("+/-", 3, Alignment::Right, |s: &SkaterStats| {
             CellValue::Text(format!("{:+}", s.plus_minus))
         }),
+    ]
+}
+
+/// Possession, discipline, and ice-time columns
+fn skater_possession_columns() -> Vec<ColumnDef<SkaterStats>> {
+    vec![
         ColumnDef::new("SOG", 3, Alignment::Right, |s: &SkaterStats| {
             CellValue::Text(s.sog.to_string())
         }),
@@ -293,6 +306,13 @@ fn game_skater_columns() -> Vec<ColumnDef<SkaterStats>> {
 /// Column definitions for game-level goalie stats
 fn game_goalie_columns(box_chars: &crate::formatting::BoxChars) -> Vec<ColumnDef<GoalieStats>> {
     let checkmark = box_chars.checkmark.to_string();
+    let mut columns = goalie_identity_columns(checkmark);
+    columns.extend(goalie_shot_columns());
+    columns
+}
+
+/// Identity columns (#, player, decision, starter checkmark)
+fn goalie_identity_columns(checkmark: String) -> Vec<ColumnDef<GoalieStats>> {
     vec![
         ColumnDef::new("#", 2, Alignment::Right, |g: &GoalieStats| {
             CellValue::StyledText(g.sweater_number.to_string())
@@ -319,6 +339,12 @@ fn game_goalie_columns(box_chars: &crate::formatting::BoxChars) -> Vec<ColumnDef
             };
             CellValue::Text(text)
         }),
+    ]
+}
+
+/// Shot/save/ice-time columns
+fn goalie_shot_columns() -> Vec<ColumnDef<GoalieStats>> {
+    vec![
         ColumnDef::new("SA", 3, Alignment::Right, |g: &GoalieStats| {
             CellValue::Text(g.shots_against.to_string())
         }),

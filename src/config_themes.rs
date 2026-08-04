@@ -3,6 +3,10 @@ use ratatui::style::Color;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
+#[path = "config_themes_color.rs"]
+mod config_themes_color;
+pub(super) use config_themes_color::parse_color;
+
 /// Default darkening factor for unfocused elements
 const DEFAULT_DARKENING_FACTOR: f32 = 0.5;
 /// Darkening factor for themes with bright backgrounds (like Habs)
@@ -418,83 +422,4 @@ pub(super) fn format_color(color: &Color) -> String {
         Color::White => "white".to_string(),
         _ => "white".to_string(), // fallback for indexed colors
     }
-}
-
-/// Parse a color string into a ratatui Color.
-/// Supports named colors ("red"), hex ("#FF6600", "#f60"), and RGB tuples ("255,165,0").
-pub(super) fn parse_color(s: &str) -> Option<Color> {
-    let s = s.trim().to_lowercase();
-
-    // Named colors
-    match s.as_str() {
-        "black" => return Some(Color::Black),
-        "red" => return Some(Color::Red),
-        "green" => return Some(Color::Green),
-        "yellow" => return Some(Color::Yellow),
-        "blue" => return Some(Color::Blue),
-        "magenta" => return Some(Color::Magenta),
-        "cyan" => return Some(Color::Cyan),
-        "gray" | "grey" => return Some(Color::Gray),
-        "darkgray" | "darkgrey" => return Some(Color::DarkGray),
-        "lightred" => return Some(Color::LightRed),
-        "lightgreen" => return Some(Color::LightGreen),
-        "lightyellow" => return Some(Color::LightYellow),
-        "lightblue" => return Some(Color::LightBlue),
-        "lightmagenta" => return Some(Color::LightMagenta),
-        "lightcyan" => return Some(Color::LightCyan),
-        "white" => return Some(Color::White),
-        "orange" => return Some(Color::Rgb(255, 165, 0)),
-        "seafoam" => return Some(Color::Rgb(159, 226, 191)),
-        "deepred" | "deep red" => return Some(Color::Rgb(226, 74, 74)),
-        "coral" => return Some(Color::Rgb(255, 107, 107)),
-        "burntorange" | "burnt orange" => return Some(Color::Rgb(255, 140, 66)),
-        "amber" => return Some(Color::Rgb(255, 200, 87)),
-        "goldenrod" => return Some(Color::Rgb(232, 185, 35)),
-        "olive" => return Some(Color::Rgb(166, 166, 89)),
-        "chartreuse" => return Some(Color::Rgb(140, 207, 77)),
-        "greenapple" | "green apple" => return Some(Color::Rgb(88, 196, 114)),
-        "emerald" => return Some(Color::Rgb(46, 184, 114)),
-        "teal" => return Some(Color::Rgb(42, 168, 118)),
-        "cyansky" | "cyan sky" => return Some(Color::Rgb(77, 208, 225)),
-        "azure" => return Some(Color::Rgb(33, 150, 243)),
-        "cobaltblue" | "cobalt blue" => return Some(Color::Rgb(61, 90, 254)),
-        "indigo" => return Some(Color::Rgb(92, 107, 192)),
-        "violet" => return Some(Color::Rgb(126, 87, 194)),
-        "orchid" => return Some(Color::Rgb(186, 104, 200)),
-        "hotpink" | "hot pink" => return Some(Color::Rgb(255, 119, 169)),
-        "salmon" => return Some(Color::Rgb(255, 158, 157)),
-        "beige" => return Some(Color::Rgb(234, 210, 172)),
-        "coolgray" | "cool gray" => return Some(Color::Rgb(159, 168, 176)),
-        "slate" => return Some(Color::Rgb(96, 125, 139)),
-        "charcoal" => return Some(Color::Rgb(55, 71, 79)),
-        _ => {}
-    }
-
-    // Hex colors (#FF6600 or #f60)
-    if let Some(hex) = s.strip_prefix('#') {
-        if hex.len() == 6 {
-            let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
-            let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
-            let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
-            return Some(Color::Rgb(r, g, b));
-        } else if hex.len() == 3 {
-            let r = u8::from_str_radix(&hex[0..1].repeat(2), 16).ok()?;
-            let g = u8::from_str_radix(&hex[1..2].repeat(2), 16).ok()?;
-            let b = u8::from_str_radix(&hex[2..3].repeat(2), 16).ok()?;
-            return Some(Color::Rgb(r, g, b));
-        }
-    }
-
-    // RGB tuples "255,165,0"
-    if s.contains(',') {
-        let parts: Vec<&str> = s.split(',').collect();
-        if parts.len() == 3 {
-            let r = parts[0].trim().parse::<u8>().ok()?;
-            let g = parts[1].trim().parse::<u8>().ok()?;
-            let b = parts[2].trim().parse::<u8>().ok()?;
-            return Some(Color::Rgb(r, g, b));
-        }
-    }
-
-    None
 }

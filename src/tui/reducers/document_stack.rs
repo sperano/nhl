@@ -52,6 +52,96 @@ fn stacked_document_key(state: AppState, key: crossterm::event::KeyEvent) -> (Ap
     (new_state, Effect::None)
 }
 
+/// Requests a boxscore fetch for a just-pushed `Boxscore` document, unless the data is
+/// already loaded or already in flight.
+fn boxscore_fetch_effect(new_state: &mut AppState, game_id: i64) -> Effect {
+    if !new_state.data.boxscores.contains_key(&game_id)
+        && !new_state.data.loading.contains(&LoadingKey::Boxscore(game_id))
+    {
+        debug!(
+            "DOCUMENT_STACK: Requesting boxscore fetch for game_id={}",
+            game_id
+        );
+        new_state.data.loading.insert(LoadingKey::Boxscore(game_id));
+        Effect::FetchBoxscore(game_id)
+    } else {
+        Effect::None
+    }
+}
+
+/// Resolves the season for a just-pushed `TeamDetail` document, writes it back onto the
+/// top-of-stack entry, and requests a team roster stats fetch unless the data is already
+/// loaded or already in flight.
+fn team_detail_fetch_effect(new_state: &mut AppState, abbrev: &str, season: Option<i32>) -> Effect {
+    // Normalize "latest" locally when the seasons list is already known, so a
+    // re-open hits the (abbrev, season) map instead of re-fetching through the
+    // un-cached seasons endpoint.
+    let season = season.or_else(|| {
+        new_state
+            .data
+            .team_seasons
+            .get(abbrev)
+            .and_then(|ids| ids.last().copied())
+    });
+    if let Some(StackedDocument::TeamDetail { season: s, .. }) = new_state
+        .navigation
+        .document_stack
+        .last_mut()
+        .map(|entry| &mut entry.document)
+    {
+        *s = season;
+    }
+
+    let have_data = season.is_some_and(|s| {
+        new_state
+            .data
+            .team_roster_stats
+            .contains_key(&(abbrev.to_string(), s))
+    });
+    let key = LoadingKey::TeamRosterStats(abbrev.to_string(), season);
+    if !have_data && !new_state.data.loading.contains(&key) {
+        debug!(
+            "DOCUMENT_STACK: Requesting team roster stats fetch for team={} season={:?}",
+            abbrev, season
+        );
+        new_state.data.loading.insert(key);
+        // When landing directly on a specific season (e.g. from a player's
+        // past-season row) the team's season list may be unknown; fetch it
+        // too so season cycling and the current-season flag work.
+        let fetch_seasons = !new_state.data.team_seasons.contains_key(abbrev);
+        Effect::FetchTeamRosterStats {
+            abbrev: abbrev.to_string(),
+            season,
+            fetch_seasons,
+        }
+    } else {
+        Effect::None
+    }
+}
+
+/// Requests a player stats fetch for a just-pushed `PlayerDetail` document, unless the
+/// data is already loaded or already in flight.
+fn player_detail_fetch_effect(new_state: &mut AppState, player_id: i64) -> Effect {
+    if !new_state.data.player_data.contains_key(&player_id)
+        && !new_state
+            .data
+            .loading
+            .contains(&LoadingKey::PlayerStats(player_id))
+    {
+        debug!(
+            "DOCUMENT_STACK: Requesting player stats fetch for player_id={}",
+            player_id
+        );
+        new_state
+            .data
+            .loading
+            .insert(LoadingKey::PlayerStats(player_id));
+        Effect::FetchPlayerStats(player_id)
+    } else {
+        Effect::None
+    }
+}
+
 fn push_document(state: AppState, doc: StackedDocument) -> (AppState, Effect) {
     debug!("DOCUMENT_STACK: Pushing document onto stack: {:?}", doc);
     let mut new_state = state;
@@ -63,97 +153,46 @@ fn push_document(state: AppState, doc: StackedDocument) -> (AppState, Effect) {
     // Return fetch effect directly based on document type
     // This eliminates the need for runtime to compare old/new state
     let fetch_effect = match &doc {
-        StackedDocument::Boxscore { game_id, .. } => {
-            // Check if we don't already have the data and aren't already loading
-            if !new_state.data.boxscores.contains_key(game_id)
-                && !new_state
-                    .data
-                    .loading
-                    .contains(&LoadingKey::Boxscore(*game_id))
-            {
-                debug!(
-                    "DOCUMENT_STACK: Requesting boxscore fetch for game_id={}",
-                    game_id
-                );
-                new_state
-                    .data
-                    .loading
-                    .insert(LoadingKey::Boxscore(*game_id));
-                Effect::FetchBoxscore(*game_id)
-            } else {
-                Effect::None
-            }
-        }
+        StackedDocument::Boxscore { game_id, .. } => boxscore_fetch_effect(&mut new_state, *game_id),
         StackedDocument::TeamDetail { abbrev, season } => {
-            // Normalize "latest" locally when the seasons list is already
-            // known, so a re-open hits the (abbrev, season) map instead of
-            // re-fetching through the un-cached seasons endpoint.
-            let season = season.or_else(|| {
-                new_state
-                    .data
-                    .team_seasons
-                    .get(abbrev)
-                    .and_then(|ids| ids.last().copied())
-            });
-            if let Some(StackedDocument::TeamDetail { season: s, .. }) = new_state
-                .navigation
-                .document_stack
-                .last_mut()
-                .map(|entry| &mut entry.document)
-            {
-                *s = season;
-            }
-
-            let have_data = season.is_some_and(|s| {
-                new_state
-                    .data
-                    .team_roster_stats
-                    .contains_key(&(abbrev.clone(), s))
-            });
-            let key = LoadingKey::TeamRosterStats(abbrev.clone(), season);
-            if !have_data && !new_state.data.loading.contains(&key) {
-                debug!(
-                    "DOCUMENT_STACK: Requesting team roster stats fetch for team={} season={:?}",
-                    abbrev, season
-                );
-                new_state.data.loading.insert(key);
-                // When landing directly on a specific season (e.g. from a
-                // player's past-season row) the team's season list may be
-                // unknown; fetch it too so season cycling and the
-                // current-season flag work.
-                let fetch_seasons = !new_state.data.team_seasons.contains_key(abbrev);
-                Effect::FetchTeamRosterStats {
-                    abbrev: abbrev.clone(),
-                    season,
-                    fetch_seasons,
-                }
-            } else {
-                Effect::None
-            }
+            team_detail_fetch_effect(&mut new_state, abbrev, *season)
         }
         StackedDocument::PlayerDetail { player_id, .. } => {
-            if !new_state.data.player_data.contains_key(player_id)
-                && !new_state
-                    .data
-                    .loading
-                    .contains(&LoadingKey::PlayerStats(*player_id))
-            {
-                debug!(
-                    "DOCUMENT_STACK: Requesting player stats fetch for player_id={}",
-                    player_id
-                );
-                new_state
-                    .data
-                    .loading
-                    .insert(LoadingKey::PlayerStats(*player_id));
-                Effect::FetchPlayerStats(*player_id)
-            } else {
-                Effect::None
-            }
+            player_detail_fetch_effect(&mut new_state, *player_id)
         }
     };
 
     (new_state, fetch_effect)
+}
+
+/// Resolves the season to cycle the top team-detail document to: returns
+/// `(abbrev, current_season, new_season)`, or `None` if a no-op applies (top
+/// document is not a team detail, its season hasn't resolved yet, the team's
+/// season list is unknown, or the season is already at the requested end
+/// (clamped, no wrap)).
+fn resolve_season_cycle_target(state: &AppState, next: bool) -> Option<(String, i32, i32)> {
+    let entry = state.navigation.document_stack.last()?;
+    let StackedDocument::TeamDetail {
+        abbrev,
+        season: Some(current),
+    } = &entry.document
+    else {
+        return None;
+    };
+    let (abbrev, current) = (abbrev.clone(), *current);
+
+    let ids = state.data.team_seasons.get(&abbrev)?;
+    let pos = ids.iter().position(|s| *s == current)?;
+    let new_pos = if next {
+        (pos + 1).min(ids.len() - 1)
+    } else {
+        pos.saturating_sub(1)
+    };
+    if new_pos == pos {
+        return None;
+    }
+
+    Some((abbrev, current, ids[new_pos]))
 }
 
 /// Cycle the top team-detail document to the previous (`next == false`) or
@@ -165,49 +204,27 @@ fn push_document(state: AppState, doc: StackedDocument) -> (AppState, Effect) {
 fn cycle_team_detail_season(state: AppState, next: bool) -> (AppState, Effect) {
     let mut new_state = state;
 
-    let Some(entry) = new_state.navigation.document_stack.last_mut() else {
+    let Some((abbrev, current, new_season)) = resolve_season_cycle_target(&new_state, next) else {
         return (new_state, Effect::None);
     };
-    let StackedDocument::TeamDetail {
-        abbrev,
-        season: Some(current),
-    } = &entry.document
-    else {
-        return (new_state, Effect::None);
-    };
-    let (abbrev, current) = (abbrev.clone(), *current);
-
-    let Some(ids) = new_state.data.team_seasons.get(&abbrev) else {
-        return (new_state, Effect::None);
-    };
-    let Some(pos) = ids.iter().position(|s| *s == current) else {
-        return (new_state, Effect::None);
-    };
-    let new_pos = if next {
-        (pos + 1).min(ids.len() - 1)
-    } else {
-        pos.saturating_sub(1)
-    };
-    if new_pos == pos {
-        return (new_state, Effect::None);
-    }
-    let new_season = ids[new_pos];
 
     debug!(
         "DOCUMENT_STACK: Cycling team detail season for {}: {} -> {}",
         abbrev, current, new_season
     );
-    if let StackedDocument::TeamDetail { season, .. } = &mut entry.document {
-        *season = Some(new_season);
+    if let Some(entry) = new_state.navigation.document_stack.last_mut() {
+        if let StackedDocument::TeamDetail { season, .. } = &mut entry.document {
+            *season = Some(new_season);
+        }
+        // The roster changes entirely: reset focus and scroll, keep the
+        // viewport height (it only changes on terminal resize). Focusables
+        // re-sync on the next key or render.
+        entry.nav = DocumentNavState {
+            focus_index: Some(0),
+            viewport_height: entry.nav.viewport_height,
+            ..Default::default()
+        };
     }
-    // The roster changes entirely: reset focus and scroll, keep the viewport
-    // height (it only changes on terminal resize). Focusables re-sync on the
-    // next key or render.
-    entry.nav = DocumentNavState {
-        focus_index: Some(0),
-        viewport_height: entry.nav.viewport_height,
-        ..Default::default()
-    };
 
     let have_data = new_state
         .data

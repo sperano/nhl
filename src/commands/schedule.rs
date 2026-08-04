@@ -3,7 +3,7 @@ use crate::config;
 use crate::data_provider::NHLDataProvider;
 use crate::layout_constants::{SCHEDULE_BOX_CONTENT_WIDTH, SCHEDULE_BOX_TOTAL_WIDTH};
 use anyhow::{Context, Result};
-use nhl_api::DailySchedule;
+use nhl_api::{DailySchedule, ScheduleGame};
 
 pub fn format_schedule(schedule: &DailySchedule, time_format: &str) -> String {
     let mut output = String::new();
@@ -20,67 +20,84 @@ pub fn format_schedule(schedule: &DailySchedule, time_format: &str) -> String {
             if i > 0 {
                 output.push('\n');
             }
-            output.push_str(&format!(
-                "┌{:─<width$}┐\n",
-                "",
-                width = SCHEDULE_BOX_TOTAL_WIDTH
-            ));
-            let team_line = format!("{} @ {}", game.away_team.abbrev, game.home_team.abbrev);
-            output.push_str(&format!(
-                "│ {:<width$} │\n",
-                team_line,
-                width = SCHEDULE_BOX_CONTENT_WIDTH
-            ));
-            let id_line = format!("Game ID: {}", game.id);
-            output.push_str(&format!(
-                "│ {:<width$} │\n",
-                id_line,
-                width = SCHEDULE_BOX_CONTENT_WIDTH
-            ));
-            output.push_str(&format!(
-                "├{:─<width$}┤\n",
-                "",
-                width = SCHEDULE_BOX_TOTAL_WIDTH
-            ));
-            let status_line = format!("Status: {}", game.game_state);
-            output.push_str(&format!(
-                "│ {:<width$} │\n",
-                status_line,
-                width = SCHEDULE_BOX_CONTENT_WIDTH
-            ));
-
-            let time_display = format_local_time(&game.start_time_utc, time_format);
-            let time_line = format!("Time: {}", time_display);
-            output.push_str(&format!(
-                "│ {:<width$} │\n",
-                time_line,
-                width = SCHEDULE_BOX_CONTENT_WIDTH
-            ));
-            if let (Some(away_score), Some(home_score)) =
-                (game.away_team.score, game.home_team.score)
-            {
-                output.push_str(&format!(
-                    "├{:─<width$}┤\n",
-                    "",
-                    width = SCHEDULE_BOX_TOTAL_WIDTH
-                ));
-                let left_side = format!("{:<23} {:>2}", game.away_team.abbrev, away_score);
-                let right_side = format!("{:<2} {:>26}", home_score, game.home_team.abbrev);
-                let score_line = format!("{}  -  {}", left_side, right_side);
-                output.push_str(&format!("│ {} │\n", score_line));
-            } else {
-                output.push_str(&format!(
-                    "│ {:<width$} │\n",
-                    "Game not started",
-                    width = SCHEDULE_BOX_CONTENT_WIDTH
-                ));
-            }
-            output.push_str(&format!(
-                "└{:─<width$}┘\n",
-                "",
-                width = SCHEDULE_BOX_TOTAL_WIDTH
-            ));
+            output.push_str(&format_game_box(game, time_format));
         }
+    }
+    output
+}
+
+/// Format a single game's bordered box: team/ID header, status, time, and score
+/// (or a "Game not started" placeholder).
+fn format_game_box(game: &ScheduleGame, time_format: &str) -> String {
+    let mut output = String::new();
+
+    output.push_str(&format!(
+        "┌{:─<width$}┐\n",
+        "",
+        width = SCHEDULE_BOX_TOTAL_WIDTH
+    ));
+    let team_line = format!("{} @ {}", game.away_team.abbrev, game.home_team.abbrev);
+    output.push_str(&format!(
+        "│ {:<width$} │\n",
+        team_line,
+        width = SCHEDULE_BOX_CONTENT_WIDTH
+    ));
+    let id_line = format!("Game ID: {}", game.id);
+    output.push_str(&format!(
+        "│ {:<width$} │\n",
+        id_line,
+        width = SCHEDULE_BOX_CONTENT_WIDTH
+    ));
+    output.push_str(&format!(
+        "├{:─<width$}┤\n",
+        "",
+        width = SCHEDULE_BOX_TOTAL_WIDTH
+    ));
+    let status_line = format!("Status: {}", game.game_state);
+    output.push_str(&format!(
+        "│ {:<width$} │\n",
+        status_line,
+        width = SCHEDULE_BOX_CONTENT_WIDTH
+    ));
+
+    let time_display = format_local_time(&game.start_time_utc, time_format);
+    let time_line = format!("Time: {}", time_display);
+    output.push_str(&format!(
+        "│ {:<width$} │\n",
+        time_line,
+        width = SCHEDULE_BOX_CONTENT_WIDTH
+    ));
+
+    output.push_str(&format_game_score_section(game));
+
+    output.push_str(&format!(
+        "└{:─<width$}┘\n",
+        "",
+        width = SCHEDULE_BOX_TOTAL_WIDTH
+    ));
+    output
+}
+
+/// Format the score section of a game box: a score line (with its own separating
+/// border) once both teams have a score, otherwise a "Game not started" placeholder.
+fn format_game_score_section(game: &ScheduleGame) -> String {
+    let mut output = String::new();
+    if let (Some(away_score), Some(home_score)) = (game.away_team.score, game.home_team.score) {
+        output.push_str(&format!(
+            "├{:─<width$}┤\n",
+            "",
+            width = SCHEDULE_BOX_TOTAL_WIDTH
+        ));
+        let left_side = format!("{:<23} {:>2}", game.away_team.abbrev, away_score);
+        let right_side = format!("{:<2} {:>26}", home_score, game.home_team.abbrev);
+        let score_line = format!("{}  -  {}", left_side, right_side);
+        output.push_str(&format!("│ {} │\n", score_line));
+    } else {
+        output.push_str(&format!(
+            "│ {:<width$} │\n",
+            "Game not started",
+            width = SCHEDULE_BOX_CONTENT_WIDTH
+        ));
     }
     output
 }

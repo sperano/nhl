@@ -189,23 +189,12 @@ impl PlayerDetailDocumentContent {
             )
         })
     }
-}
 
-impl Document for PlayerDetailDocumentContent {
-    fn build(&self, focus: &FocusContext) -> Vec<DocumentElement> {
-        let Some(ref player) = self.player_data else {
-            return DocumentBuilder::new()
-                .text(format!("No data available for player {}", self.player_id))
-                .build();
-        };
-
-        let mut builder = DocumentBuilder::new();
-
-        // Player name header
+    /// Name heading plus the two detail lines (team/number/position/hand,
+    /// height/weight/birth date).
+    fn build_player_header(builder: DocumentBuilder, player: &PlayerLanding) -> DocumentBuilder {
         let full_name = format!("{} {}", player.first_name.default, player.last_name.default);
-        builder = builder.heading(1, full_name);
 
-        // Player details line 1: Team, number, position, handedness
         let team_info = player
             .current_team_abbrev
             .as_ref()
@@ -228,54 +217,87 @@ impl Document for PlayerDetailDocumentContent {
             player.shoots_catches.map_or("N/A", |h| h.code()),
             hand_label
         );
-        builder = builder.text(details1);
 
-        // Player details line 2: Height, weight, birth date
         let height_feet = player.height_in_inches / 12;
         let height_inches = player.height_in_inches % 12;
         let details2 = format!(
             "Height: {}'{}\" | Weight: {} lbs | Born: {}",
             height_feet, height_inches, player.weight_in_pounds, player.birth_date
         );
-        builder = builder.text(details2);
-        builder = builder.spacer(1);
 
-        // Draft info (if available)
-        if let Some(ref draft) = player.draft_details {
-            let draft_info = format!(
-                "Draft: {} - Round {}, Pick {} (#{} overall) by {}",
-                draft.year, draft.round, draft.pick_in_round, draft.overall_pick, draft.team_abbrev
-            );
-            builder = builder.text(draft_info);
-            builder = builder.spacer(1);
-        }
+        builder
+            .heading(1, full_name)
+            .text(details1)
+            .text(details2)
+            .spacer(1)
+    }
 
-        // Career totals
-        if let Some(career_stats) = Self::format_career_stats(player) {
-            builder = builder.heading(2, "CAREER TOTALS - Regular Season");
-            builder = builder.text(career_stats);
-            builder = builder.spacer(1);
-        }
+    /// Draft round/pick info, if the player was drafted
+    fn build_draft_info(builder: DocumentBuilder, player: &PlayerLanding) -> DocumentBuilder {
+        let Some(ref draft) = player.draft_details else {
+            return builder;
+        };
 
-        // Season-by-season table
+        let draft_info = format!(
+            "Draft: {} - Round {}, Pick {} (#{} overall) by {}",
+            draft.year, draft.round, draft.pick_in_round, draft.overall_pick, draft.team_abbrev
+        );
+        builder.text(draft_info).spacer(1)
+    }
+
+    /// Career regular-season totals summary, if available
+    fn build_career_totals(builder: DocumentBuilder, player: &PlayerLanding) -> DocumentBuilder {
+        let Some(career_stats) = Self::format_career_stats(player) else {
+            return builder;
+        };
+
+        builder
+            .heading(2, "CAREER TOTALS - Regular Season")
+            .text(career_stats)
+            .spacer(1)
+    }
+
+    /// Season-by-season stats table, if the player has any NHL regular-season data
+    fn build_season_table(
+        builder: DocumentBuilder,
+        player: &PlayerLanding,
+        focus: &FocusContext,
+    ) -> DocumentBuilder {
         let seasons = Self::get_nhl_regular_seasons(player);
-        if !seasons.is_empty() {
-            let columns = if player.position == Some(Position::Goalie) {
-                Self::goalie_season_columns()
-            } else {
-                Self::skater_season_columns()
-            };
-
-            let focused_row = focus.focused_table_row("season_stats");
-            let total_seasons = seasons.len();
-
-            let title = format!("SEASON BY SEASON ({} NHL seasons)", total_seasons);
-            let table = TableWidget::from_data(&columns, seasons).with_focused_row(focused_row);
-
-            builder = builder
-                .element(DocumentElement::section_title(title, true))
-                .table("season_stats", table);
+        if seasons.is_empty() {
+            return builder;
         }
+
+        let columns = if player.position == Some(Position::Goalie) {
+            Self::goalie_season_columns()
+        } else {
+            Self::skater_season_columns()
+        };
+
+        let focused_row = focus.focused_table_row("season_stats");
+        let total_seasons = seasons.len();
+
+        let title = format!("SEASON BY SEASON ({} NHL seasons)", total_seasons);
+        let table = TableWidget::from_data(&columns, seasons).with_focused_row(focused_row);
+
+        builder
+            .element(DocumentElement::section_title(title, true))
+            .table("season_stats", table)
+    }
+}
+
+impl Document for PlayerDetailDocumentContent {
+    fn build(&self, focus: &FocusContext) -> Vec<DocumentElement> {
+        let Some(ref player) = self.player_data else {
+            return DocumentBuilder::new()
+                .text(format!("No data available for player {}", self.player_id))
+                .build();
+        };
+
+        let builder = Self::build_player_header(DocumentBuilder::new(), player);
+        let builder = Self::build_draft_info(builder, player);
+        let builder = Self::build_career_totals(builder, player);
+        let builder = Self::build_season_table(builder, player, focus);
 
         builder.build()
     }

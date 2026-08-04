@@ -85,66 +85,84 @@ impl ScoreBoxesDocument {
         let away_team = self.get_team_name(game.id.into(), true, &game.away_team.abbrev);
         let home_team = self.get_team_name(game.id.into(), false, &game.home_team.abbrev);
 
-        // Get scores from schedule or game_info
-        let (away_score, home_score) = if let Some(info) = self.game_info.get(&game.id.into()) {
+        let (away_score, home_score) = self.score_box_scores(game);
+        let status = self.score_box_status(game);
+
+        ScoreBox::new(away_team, home_team, away_score, home_score, status)
+    }
+
+    /// Scores from `game_info` if available (live/final data), else from the schedule fixture
+    fn score_box_scores(&self, game: &nhl_api::ScheduleGame) -> (Option<i32>, Option<i32>) {
+        if let Some(info) = self.game_info.get(&game.id.into()) {
             (Some(info.away_team.score), Some(info.home_team.score))
         } else {
             (game.away_team.score, game.home_team.score)
-        };
+        }
+    }
 
-        // Determine game status
-        let status = if game.game_state.is_final() {
-            // Check for OT/SO from game_info
-            let (overtime, shootout) = if let Some(info) = self.game_info.get(&game.id.into()) {
-                let is_ot = info.period_descriptor.number > 3
-                    || info.period_descriptor.period_type == Some(nhl_api::PeriodType::Overtime);
-                let is_so =
-                    info.period_descriptor.period_type == Some(nhl_api::PeriodType::Shootout);
-                (is_ot && !is_so, is_so)
-            } else {
-                (false, false)
-            };
-            ScoreBoxStatus::Final { overtime, shootout }
+    /// Determine the score box status (final/live/scheduled) for a game
+    fn score_box_status(&self, game: &nhl_api::ScheduleGame) -> ScoreBoxStatus {
+        if game.game_state.is_final() {
+            self.final_status(game)
         } else if game.game_state.has_started() {
-            // Get period text and time from game_info
-            if let Some(info) = self.game_info.get(&game.id.into()) {
-                let period = format_period_text(
-                    info.period_descriptor.period_type,
-                    info.period_descriptor.number,
-                );
-                let (time, intermission) = if let Some(clock) = &info.clock {
-                    (Some(clock.time_remaining.clone()), clock.in_intermission)
-                } else {
-                    (None, false)
-                };
-                ScoreBoxStatus::Live {
-                    period,
-                    time,
-                    intermission,
-                }
-            } else {
-                ScoreBoxStatus::Live {
-                    period: "Live".to_string(),
-                    time: None,
-                    intermission: false,
-                }
-            }
+            self.live_status(game)
         } else {
-            // Scheduled game - format start time
-            let start_time =
-                if let Ok(parsed) = chrono::DateTime::parse_from_rfc3339(&game.start_time_utc) {
-                    let local_time: chrono::DateTime<chrono::Local> = parsed.into();
-                    // Use compact format like "7PM" or "10PM"
-                    let hour = local_time.format("%l").to_string().trim().to_string();
-                    let ampm = local_time.format("%p").to_string();
-                    format!("{}{}", hour, ampm)
-                } else {
-                    game.start_time_utc.clone()
-                };
-            ScoreBoxStatus::Scheduled { start_time }
+            Self::scheduled_status(game)
+        }
+    }
+
+    /// Status for a completed game, including OT/SO detection from `game_info`
+    fn final_status(&self, game: &nhl_api::ScheduleGame) -> ScoreBoxStatus {
+        let (overtime, shootout) = if let Some(info) = self.game_info.get(&game.id.into()) {
+            let is_ot = info.period_descriptor.number > 3
+                || info.period_descriptor.period_type == Some(nhl_api::PeriodType::Overtime);
+            let is_so = info.period_descriptor.period_type == Some(nhl_api::PeriodType::Shootout);
+            (is_ot && !is_so, is_so)
+        } else {
+            (false, false)
+        };
+        ScoreBoxStatus::Final { overtime, shootout }
+    }
+
+    /// Status for an in-progress game, using period/clock data from `game_info` if available
+    fn live_status(&self, game: &nhl_api::ScheduleGame) -> ScoreBoxStatus {
+        let Some(info) = self.game_info.get(&game.id.into()) else {
+            return ScoreBoxStatus::Live {
+                period: "Live".to_string(),
+                time: None,
+                intermission: false,
+            };
         };
 
-        ScoreBox::new(away_team, home_team, away_score, home_score, status)
+        let period = format_period_text(
+            info.period_descriptor.period_type,
+            info.period_descriptor.number,
+        );
+        let (time, intermission) = if let Some(clock) = &info.clock {
+            (Some(clock.time_remaining.clone()), clock.in_intermission)
+        } else {
+            (None, false)
+        };
+        ScoreBoxStatus::Live {
+            period,
+            time,
+            intermission,
+        }
+    }
+
+    /// Status for a not-yet-started game: the formatted local start time
+    fn scheduled_status(game: &nhl_api::ScheduleGame) -> ScoreBoxStatus {
+        let start_time =
+            if let Ok(parsed) = chrono::DateTime::parse_from_rfc3339(&game.start_time_utc) {
+                let local_time: chrono::DateTime<chrono::Local> = parsed.into();
+                // Use compact format like "7PM" or "10PM"
+                let hour = local_time.format("%l").to_string().trim().to_string();
+                let ampm = local_time.format("%p").to_string();
+                format!("{}{}", hour, ampm)
+            } else {
+                game.start_time_utc.clone()
+            };
+        ScoreBoxStatus::Scheduled { start_time }
     }
 
     /// Build the activation target for a game's score box
@@ -170,6 +188,28 @@ impl ScoreBoxesDocument {
             home_score,
             game_date: format_date_for_breadcrumb(&self.game_date),
         })
+    }
+
+    /// Build the score-box elements for one row of games
+    fn build_row_elements(
+        &self,
+        chunk: &[&nhl_api::ScheduleGame],
+        focus: &FocusContext,
+    ) -> Vec<DocumentElement> {
+        chunk
+            .iter()
+            .map(|game| {
+                // ScoreBoxElement uses FocusableId::GameLink(game_id)
+                let focused = focus.focused_id == Some(FocusableId::GameLink(game.id.into()));
+
+                // Create the ScoreBox widget
+                let score_box = self.create_score_box(game);
+                let link_target = self.build_link_target(game);
+
+                // Use the ScoreBoxElement variant
+                DocumentElement::score_box_element(game.id.into(), score_box, focused, link_target)
+            })
+            .collect()
     }
 }
 
@@ -199,28 +239,8 @@ impl Document for ScoreBoxesDocument {
             // Add blank line before each row
             builder = builder.spacer(1);
 
-            // Create ScoreBox elements for this row
-            let score_elements: Vec<DocumentElement> = chunk
-                .iter()
-                .map(|game| {
-                    // ScoreBoxElement uses FocusableId::GameLink(game_id)
-                    let focused = focus.focused_id == Some(FocusableId::GameLink(game.id.into()));
-
-                    // Create the ScoreBox widget
-                    let score_box = self.create_score_box(game);
-                    let link_target = self.build_link_target(game);
-
-                    // Use the ScoreBoxElement variant
-                    DocumentElement::score_box_element(
-                        game.id.into(),
-                        score_box,
-                        focused,
-                        link_target,
-                    )
-                })
-                .collect();
-
-            // Add row with custom gap to document
+            // Create ScoreBox elements for this row and add it with a custom gap
+            let score_elements = self.build_row_elements(chunk, focus);
             builder = builder.row_with_gap(score_elements, SCORE_BOX_GAP);
         }
 

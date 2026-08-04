@@ -7,6 +7,7 @@ use crate::tui::components::TableWidget;
 use crate::tui::document::focus::{FocusableElement, FocusableId};
 use crate::tui::document::link::LinkTarget;
 use crate::tui::types::StackedDocument;
+use crate::tui::CellValue;
 
 use super::types::TABLE_COLUMN_HEADER_HEIGHT;
 use super::DocumentElement;
@@ -21,8 +22,6 @@ impl DocumentElement {
     /// - `name`: Unique name for this table (used to identify focusable cells)
     /// - `widget`: The table widget to embed
     pub fn table(name: impl Into<String>, widget: TableWidget) -> Self {
-        use crate::tui::CellValue;
-
         let table_name = name.into();
         let mut focusable = Vec::new();
 
@@ -35,46 +34,62 @@ impl DocumentElement {
         for row_idx in 0..widget.row_count() {
             for col_idx in 0..widget.column_count() {
                 if let Some(cell) = widget.get_cell_value(row_idx, col_idx) {
-                    let y = data_start_y + row_idx as u16;
-
-                    // Create LinkTarget based on cell type (used for activation)
-                    let link_target = match &cell {
-                        CellValue::PlayerLink {
-                            player_id,
-                            sweater_number,
-                            last_name,
-                            ..
-                        } => Some(LinkTarget::Push(StackedDocument::PlayerDetail {
-                            player_id: *player_id,
-                            sweater_number: *sweater_number,
-                            last_name: last_name.clone(),
-                        })),
-                        CellValue::TeamLink {
-                            team_abbrev, season, ..
-                        } => Some(LinkTarget::Push(StackedDocument::TeamDetail {
-                            abbrev: team_abbrev.clone(),
-                            season: *season,
-                        })),
-                        _ => continue, // Skip non-link cells
-                    };
-
-                    // Use TableCell ID for row tracking (enables focused_table_row())
-                    let id = FocusableId::table_cell(&table_name, row_idx, col_idx);
-
-                    focusable.push(FocusableElement {
-                        id,
-                        y,
-                        height: 1,
-                        rect: Rect::new(0, y, cell.display_text().len() as u16, 1),
-                        link_target,
-                        row_position: None,
-                    });
+                    if let Some(elem) =
+                        link_focusable_cell(&table_name, row_idx, col_idx, &cell, data_start_y)
+                    {
+                        focusable.push(elem);
+                    }
                 }
             }
         }
 
         Self::Table { widget, focusable }
     }
+}
+
+/// Build the focusable element for a table cell, if it's a link cell.
+///
+/// Uses a `TableCell` ID for row tracking (enables `focused_table_row()`)
+/// and a `LinkTarget` derived from the cell's data for activation.
+fn link_focusable_cell(
+    table_name: &str,
+    row_idx: usize,
+    col_idx: usize,
+    cell: &CellValue,
+    data_start_y: u16,
+) -> Option<FocusableElement> {
+    let y = data_start_y + row_idx as u16;
+
+    let link_target = match cell {
+        CellValue::PlayerLink {
+            player_id,
+            sweater_number,
+            last_name,
+            ..
+        } => LinkTarget::Push(StackedDocument::PlayerDetail {
+            player_id: *player_id,
+            sweater_number: *sweater_number,
+            last_name: last_name.clone(),
+        }),
+        CellValue::TeamLink {
+            team_abbrev, season, ..
+        } => LinkTarget::Push(StackedDocument::TeamDetail {
+            abbrev: team_abbrev.clone(),
+            season: *season,
+        }),
+        _ => return None, // Skip non-link cells
+    };
+
+    let id = FocusableId::table_cell(table_name, row_idx, col_idx);
+
+    Some(FocusableElement {
+        id,
+        y,
+        height: 1,
+        rect: Rect::new(0, y, cell.display_text().len() as u16, 1),
+        link_target: Some(link_target),
+        row_position: None,
+    })
 }
 
 #[cfg(test)]

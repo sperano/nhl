@@ -141,39 +141,7 @@ impl TabBarWidget {
                 pos += separator.width();
             }
 
-            let style = if let Some(theme) = &config.theme {
-                // When theme is set: use fg2 (focused) or fg2_dark (unfocused)
-                let (fg_color, bg_color) = if self.focused {
-                    if label.active {
-                        (theme.selection_text_fg, Some(theme.selection_text_bg))
-                    } else {
-                        (theme.fg, theme.bg)
-                    }
-                } else if label.active {
-                    (
-                        theme.selection_text_fg_dark(),
-                        Some(theme.selection_text_bg_dark()),
-                    )
-                } else {
-                    (theme.fg_dark(), theme.bg_dark())
-                };
-                let base = config.base_style().fg(fg_color);
-                if let Some(bg) = bg_color {
-                    base.bg(bg)
-                } else {
-                    base
-                }
-            } else {
-                // No theme: use default style, reverse and bold for active
-                if label.active {
-                    config
-                        .base_style()
-                        .add_modifier(THEMELESS_SELECTION_STYLE_MODIFIER)
-                } else {
-                    config.base_style()
-                }
-            };
-
+            let style = self.tab_label_style(config, label);
             segments.push((label.title.clone(), style));
             pos += label.title.width();
         }
@@ -184,6 +152,44 @@ impl TabBarWidget {
         }
 
         segments
+    }
+
+    /// Style for a single tab label, accounting for theme, tab-bar focus, and
+    /// whether this label is the active tab.
+    fn tab_label_style(&self, config: &DisplayConfig, label: &TabLabel) -> Style {
+        let Some(theme) = &config.theme else {
+            // No theme: use default style, reverse and bold for active
+            return if label.active {
+                config
+                    .base_style()
+                    .add_modifier(THEMELESS_SELECTION_STYLE_MODIFIER)
+            } else {
+                config.base_style()
+            };
+        };
+
+        // When theme is set: use fg2 (focused) or fg2_dark (unfocused)
+        let (fg_color, bg_color) = if self.focused {
+            if label.active {
+                (theme.selection_text_fg, Some(theme.selection_text_bg))
+            } else {
+                (theme.fg, theme.bg)
+            }
+        } else if label.active {
+            (
+                theme.selection_text_fg_dark(),
+                Some(theme.selection_text_bg_dark()),
+            )
+        } else {
+            (theme.fg_dark(), theme.bg_dark())
+        };
+
+        let base = config.base_style().fg(fg_color);
+        if let Some(bg) = bg_color {
+            base.bg(bg)
+        } else {
+            base
+        }
     }
 
     /// Build the separator line with connectors under tab gaps

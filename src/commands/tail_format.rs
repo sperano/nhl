@@ -1,7 +1,7 @@
 //! Formatting helpers for the tail command: ANSI colors, event labels, and
 //! play-description text (compact and verbose).
 
-use nhl_api::{PlayByPlay, PlayEvent, PlayEventType, PlayerId, RosterSpot};
+use nhl_api::{PlayByPlay, PlayEvent, PlayEventDetails, PlayEventType, PlayerId, RosterSpot};
 
 /// ANSI color codes
 pub(crate) mod colors {
@@ -43,88 +43,104 @@ pub(crate) fn format_play_description_compact(pbp: &PlayByPlay, play: &PlayEvent
     };
 
     match play.type_desc_key {
-        PlayEventType::Goal => {
-            let scorer = get_player_name(pbp, details.scoring_player_id);
-            let goal_num = details.scoring_player_total.unwrap_or(0);
-            let assists = format_assists_compact(pbp, details);
-            let score = format!(
-                "{} {} - {} {}",
-                pbp.away_team.abbrev,
-                details.away_score.unwrap_or(0),
-                pbp.home_team.abbrev,
-                details.home_score.unwrap_or(0)
-            );
-            let situation = format_situation_tag(play);
-
-            if assists.is_empty() {
-                format!("{} ({}) [{}]{}", scorer, goal_num, score, situation)
-            } else {
-                format!(
-                    "{} ({}) from {} [{}]{}",
-                    scorer, goal_num, assists, score, situation
-                )
-            }
-        }
-        PlayEventType::Penalty => {
-            let player = get_player_name(pbp, details.committed_by_player_id);
-            let penalty_type = details
-                .desc_key
-                .as_ref()
-                .map(|s| capitalize_penalty(s))
-                .unwrap_or_else(|| "Penalty".to_string());
-            let duration = details.duration.unwrap_or(2);
-            let drawn_by = details
-                .drawn_by_player_id
-                .map(|id| format!(" (drawn by {})", get_player_name(pbp, Some(id))))
-                .unwrap_or_default();
-
-            format!("{} - {} {}:00{}", player, penalty_type, duration, drawn_by)
-        }
-        PlayEventType::ShotOnGoal => {
-            let shooter = get_player_name(pbp, details.shooting_player_id);
-            let shot_type = details
-                .shot_type
-                .as_ref()
-                .map(|s| format!(" - {}", capitalize(s)))
-                .unwrap_or_default();
-
-            format!("{}{}", shooter, shot_type)
-        }
-        PlayEventType::BlockedShot => {
-            let shooter = get_player_name(pbp, details.shooting_player_id);
-            let blocker = get_player_name(pbp, details.blocking_player_id);
-
-            format!("{}, blocked by {}", shooter, blocker)
-        }
-        PlayEventType::Hit => {
-            let hitter = get_player_name(pbp, details.hitting_player_id);
-            let hittee = get_player_name(pbp, details.hittee_player_id);
-
-            format!("{} on {}", hitter, hittee)
-        }
-        PlayEventType::Faceoff => {
-            let winner = get_player_name(pbp, details.winning_player_id);
-            let loser = get_player_name(pbp, details.losing_player_id);
-            let zone = details
-                .zone_code
-                .as_ref()
-                .map(|z| format!(" ({})", z))
-                .unwrap_or_default();
-
-            format!("{} won vs {}{}", winner, loser, zone)
-        }
+        PlayEventType::Goal => format_goal_compact(pbp, play, details),
+        PlayEventType::Penalty => format_penalty_compact(pbp, details),
+        PlayEventType::ShotOnGoal => format_shot_compact(pbp, details),
+        PlayEventType::BlockedShot => format_blocked_shot_compact(pbp, details),
+        PlayEventType::Hit => format_hit_compact(pbp, details),
+        PlayEventType::Faceoff => format_faceoff_compact(pbp, details),
         PlayEventType::Giveaway | PlayEventType::Takeaway => {
-            let player = get_player_name(pbp, details.player_id);
-            let zone = details
-                .zone_code
-                .as_ref()
-                .map(|z| format!(" ({})", z))
-                .unwrap_or_default();
-
-            format!("{}{}", player, zone)
+            format_giveaway_takeaway_compact(pbp, details)
         }
         _ => String::new(),
     }
+}
+
+fn format_goal_compact(pbp: &PlayByPlay, play: &PlayEvent, details: &PlayEventDetails) -> String {
+    let scorer = get_player_name(pbp, details.scoring_player_id);
+    let goal_num = details.scoring_player_total.unwrap_or(0);
+    let assists = format_assists_compact(pbp, details);
+    let score = format!(
+        "{} {} - {} {}",
+        pbp.away_team.abbrev,
+        details.away_score.unwrap_or(0),
+        pbp.home_team.abbrev,
+        details.home_score.unwrap_or(0)
+    );
+    let situation = format_situation_tag(play);
+
+    if assists.is_empty() {
+        format!("{} ({}) [{}]{}", scorer, goal_num, score, situation)
+    } else {
+        format!(
+            "{} ({}) from {} [{}]{}",
+            scorer, goal_num, assists, score, situation
+        )
+    }
+}
+
+fn format_penalty_compact(pbp: &PlayByPlay, details: &PlayEventDetails) -> String {
+    let player = get_player_name(pbp, details.committed_by_player_id);
+    let penalty_type = details
+        .desc_key
+        .as_ref()
+        .map(|s| capitalize_penalty(s))
+        .unwrap_or_else(|| "Penalty".to_string());
+    let duration = details.duration.unwrap_or(2);
+    let drawn_by = details
+        .drawn_by_player_id
+        .map(|id| format!(" (drawn by {})", get_player_name(pbp, Some(id))))
+        .unwrap_or_default();
+
+    format!("{} - {} {}:00{}", player, penalty_type, duration, drawn_by)
+}
+
+fn format_shot_compact(pbp: &PlayByPlay, details: &PlayEventDetails) -> String {
+    let shooter = get_player_name(pbp, details.shooting_player_id);
+    let shot_type = details
+        .shot_type
+        .as_ref()
+        .map(|s| format!(" - {}", capitalize(s)))
+        .unwrap_or_default();
+
+    format!("{}{}", shooter, shot_type)
+}
+
+fn format_blocked_shot_compact(pbp: &PlayByPlay, details: &PlayEventDetails) -> String {
+    let shooter = get_player_name(pbp, details.shooting_player_id);
+    let blocker = get_player_name(pbp, details.blocking_player_id);
+
+    format!("{}, blocked by {}", shooter, blocker)
+}
+
+fn format_hit_compact(pbp: &PlayByPlay, details: &PlayEventDetails) -> String {
+    let hitter = get_player_name(pbp, details.hitting_player_id);
+    let hittee = get_player_name(pbp, details.hittee_player_id);
+
+    format!("{} on {}", hitter, hittee)
+}
+
+fn format_faceoff_compact(pbp: &PlayByPlay, details: &PlayEventDetails) -> String {
+    let winner = get_player_name(pbp, details.winning_player_id);
+    let loser = get_player_name(pbp, details.losing_player_id);
+    let zone = details
+        .zone_code
+        .as_ref()
+        .map(|z| format!(" ({})", z))
+        .unwrap_or_default();
+
+    format!("{} won vs {}{}", winner, loser, zone)
+}
+
+fn format_giveaway_takeaway_compact(pbp: &PlayByPlay, details: &PlayEventDetails) -> String {
+    let player = get_player_name(pbp, details.player_id);
+    let zone = details
+        .zone_code
+        .as_ref()
+        .map(|z| format!(" ({})", z))
+        .unwrap_or_default();
+
+    format!("{}{}", player, zone)
 }
 
 /// Format play description for verbose output, returns (main line, detail lines)
@@ -138,65 +154,73 @@ pub(crate) fn format_play_description_verbose(
     };
 
     match play.type_desc_key {
-        PlayEventType::Goal => {
-            let scorer = get_player_name(pbp, details.scoring_player_id);
-            let goal_num = details.scoring_player_total.unwrap_or(0);
-            let assists = format_assists_verbose(pbp, details);
-
-            let main = format!("{} ({})", scorer, goal_num);
-
-            let mut detail_lines = vec![];
-
-            if !assists.is_empty() {
-                detail_lines.push(format!("Assists: {}", assists));
-            }
-
-            let score = format!(
-                "{} {} - {} {}",
-                pbp.away_team.abbrev,
-                details.away_score.unwrap_or(0),
-                pbp.home_team.abbrev,
-                details.home_score.unwrap_or(0)
-            );
-            detail_lines.push(score);
-
-            if let Some(situation) = format_situation_verbose(play) {
-                detail_lines.push(situation);
-            }
-
-            if let Some(shot_type) = &details.shot_type {
-                detail_lines.push(format!("Shot: {}", capitalize(shot_type)));
-            }
-
-            if let (Some(x), Some(y)) = (details.x_coord, details.y_coord) {
-                detail_lines.push(format!("Location: ({}, {})", x, y));
-            }
-
-            (main, detail_lines)
-        }
-        PlayEventType::Penalty => {
-            let player = get_player_name(pbp, details.committed_by_player_id);
-            let penalty_type = details
-                .desc_key
-                .as_ref()
-                .map(|s| capitalize_penalty(s))
-                .unwrap_or_else(|| "Penalty".to_string());
-            let duration = details.duration.unwrap_or(2);
-
-            let main = format!("{} - {} ({}:00)", player, penalty_type, duration);
-            let mut detail_lines = vec![];
-
-            if let Some(drawn_by_id) = details.drawn_by_player_id {
-                detail_lines.push(format!(
-                    "Drawn by: {}",
-                    get_player_name(pbp, Some(drawn_by_id))
-                ));
-            }
-
-            (main, detail_lines)
-        }
+        PlayEventType::Goal => format_goal_verbose(pbp, play, details),
+        PlayEventType::Penalty => format_penalty_verbose(pbp, details),
         _ => (format_play_description_compact(pbp, play), vec![]),
     }
+}
+
+fn format_goal_verbose(
+    pbp: &PlayByPlay,
+    play: &PlayEvent,
+    details: &PlayEventDetails,
+) -> (String, Vec<String>) {
+    let scorer = get_player_name(pbp, details.scoring_player_id);
+    let goal_num = details.scoring_player_total.unwrap_or(0);
+    let assists = format_assists_verbose(pbp, details);
+
+    let main = format!("{} ({})", scorer, goal_num);
+
+    let mut detail_lines = vec![];
+
+    if !assists.is_empty() {
+        detail_lines.push(format!("Assists: {}", assists));
+    }
+
+    let score = format!(
+        "{} {} - {} {}",
+        pbp.away_team.abbrev,
+        details.away_score.unwrap_or(0),
+        pbp.home_team.abbrev,
+        details.home_score.unwrap_or(0)
+    );
+    detail_lines.push(score);
+
+    if let Some(situation) = format_situation_verbose(play) {
+        detail_lines.push(situation);
+    }
+
+    if let Some(shot_type) = &details.shot_type {
+        detail_lines.push(format!("Shot: {}", capitalize(shot_type)));
+    }
+
+    if let (Some(x), Some(y)) = (details.x_coord, details.y_coord) {
+        detail_lines.push(format!("Location: ({}, {})", x, y));
+    }
+
+    (main, detail_lines)
+}
+
+fn format_penalty_verbose(pbp: &PlayByPlay, details: &PlayEventDetails) -> (String, Vec<String>) {
+    let player = get_player_name(pbp, details.committed_by_player_id);
+    let penalty_type = details
+        .desc_key
+        .as_ref()
+        .map(|s| capitalize_penalty(s))
+        .unwrap_or_else(|| "Penalty".to_string());
+    let duration = details.duration.unwrap_or(2);
+
+    let main = format!("{} - {} ({}:00)", player, penalty_type, duration);
+    let mut detail_lines = vec![];
+
+    if let Some(drawn_by_id) = details.drawn_by_player_id {
+        detail_lines.push(format!(
+            "Drawn by: {}",
+            get_player_name(pbp, Some(drawn_by_id))
+        ));
+    }
+
+    (main, detail_lines)
 }
 
 /// Format assists in compact form

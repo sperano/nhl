@@ -20,7 +20,7 @@
 
 use crate::big_digits::{get_digit, BIG_DIGIT_HEIGHT, BIG_DIGIT_WIDTH};
 use crate::config::RenderContext;
-use ratatui::{buffer::Buffer, layout::Rect};
+use ratatui::{buffer::Buffer, layout::Rect, style::Style};
 
 use super::score_box::ScoreBoxStatus;
 use super::StandaloneWidget;
@@ -162,6 +162,111 @@ impl BigScore {
     }
 }
 
+/// Precomputed x/y positions for the big-digit score display: where the digit rows
+/// start, the vertically-centered team-name row, and where each side's digits begin.
+struct DigitLayout {
+    digits_y: u16,
+    name_row: u16,
+    away_name_x: u16,
+    home_name_x: u16,
+    away_digits_start_x: u16,
+}
+
+impl BigScore {
+    /// Computes the digit/name-row layout, centering the whole display within `area`.
+    fn compute_layout(&self, area: Rect, x: u16, y: u16) -> DigitLayout {
+        let digits_y = y + HEADER_HEIGHT; // Offset for header
+
+        let total_width = self.total_width();
+        let (away_box_width, _) = self.balanced_name_boxes();
+        let away_name_chars = self.away_name.chars().count() as u16;
+        let away_digits_width = Self::score_width(self.away_score);
+        let home_digits_width = Self::score_width(self.home_score);
+
+        // Calculate starting x position to center the entire display
+        let start_x = x + (area.width.saturating_sub(total_width)) / 2;
+
+        // Vertically centered row for team names (row 1 of 4 digit rows, 0-indexed)
+        let name_row = digits_y + 1;
+
+        // Away name: right-aligned within its box
+        let away_name_x = start_x + away_box_width - away_name_chars;
+
+        // Away digits start after away box + gap
+        let away_digits_start_x = start_x + away_box_width + NAME_DIGIT_GAP;
+
+        // Home digits start after away digits + separator
+        let home_digits_start_x = away_digits_start_x + away_digits_width + SEPARATOR_WIDTH;
+
+        // Home name: left-aligned within its box (after home digits + gap)
+        let home_name_x = home_digits_start_x + home_digits_width + NAME_DIGIT_GAP;
+
+        DigitLayout {
+            digits_y,
+            name_row,
+            away_name_x,
+            home_name_x,
+            away_digits_start_x,
+        }
+    }
+
+    /// Renders the away/home big-digit scores, separated by `SEPARATOR`.
+    fn render_digits_grid(&self, buf: &mut Buffer, text_style: Style, layout: &DigitLayout) {
+        let away_digits = Self::score_digits(self.away_score);
+        let home_digits = Self::score_digits(self.home_score);
+
+        for row in 0..BIG_DIGIT_HEIGHT {
+            let mut current_x = layout.away_digits_start_x;
+
+            // Away score digits (with gaps between them)
+            for (i, &digit) in away_digits.iter().enumerate() {
+                if i > 0 {
+                    current_x += DIGIT_GAP;
+                }
+                let line = get_digit(digit)[row as usize];
+                buf.set_string(current_x, layout.digits_y + row, line, text_style);
+                current_x += BIG_DIGIT_WIDTH;
+            }
+
+            // Separator
+            buf.set_string(
+                current_x,
+                layout.digits_y + row,
+                SEPARATOR[row as usize],
+                text_style,
+            );
+            current_x += SEPARATOR_WIDTH;
+
+            // Home score digits (with gaps between them)
+            for (i, &digit) in home_digits.iter().enumerate() {
+                if i > 0 {
+                    current_x += DIGIT_GAP;
+                }
+                let line = get_digit(digit)[row as usize];
+                buf.set_string(current_x, layout.digits_y + row, line, text_style);
+                current_x += BIG_DIGIT_WIDTH;
+            }
+        }
+    }
+
+    /// Renders the centered SOG and venue lines below the digit grid.
+    fn render_footer(&self, buf: &mut Buffer, text_style: Style, area: Rect, x: u16, digits_y: u16) {
+        // Row 6: blank line (implicit)
+        // Row 7: SOG line centered
+        let sog_text = format!("SOG: {} - {}", self.away_sog, self.home_sog);
+        let sog_width = sog_text.chars().count() as u16;
+        let sog_x = x + (area.width.saturating_sub(sog_width)) / 2;
+        let sog_row = digits_y + BIG_DIGIT_HEIGHT + 1;
+        buf.set_string(sog_x, sog_row, &sog_text, text_style);
+
+        // Row 8: Venue centered
+        let venue_width = self.venue.chars().count() as u16;
+        let venue_x = x + (area.width.saturating_sub(venue_width)) / 2;
+        let venue_row = digits_y + BIG_DIGIT_HEIGHT + 2;
+        buf.set_string(venue_x, venue_row, &self.venue, text_style);
+    }
+}
+
 impl StandaloneWidget for BigScore {
     fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
         let required_height = HEADER_HEIGHT + BIG_DIGIT_HEIGHT + FOOTER_HEIGHT;
@@ -181,85 +286,13 @@ impl StandaloneWidget for BigScore {
 
         // Row 1: blank line (implicit)
         // Rows 2-5: Big digits with team names
+        let layout = self.compute_layout(area, x, y);
 
-        let digits_y = y + HEADER_HEIGHT; // Offset for header
+        buf.set_string(layout.away_name_x, layout.name_row, &self.away_name, text_style);
+        buf.set_string(layout.home_name_x, layout.name_row, &self.home_name, text_style);
 
-        let total_width = self.total_width();
-        let (away_box_width, _) = self.balanced_name_boxes();
-        let away_name_chars = self.away_name.chars().count() as u16;
-        let away_digits_width = Self::score_width(self.away_score);
-        let home_digits_width = Self::score_width(self.home_score);
-
-        // Calculate starting x position to center the entire display
-        let start_x = x + (area.width.saturating_sub(total_width)) / 2;
-
-        // Vertically centered row for team names (row 1 of 4 digit rows, 0-indexed)
-        let name_row = digits_y + 1;
-
-        // Away name: right-aligned within its box
-        let away_name_x = start_x + away_box_width - away_name_chars;
-        buf.set_string(away_name_x, name_row, &self.away_name, text_style);
-
-        // Away digits start after away box + gap
-        let away_digits_start_x = start_x + away_box_width + NAME_DIGIT_GAP;
-
-        // Home digits start after away digits + separator
-        let home_digits_start_x = away_digits_start_x + away_digits_width + SEPARATOR_WIDTH;
-
-        // Home name: left-aligned within its box (after home digits + gap)
-        let home_name_x = home_digits_start_x + home_digits_width + NAME_DIGIT_GAP;
-        buf.set_string(home_name_x, name_row, &self.home_name, text_style);
-
-        // Render big digits
-        let away_digits = Self::score_digits(self.away_score);
-        let home_digits = Self::score_digits(self.home_score);
-
-        for row in 0..BIG_DIGIT_HEIGHT {
-            let mut current_x = away_digits_start_x;
-
-            // Away score digits (with gaps between them)
-            for (i, &digit) in away_digits.iter().enumerate() {
-                if i > 0 {
-                    current_x += DIGIT_GAP;
-                }
-                let line = get_digit(digit)[row as usize];
-                buf.set_string(current_x, digits_y + row, line, text_style);
-                current_x += BIG_DIGIT_WIDTH;
-            }
-
-            // Separator
-            buf.set_string(
-                current_x,
-                digits_y + row,
-                SEPARATOR[row as usize],
-                text_style,
-            );
-            current_x += SEPARATOR_WIDTH;
-
-            // Home score digits (with gaps between them)
-            for (i, &digit) in home_digits.iter().enumerate() {
-                if i > 0 {
-                    current_x += DIGIT_GAP;
-                }
-                let line = get_digit(digit)[row as usize];
-                buf.set_string(current_x, digits_y + row, line, text_style);
-                current_x += BIG_DIGIT_WIDTH;
-            }
-        }
-
-        // Row 6: blank line (implicit)
-        // Row 7: SOG line centered
-        let sog_text = format!("SOG: {} - {}", self.away_sog, self.home_sog);
-        let sog_width = sog_text.chars().count() as u16;
-        let sog_x = x + (area.width.saturating_sub(sog_width)) / 2;
-        let sog_row = digits_y + BIG_DIGIT_HEIGHT + 1;
-        buf.set_string(sog_x, sog_row, &sog_text, text_style);
-
-        // Row 8: Venue centered
-        let venue_width = self.venue.chars().count() as u16;
-        let venue_x = x + (area.width.saturating_sub(venue_width)) / 2;
-        let venue_row = digits_y + BIG_DIGIT_HEIGHT + 2;
-        buf.set_string(venue_x, venue_row, &self.venue, text_style);
+        self.render_digits_grid(buf, text_style, &layout);
+        self.render_footer(buf, text_style, area, x, layout.digits_y);
     }
 
     fn preferred_height(&self) -> Option<u16> {
@@ -273,213 +306,5 @@ impl StandaloneWidget for BigScore {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::tui::testing::assert_buffer;
-    use crate::tui::widgets::testing::{render_widget_with_config, test_config};
-
-    fn final_status() -> ScoreBoxStatus {
-        ScoreBoxStatus::Final {
-            overtime: false,
-            shootout: false,
-        }
-    }
-
-    #[test]
-    fn test_single_digit_scores() {
-        // Layout: 20 (away box) + 2 (gap) + 4 (digit) + 6 (sep) + 4 (digit) + 2 (gap) + 20 (home box) = 58
-        let widget = BigScore::new(BigScoreParams {
-            away_name: "Devils".to_string(),
-            home_name: "Sabres".to_string(),
-            away_score: 3,
-            home_score: 2,
-            away_sog: 30,
-            home_sog: 25,
-            status: final_status(),
-            venue: "TD Garden".to_string(),
-        });
-        let config = test_config();
-        let buf = render_widget_with_config(&widget, 58, 9, &config);
-
-        assert_buffer(
-            &buf,
-            &[
-                "                          Final                          ",
-                "                                                          ",
-                "                      ▟▀▀▙      ▟▀▀▙                      ",
-                "              Devils   ▄▄▛  ▄▄    ▗▛  Sabres              ",
-                "                         █       ▗▛                       ",
-                "                      ▜▄▄▛      ▄█▄▄                      ",
-                "                                                          ",
-                "                       SOG: 30 - 25                       ",
-                "                        TD Garden                         ",
-            ],
-        );
-    }
-
-    #[test]
-    fn test_score_10_4() {
-        // 10-4: away=9 (4+1+4), home=4, imbalance=5, home_box=25
-        // Width: 20 + 2 + 9 + 6 + 4 + 2 + 25 = 68
-        let widget = BigScore::new(BigScoreParams {
-            away_name: "Devils".to_string(),
-            home_name: "Sabres".to_string(),
-            away_score: 10,
-            home_score: 4,
-            away_sog: 40,
-            home_sog: 20,
-            status: final_status(),
-            venue: "TD Garden".to_string(),
-        });
-        let config = test_config();
-        let buf = render_widget_with_config(&widget, 68, 9, &config);
-
-        assert_buffer(
-            &buf,
-            &[
-                "                               Final                                ",
-                "                                                                    ",
-                "                      ▗█   ▟▀▀▙       ▗█                            ",
-                "              Devils   █   █  █  ▄▄  ▗▘█   Sabres                   ",
-                "                       █   █  █      ▙▄█▄                           ",
-                "                      ▗█▖  ▜▄▄▛        █                            ",
-                "                                                                    ",
-                "                            SOG: 40 - 20                            ",
-                "                             TD Garden                              ",
-            ],
-        );
-    }
-
-    #[test]
-    fn test_score_4_10() {
-        // 4-10: away=4, home=9, imbalance=5, away_box=25
-        // Width: 25 + 2 + 4 + 6 + 9 + 2 + 20 = 68
-        let widget = BigScore::new(BigScoreParams {
-            away_name: "Devils".to_string(),
-            home_name: "Sabres".to_string(),
-            away_score: 4,
-            home_score: 10,
-            away_sog: 20,
-            home_sog: 40,
-            status: final_status(),
-            venue: "TD Garden".to_string(),
-        });
-        let config = test_config();
-        let buf = render_widget_with_config(&widget, 68, 9, &config);
-
-        assert_buffer(
-            &buf,
-            &[
-                "                               Final                                ",
-                "                                                                    ",
-                "                            ▗█       ▗█   ▟▀▀▙                      ",
-                "                   Devils  ▗▘█   ▄▄   █   █  █  Sabres              ",
-                "                           ▙▄█▄       █   █  █                      ",
-                "                             █       ▗█▖  ▜▄▄▛                      ",
-                "                                                                    ",
-                "                            SOG: 20 - 40                            ",
-                "                             TD Garden                              ",
-            ],
-        );
-    }
-
-    #[test]
-    fn test_score_10_10() {
-        // 10-10: both=9, balanced
-        // Width: 20 + 2 + 9 + 6 + 9 + 2 + 20 = 68
-        let widget = BigScore::new(BigScoreParams {
-            away_name: "Devils".to_string(),
-            home_name: "Sabres".to_string(),
-            away_score: 10,
-            home_score: 10,
-            away_sog: 35,
-            home_sog: 35,
-            status: final_status(),
-            venue: "TD Garden".to_string(),
-        });
-        let config = test_config();
-        let buf = render_widget_with_config(&widget, 68, 9, &config);
-
-        assert_buffer(
-            &buf,
-            &[
-                "                               Final                                ",
-                "                                                                    ",
-                "                      ▗█   ▟▀▀▙      ▗█   ▟▀▀▙                      ",
-                "              Devils   █   █  █  ▄▄   █   █  █  Sabres              ",
-                "                       █   █  █       █   █  █                      ",
-                "                      ▗█▖  ▜▄▄▛      ▗█▖  ▜▄▄▛                      ",
-                "                                                                    ",
-                "                            SOG: 35 - 35                            ",
-                "                             TD Garden                              ",
-            ],
-        );
-    }
-
-    #[test]
-    fn test_score_digits() {
-        assert_eq!(BigScore::score_digits(0), vec![0]);
-        assert_eq!(BigScore::score_digits(5), vec![5]);
-        assert_eq!(BigScore::score_digits(10), vec![1, 0]);
-        assert_eq!(BigScore::score_digits(99), vec![9, 9]);
-    }
-
-    #[test]
-    fn test_preferred_dimensions() {
-        // Single digit scores: 20 + 2 + 4 + 6 + 4 + 2 + 20 = 58
-        let widget = BigScore::new(BigScoreParams {
-            away_name: "Devils".to_string(),
-            home_name: "Sabres".to_string(),
-            away_score: 3,
-            home_score: 2,
-            away_sog: 30,
-            home_sog: 25,
-            status: final_status(),
-            venue: "KeyBank Center".to_string(),
-        });
-        assert_eq!(widget.preferred_height(), Some(9)); // 1 status + 1 blank + 4 digits + 1 blank + 1 SOG + 1 venue
-        assert_eq!(widget.preferred_width(), Some(58));
-
-        // 10-4: away=9 (4+1+4), home=4, imbalance=5, home_box=25
-        // Width: 20 + 2 + 9 + 6 + 4 + 2 + 25 = 68
-        let widget_10_4 = BigScore::new(BigScoreParams {
-            away_name: "Devils".to_string(),
-            home_name: "Sabres".to_string(),
-            away_score: 10,
-            home_score: 4,
-            away_sog: 40,
-            home_sog: 20,
-            status: final_status(),
-            venue: "TD Garden".to_string(),
-        });
-        assert_eq!(widget_10_4.preferred_width(), Some(68));
-
-        // 4-10: away=4, home=9, imbalance=5, away_box=25
-        // Width: 25 + 2 + 4 + 6 + 9 + 2 + 20 = 68
-        let widget_4_10 = BigScore::new(BigScoreParams {
-            away_name: "Devils".to_string(),
-            home_name: "Sabres".to_string(),
-            away_score: 4,
-            home_score: 10,
-            away_sog: 20,
-            home_sog: 40,
-            status: final_status(),
-            venue: "TD Garden".to_string(),
-        });
-        assert_eq!(widget_4_10.preferred_width(), Some(68));
-
-        // 10-10: both=9, balanced
-        // Width: 20 + 2 + 9 + 6 + 9 + 2 + 20 = 68
-        let widget_10_10 = BigScore::new(BigScoreParams {
-            away_name: "Devils".to_string(),
-            home_name: "Sabres".to_string(),
-            away_score: 10,
-            home_score: 10,
-            away_sog: 35,
-            home_sog: 35,
-            status: final_status(),
-            venue: "TD Garden".to_string(),
-        });
-        assert_eq!(widget_10_10.preferred_width(), Some(68));
-    }
-}
+#[path = "big_score_tests.rs"]
+mod tests;

@@ -6,7 +6,9 @@
 use std::collections::HashMap;
 
 use crate::tui::component::Effect;
-use crate::tui::document::{Document, FocusContext, FocusableElement, FocusableId, LinkTarget};
+use crate::tui::document::{
+    Document, FocusContext, FocusableElement, FocusableId, LinkTarget, RowPosition,
+};
 
 /// Minimum viewport height - if smaller than this, autoscroll may behave oddly
 const MIN_VIEWPORT_HEIGHT: u16 = 5;
@@ -263,42 +265,55 @@ pub fn find_row_sibling(state: &DocumentNavState, direction: RowDirection) -> Op
     let focus_idx = state.focus_index?;
     let current_row = state.focusables.get(focus_idx)?.row_position?;
 
-    // Find element in same row at same idx_within_child but different child_idx
-    let target_child_idx = match direction {
+    let target_child_idx = row_sibling_child_idx(state, current_row, direction)?;
+
+    row_element_at_child_idx(state, current_row, target_child_idx)
+}
+
+/// Determine which child (column) in the row to move focus to, wrapping
+/// from the last child back to the first (or vice versa).
+fn row_sibling_child_idx(
+    state: &DocumentNavState,
+    current_row: RowPosition,
+    direction: RowDirection,
+) -> Option<usize> {
+    let row_child_indices = || {
+        state
+            .focusables
+            .iter()
+            .filter_map(|f| f.row_position)
+            .filter(|r| r.row_y == current_row.row_y)
+            .map(|r| r.child_idx)
+    };
+
+    match direction {
         RowDirection::Left => {
             if current_row.child_idx == 0 {
-                // Wrap to rightmost child
-                state
-                    .focusables
-                    .iter()
-                    .filter_map(|f| f.row_position)
-                    .filter(|r| r.row_y == current_row.row_y)
-                    .map(|r| r.child_idx)
-                    .max()?
+                row_child_indices().max() // Wrap to rightmost child
             } else {
-                current_row.child_idx - 1
+                Some(current_row.child_idx - 1)
             }
         }
         RowDirection::Right => {
-            let max_child_idx = state
-                .focusables
-                .iter()
-                .filter_map(|f| f.row_position)
-                .filter(|r| r.row_y == current_row.row_y)
-                .map(|r| r.child_idx)
-                .max()?;
-
-            if current_row.child_idx >= max_child_idx {
-                // Wrap to leftmost child
-                0
+            let max_child_idx = row_child_indices().max()?;
+            Some(if current_row.child_idx >= max_child_idx {
+                0 // Wrap to leftmost child
             } else {
                 current_row.child_idx + 1
-            }
+            })
         }
-    };
+    }
+}
 
-    // Find element with matching row_y and target child_idx
-    // Try exact idx_within_child match first, then fall back to closest
+/// Find the focusable element in `target_child_idx`'s column of the row,
+/// preferring an exact `idx_within_child` match and falling back to the
+/// closest one (columns can have different element counts, e.g. team
+/// rosters with different player counts).
+fn row_element_at_child_idx(
+    state: &DocumentNavState,
+    current_row: RowPosition,
+    target_child_idx: usize,
+) -> Option<usize> {
     let candidates: Vec<_> = state
         .focusables
         .iter()

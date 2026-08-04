@@ -1,7 +1,7 @@
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::Color,
+    style::{Color, Style},
     text::{Line, Span},
     widgets::Paragraph,
 };
@@ -47,47 +47,39 @@ struct StatusBarWidget {
     is_error: bool,
 }
 
-impl ElementWidget for StatusBarWidget {
-    fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
-        let mut lines = Vec::new();
+impl StatusBarWidget {
+    /// Left side text: the current status/error message, or empty if none.
+    fn status_text(&self) -> String {
+        self.status_message.clone().unwrap_or_default()
+    }
 
-        // Left side: status message (if any)
-        let left_text = if let Some(msg) = &self.status_message {
-            msg.clone()
-        } else {
-            String::new()
+    /// Right side text: how long ago data was actually refreshed (real timestamp, not a
+    /// countdown to a promised refresh - see reducer::should_auto_refresh for the
+    /// logic that actually triggers refreshes on a `Tick`).
+    fn refresh_text(&self) -> String {
+        let Some(refresh_time) = self.last_refresh else {
+            return "Loading...".to_string();
         };
 
-        // Right side: how long ago data was actually refreshed (real timestamp, not a
-        // countdown to a promised refresh - see reducer::should_auto_refresh for the
-        // logic that actually triggers refreshes on a `Tick`).
-        let right_text = if let Some(refresh_time) = self.last_refresh {
-            match SystemTime::now().duration_since(refresh_time) {
-                Ok(elapsed) => {
-                    let elapsed_secs = elapsed.as_secs();
-                    let stale_threshold_secs =
-                        u64::from(self.refresh_interval) * u64::from(STALE_THRESHOLD_MULTIPLIER);
+        match SystemTime::now().duration_since(refresh_time) {
+            Ok(elapsed) => {
+                let elapsed_secs = elapsed.as_secs();
+                let stale_threshold_secs =
+                    u64::from(self.refresh_interval) * u64::from(STALE_THRESHOLD_MULTIPLIER);
 
-                    if elapsed_secs > stale_threshold_secs {
-                        format!("Updated {}s ago (stale)", elapsed_secs)
-                    } else {
-                        format!("Updated {}s ago", elapsed_secs)
-                    }
+                if elapsed_secs > stale_threshold_secs {
+                    format!("Updated {}s ago (stale)", elapsed_secs)
+                } else {
+                    format!("Updated {}s ago", elapsed_secs)
                 }
-                // Clock skew or a refresh timestamp from the future - can't compute elapsed time.
-                Err(_) => "Updated ?s ago".to_string(),
             }
-        } else {
-            "Loading...".to_string()
-        };
+            // Clock skew or a refresh timestamp from the future - can't compute elapsed time.
+            Err(_) => "Updated ?s ago".to_string(),
+        }
+    }
 
-        // Calculate where the vertical bar should be
-        let right_text_with_margin = format!("{} ", right_text);
-        let bar_position = area
-            .width
-            .saturating_sub(right_text_with_margin.width() as u16 + 1);
-
-        // Determine styles based on theme
+    /// Separator and text styles derived from the current theme (if any).
+    fn styles(&self, ctx: &RenderContext) -> (Style, Style) {
         let separator_style = if let Some(theme) = ctx.theme() {
             ctx.base_style().fg(theme.boxchar_fg)
         } else {
@@ -100,48 +92,91 @@ impl ElementWidget for StatusBarWidget {
             ctx.base_style()
         };
 
-        // First line: horizontal separator with connector
+        (separator_style, text_style)
+    }
+
+    /// First line: horizontal separator with a connector at `bar_position`.
+    fn build_separator_line(
+        &self,
+        area: Rect,
+        bar_position: u16,
+        ctx: &RenderContext,
+        separator_style: Style,
+    ) -> Line<'static> {
         let left_part = ctx.box_chars().horizontal.repeat(bar_position as usize);
         let right_part = ctx
             .box_chars()
             .horizontal
             .repeat((area.width.saturating_sub(bar_position + 1)) as usize);
-        let line1 = Line::from(vec![
+        Line::from(vec![
             Span::styled(left_part, separator_style),
             Span::styled(ctx.box_chars().connector3, separator_style),
             Span::styled(right_part, separator_style),
-        ]);
-        lines.push(line1);
+        ])
+    }
 
-        // Second line: status message on left, refresh on right
-        let mut line2_spans = Vec::new();
+    /// Second line: status message on the left, refresh text on the right.
+    fn build_status_line<'a>(
+        &self,
+        bar_position: u16,
+        left_text: &'a str,
+        right_text: &'a str,
+        ctx: &RenderContext,
+        separator_style: Style,
+        text_style: Style,
+    ) -> Line<'a> {
+        let mut spans = Vec::new();
 
-        // Left side: status message
         if !left_text.is_empty() {
-            line2_spans.push(Span::raw(" "));
+            spans.push(Span::raw(" "));
             if self.is_error {
-                line2_spans.push(Span::styled(&left_text, ctx.base_style().fg(Color::Red)));
+                spans.push(Span::styled(left_text, ctx.base_style().fg(Color::Red)));
             } else {
-                line2_spans.push(Span::styled(&left_text, text_style));
+                spans.push(Span::styled(left_text, text_style));
             }
         }
 
-        // Middle: padding
         let left_content_len = if left_text.is_empty() {
             0
         } else {
             left_text.width() + 1
         };
         let padding_len = bar_position.saturating_sub(left_content_len as u16) as usize;
-        line2_spans.push(Span::raw(" ".repeat(padding_len)));
+        spans.push(Span::raw(" ".repeat(padding_len)));
 
-        // Right side: vertical bar + refresh text
-        line2_spans.push(Span::styled(ctx.box_chars().vertical, separator_style));
-        line2_spans.push(Span::raw(" "));
-        line2_spans.push(Span::styled(&right_text, text_style));
-        line2_spans.push(Span::raw(" "));
+        spans.push(Span::styled(ctx.box_chars().vertical, separator_style));
+        spans.push(Span::raw(" "));
+        spans.push(Span::styled(right_text, text_style));
+        spans.push(Span::raw(" "));
 
-        lines.push(Line::from(line2_spans));
+        Line::from(spans)
+    }
+}
+
+impl ElementWidget for StatusBarWidget {
+    fn render(&self, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
+        let left_text = self.status_text();
+        let right_text = self.refresh_text();
+
+        // Calculate where the vertical bar should be
+        let right_text_with_margin = format!("{} ", right_text);
+        let bar_position = area
+            .width
+            .saturating_sub(right_text_with_margin.width() as u16 + 1);
+
+        let (separator_style, text_style) = self.styles(ctx);
+
+        let lines = vec![
+            self.build_separator_line(area, bar_position, ctx, separator_style),
+            self.build_status_line(
+                bar_position,
+                &left_text,
+                &right_text,
+                ctx,
+                separator_style,
+                text_style,
+            ),
+        ];
 
         let status_bar = Paragraph::new(lines);
         ratatui::widgets::Widget::render(status_bar, area, buf);

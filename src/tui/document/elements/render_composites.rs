@@ -85,36 +85,18 @@ pub(super) fn render_team_boxscore(
     buf: &mut Buffer,
     ctx: &RenderContext,
 ) {
-    let bc = ctx.box_chars();
-    let border_style = ctx.boxchar_style();
-
     // Use fixed width but respect area constraints
     let width = TEAM_BOXSCORE_WIDTH.min(area.width);
-    let inner_width = width.saturating_sub(2); // Subtract 2 for side borders
+
+    // Rows past `bottom` are skipped (not drawn) rather than attempted:
+    // ratatui's set_string panics when its start position is out of bounds.
+    // `y` still advances through skipped rows to keep the section math intact.
+    let bottom = area.bottom();
 
     let mut y = area.y;
     let mut is_first_section = true;
 
-    // All direct row writes below are guarded against area.bottom(): ratatui's
-    // set_string panics when its start position lies outside the buffer, so
-    // when the area is shorter than the boxscore's full height the overflow
-    // rows must be skipped (truncated), not attempted. The `y` cursor still
-    // advances through skipped rows to keep the section math intact.
-    let bottom = area.bottom();
-
-    // Helper to render an empty bordered line
-    let render_empty_bordered_line = |y: u16, buf: &mut Buffer| {
-        if y >= bottom {
-            return;
-        }
-        buf.set_string(area.x, y, bc.vertical, border_style);
-        if width > 1 {
-            buf.set_string(area.x + width - 1, y, bc.vertical, border_style);
-        }
-    };
-
-    // Render sections
-    let sections: Vec<(&str, &TableWidget)> = vec![
+    let sections: [(&str, &TableWidget); 3] = [
         ("Forwards", forwards_table),
         ("Defense", defense_table),
         ("Goalies", goalies_table),
@@ -124,57 +106,116 @@ pub(super) fn render_team_boxscore(
         if table.row_count() == 0 {
             continue;
         }
-        let section_start = y;
-
-        // Section header with embedded title
-        if y < bottom {
-            let title = format!("{} - {}", team_name, section_name);
-            render_section_header(area.x, y, width, &title, is_first_section, buf, ctx);
-        }
-        y += 1;
-        is_first_section = false;
-
-        // Blank line after header
-        render_empty_bordered_line(y, buf);
-        y += 1;
-
-        // Table content - render with side borders
-        let table_height = table.preferred_height().unwrap_or(0);
-        let visible_table_height = table_height.min(bottom.saturating_sub(y));
-        for row in 0..visible_table_height {
-            // Left border
-            buf.set_string(area.x, y + row, bc.vertical, border_style);
-            // Right border
-            if width > 1 {
-                buf.set_string(area.x + width - 1, y + row, bc.vertical, border_style);
-            }
-        }
-
-        // Render table content inside borders, clipped so a table wider than
-        // the boxscore (narrow area) truncates instead of overwriting the
-        // right border it was just drawn inside of, and a table taller than
-        // the remaining rows truncates instead of panicking in set_string.
-        let table_area = Rect::new(area.x + 1, y, inner_width, visible_table_height);
-        clipped(table_area, buf, |scratch| {
-            table.render(table_area, scratch, ctx)
-        });
-        y += table_height;
-
-        // Blank line after table (before next section or bottom border)
-        render_empty_bordered_line(y, buf);
-        y += 1;
-
-        debug_assert_eq!(
-            y - section_start,
-            team_boxscore_section_height(table),
-            "rows drawn for a boxscore section drifted from team_boxscore_section_height"
+        y += render_boxscore_section(
+            team_name,
+            section_name,
+            table,
+            is_first_section,
+            area.x,
+            y,
+            width,
+            bottom,
+            buf,
+            ctx,
         );
+        is_first_section = false;
     }
 
     // Bottom border (skipped entirely when the area ran out of rows)
     if y < bottom {
         render_bottom_border(area.x, y, width, buf, ctx);
     }
+}
+
+/// Render one non-empty section (header + table + blank lines) of a team
+/// boxscore starting at row `y`. Returns rows drawn, always equal to
+/// `team_boxscore_section_height(table)`.
+#[allow(clippy::too_many_arguments)]
+fn render_boxscore_section(
+    team_name: &str,
+    section_name: &str,
+    table: &TableWidget,
+    is_first: bool,
+    x: u16,
+    y: u16,
+    width: u16,
+    bottom: u16,
+    buf: &mut Buffer,
+    ctx: &RenderContext,
+) -> u16 {
+    let section_start = y;
+    let mut y = y;
+
+    // Section header with embedded title
+    if y < bottom {
+        let title = format!("{} - {}", team_name, section_name);
+        render_section_header(x, y, width, &title, is_first, buf, ctx);
+    }
+    y += 1;
+
+    render_boxscore_blank_line(x, y, width, bottom, buf, ctx);
+    y += 1;
+
+    // Table content - render with side borders
+    let table_height = table.preferred_height().unwrap_or(0);
+    let visible_table_height = table_height.min(bottom.saturating_sub(y));
+    render_boxscore_table_rows(table, x, y, width, visible_table_height, buf, ctx);
+    y += table_height;
+
+    // Blank line after table (before next section or bottom border)
+    render_boxscore_blank_line(x, y, width, bottom, buf, ctx);
+    y += 1;
+
+    debug_assert_eq!(
+        y - section_start,
+        team_boxscore_section_height(table),
+        "rows drawn for a boxscore section drifted from team_boxscore_section_height"
+    );
+
+    y - section_start
+}
+
+/// Draw one empty bordered line (just the left/right `│`), skipped entirely
+/// if `y` has run past the available area.
+fn render_boxscore_blank_line(x: u16, y: u16, width: u16, bottom: u16, buf: &mut Buffer, ctx: &RenderContext) {
+    if y >= bottom {
+        return;
+    }
+    let bc = ctx.box_chars();
+    let border_style = ctx.boxchar_style();
+    buf.set_string(x, y, bc.vertical, border_style);
+    if width > 1 {
+        buf.set_string(x + width - 1, y, bc.vertical, border_style);
+    }
+}
+
+/// Draw a table's rows inside side borders, clipped so an oversized table
+/// truncates instead of overwriting the right border or panicking in
+/// `set_string`.
+fn render_boxscore_table_rows(
+    table: &TableWidget,
+    x: u16,
+    y: u16,
+    width: u16,
+    visible_table_height: u16,
+    buf: &mut Buffer,
+    ctx: &RenderContext,
+) {
+    let bc = ctx.box_chars();
+    let border_style = ctx.boxchar_style();
+    let inner_width = width.saturating_sub(2); // Subtract 2 for side borders
+
+    for row in 0..visible_table_height {
+        buf.set_string(x, y + row, bc.vertical, border_style); // Left border
+        if width > 1 {
+            buf.set_string(x + width - 1, y + row, bc.vertical, border_style); // Right border
+        }
+    }
+
+    let table_area = Rect::new(x + 1, y, inner_width, visible_table_height);
+    clipped(table_area, buf, |scratch| {
+        table.render(table_area, scratch, ctx)
+    });
 }
 
 /// Render section header with embedded title
@@ -192,16 +233,50 @@ pub(super) fn render_section_header(
 ) {
     let bc = ctx.box_chars();
     let border_style = ctx.boxchar_style();
-    let title_style = ctx.text_style();
 
     // Choose corner characters based on whether this is first section
-    let (left_corner, right_corner) = if is_first {
-        (&bc.mixed_dh_top_left, &bc.mixed_dh_top_right)
+    let (left_corner, right_corner): (&str, &str) = if is_first {
+        (bc.mixed_dh_top_left, bc.mixed_dh_top_right)
     } else {
-        (&bc.mixed_dh_left_t, &bc.mixed_dh_right_t)
+        (bc.mixed_dh_left_t, bc.mixed_dh_right_t)
     };
 
-    // Build the header line: corner + == + ╡ + title + ╞ + === + corner
+    // The last column is reserved for the right corner so it always wins, even when the
+    // title is too long for the available width: everything else is laid out left-to-right
+    // within the remaining budget and clipped/truncated to fit before it, rather than being
+    // written at a fixed offset and later overwritten mid-glyph by the corner.
+    const RIGHT_CORNER_WIDTH: u16 = 1;
+    let body_end = x + width.saturating_sub(RIGHT_CORNER_WIDTH);
+
+    let cursor = render_section_header_prefix(x, y, body_end, title, left_corner, buf, ctx);
+
+    let trailing_width = body_end.saturating_sub(cursor);
+    if trailing_width > 0 {
+        let trailing = bc.double_horizontal.repeat(trailing_width as usize);
+        buf.set_string(cursor, y, &trailing, border_style);
+    }
+
+    // Right corner always wins the last column.
+    if width > 0 {
+        buf.set_string(x + width - 1, y, right_corner, border_style);
+    }
+}
+
+/// Draw the header's left cap, embedded title, and trailing `╞` divider:
+/// `corner + == + ╡ + title + ╞`. Returns the cursor x after the last glyph.
+fn render_section_header_prefix(
+    x: u16,
+    y: u16,
+    body_end: u16,
+    title: &str,
+    left_corner: &str,
+    buf: &mut Buffer,
+    ctx: &RenderContext,
+) -> u16 {
+    let bc = ctx.box_chars();
+    let border_style = ctx.boxchar_style();
+    let title_style = ctx.text_style();
+
     let title_prefix = format!(
         "{}{}{}",
         left_corner,
@@ -210,14 +285,7 @@ pub(super) fn render_section_header(
     );
     let title_with_space = format!(" {} ", title);
 
-    // The last column is reserved for the right corner so it always wins, even when the
-    // title is too long for the available width: everything else is laid out left-to-right
-    // within the remaining budget and clipped/truncated to fit before it, rather than being
-    // written at a fixed offset and later overwritten mid-glyph by the corner.
-    const RIGHT_CORNER_WIDTH: u16 = 1;
-    let body_end = x + width.saturating_sub(RIGHT_CORNER_WIDTH);
     let mut cursor = x;
-
     cursor += render_line(
         buf,
         cursor,
@@ -242,17 +310,7 @@ pub(super) fn render_section_header(
         bc.mixed_dh_left_t,
         border_style,
     );
-
-    let trailing_width = body_end.saturating_sub(cursor);
-    if trailing_width > 0 {
-        let trailing = bc.double_horizontal.repeat(trailing_width as usize);
-        buf.set_string(cursor, y, &trailing, border_style);
-    }
-
-    // Right corner always wins the last column.
-    if width > 0 {
-        buf.set_string(x + width - 1, y, right_corner, border_style);
-    }
+    cursor
 }
 
 /// Render bottom border: ╘═══════════════════════════════════════════════╛
@@ -345,10 +403,6 @@ pub(super) fn render_tab_bar(
     buf: &mut Buffer,
     ctx: &RenderContext,
 ) {
-    let bc = ctx.box_chars();
-    let base_style = ctx.text_style();
-    let border_style = ctx.boxchar_style();
-
     // Calculate tab widths (each tab gets its title's display width + padding). Using display
     // width (not char count) matters once a title contains a double-width glyph: the label is
     // rendered with the real glyph width regardless, so an undercounted width here would place
@@ -359,7 +413,27 @@ pub(super) fn render_tab_bar(
         .map(|t| t.title.width() as u16 + TAB_PADDING)
         .collect();
 
-    // Line 1: Tab labels
+    render_tab_labels(tabs, &tab_widths, active_index, x, y, width, buf, ctx);
+    render_tab_separator(&tab_widths, x, y, width, buf, ctx);
+}
+
+/// Line 1 of the tab bar: each tab's label, highlighted when active, with a
+/// `│` divider between consecutive tabs.
+#[allow(clippy::too_many_arguments)]
+fn render_tab_labels(
+    tabs: &[super::DocTabDef],
+    tab_widths: &[u16],
+    active_index: usize,
+    x: u16,
+    y: u16,
+    width: u16,
+    buf: &mut Buffer,
+    ctx: &RenderContext,
+) {
+    let bc = ctx.box_chars();
+    let base_style = ctx.text_style();
+    let border_style = ctx.boxchar_style();
+
     let mut x_pos = x;
     for (idx, tab) in tabs.iter().enumerate() {
         let tab_width = tab_widths[idx];
@@ -386,8 +460,13 @@ pub(super) fn render_tab_bar(
             x_pos += 1;
         }
     }
+}
 
-    // Line 2: Separator with connectors under the tab dividers
+/// Line 2 of the tab bar: a horizontal rule with tee connectors dropped at
+/// each tab boundary, underneath the dividers drawn by [`render_tab_labels`].
+fn render_tab_separator(tab_widths: &[u16], x: u16, y: u16, width: u16, buf: &mut Buffer, ctx: &RenderContext) {
+    let bc = ctx.box_chars();
+    let border_style = ctx.boxchar_style();
     let sep_char = bc.horizontal.chars().next().unwrap_or('─');
     let tee_char = bc.bottom_junction.chars().next().unwrap_or('┴');
 
@@ -406,7 +485,7 @@ pub(super) fn render_tab_bar(
         connector_x += tab_width;
 
         // Place tee at boundary (if not last tab)
-        if idx < tabs.len() - 1 && connector_x < x + width {
+        if idx < tab_widths.len() - 1 && connector_x < x + width {
             let cell = buf.cell_mut((connector_x, y + 1));
             if let Some(cell) = cell {
                 cell.set_char(tee_char);

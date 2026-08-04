@@ -13,70 +13,73 @@ use crate::tui::state::AppState;
 /// access.
 pub fn reduce_settings(state: AppState, action: SettingsAction) -> (AppState, Effect) {
     match action {
-        SettingsAction::ToggleBoolean(key) => {
-            debug!("SETTINGS: Toggling boolean setting: {}", key);
-            let mut new_state = state;
-            let effect = match key.as_str() {
-                "use_unicode" => {
-                    new_state.system.config.display.use_unicode =
-                        !new_state.system.config.display.use_unicode;
-                    new_state.system.config.display.box_chars =
-                        crate::formatting::BoxChars::from_use_unicode(
-                            new_state.system.config.display.use_unicode,
-                        );
-                    save_config_effect(new_state.system.config.clone())
-                }
-                "western_teams_first" => {
-                    new_state.system.config.display_standings_western_first =
-                        !new_state.system.config.display_standings_western_first;
-                    // Rebuild standings focusable metadata so team selection uses the new order
-                    let save_effect = save_config_effect(new_state.system.config.clone());
-                    let rebuild_effect = Effect::Action(Action::RebuildStandingsFocusable);
-                    Effect::Batch(vec![save_effect, rebuild_effect])
-                }
-                _ => {
-                    // Since F3, activation flows through typed `LinkTarget::ToggleSetting(key)`
-                    // values that originate only from `settings_document.rs`, so an unrecognized
-                    // key here is a programming error, not user input. No-op rather than save.
-                    warn!(
-                        "SETTINGS: ToggleBoolean received unrecognized key {:?}; ignoring",
-                        key
-                    );
-                    Effect::None
-                }
-            };
-            (new_state, effect)
-        }
-
-        SettingsAction::UpdateSetting { key, value } => {
-            debug!("SETTINGS: Updating setting: {} = {}", key, value);
-            let mut new_state = state;
-            let effect = match key.as_str() {
-                "log_level" => {
-                    new_state.system.config.log_level = value;
-                    save_config_effect(new_state.system.config.clone())
-                }
-                "theme" => update_theme_setting(&mut new_state, value),
-                _ => {
-                    // Same reasoning as ToggleBoolean above: an unrecognized key is a
-                    // programming error, not user input. No-op rather than save.
-                    warn!(
-                        "SETTINGS: UpdateSetting received unrecognized key {:?}; ignoring",
-                        key
-                    );
-                    Effect::None
-                }
-            };
-            (new_state, effect)
-        }
-
-        SettingsAction::UpdateConfig(config) => {
-            debug!("SETTINGS: Updating config");
-            let mut new_state = state;
-            new_state.system.config = *config;
-            (new_state, Effect::None)
-        }
+        SettingsAction::ToggleBoolean(key) => handle_toggle_boolean(state, key),
+        SettingsAction::UpdateSetting { key, value } => handle_update_setting(state, key, value),
+        SettingsAction::UpdateConfig(config) => handle_update_config(state, config),
     }
+}
+
+fn handle_toggle_boolean(state: AppState, key: String) -> (AppState, Effect) {
+    debug!("SETTINGS: Toggling boolean setting: {}", key);
+    let mut new_state = state;
+    let effect = match key.as_str() {
+        "use_unicode" => {
+            new_state.system.config.display.use_unicode =
+                !new_state.system.config.display.use_unicode;
+            new_state.system.config.display.box_chars = crate::formatting::BoxChars::from_use_unicode(
+                new_state.system.config.display.use_unicode,
+            );
+            save_config_effect(new_state.system.config.clone())
+        }
+        "western_teams_first" => {
+            new_state.system.config.display_standings_western_first =
+                !new_state.system.config.display_standings_western_first;
+            // Rebuild standings focusable metadata so team selection uses the new order
+            let save_effect = save_config_effect(new_state.system.config.clone());
+            let rebuild_effect = Effect::Action(Action::RebuildStandingsFocusable);
+            Effect::Batch(vec![save_effect, rebuild_effect])
+        }
+        _ => {
+            // Since F3, activation flows through typed `LinkTarget::ToggleSetting(key)`
+            // values that originate only from `settings_document.rs`, so an unrecognized
+            // key here is a programming error, not user input. No-op rather than save.
+            warn!(
+                "SETTINGS: ToggleBoolean received unrecognized key {:?}; ignoring",
+                key
+            );
+            Effect::None
+        }
+    };
+    (new_state, effect)
+}
+
+fn handle_update_setting(state: AppState, key: String, value: String) -> (AppState, Effect) {
+    debug!("SETTINGS: Updating setting: {} = {}", key, value);
+    let mut new_state = state;
+    let effect = match key.as_str() {
+        "log_level" => {
+            new_state.system.config.log_level = value;
+            save_config_effect(new_state.system.config.clone())
+        }
+        "theme" => update_theme_setting(&mut new_state, value),
+        _ => {
+            // Same reasoning as ToggleBoolean above: an unrecognized key is a
+            // programming error, not user input. No-op rather than save.
+            warn!(
+                "SETTINGS: UpdateSetting received unrecognized key {:?}; ignoring",
+                key
+            );
+            Effect::None
+        }
+    };
+    (new_state, effect)
+}
+
+fn handle_update_config(state: AppState, config: Box<Config>) -> (AppState, Effect) {
+    debug!("SETTINGS: Updating config");
+    let mut new_state = state;
+    new_state.system.config = *config;
+    (new_state, Effect::None)
 }
 
 /// Apply a `theme` setting update, saving on success.
