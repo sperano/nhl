@@ -19,18 +19,20 @@ use super::DocumentElement;
 // Re-exports so `render::*` keeps resolving every name it did before the
 // split, for both sibling modules (`behavior.rs`, `constructors.rs`,
 // `mod.rs`) and `render_tests.rs`'s `use super::*`.
-pub(super) use super::render_layout::{clipped, render_row};
 pub use super::render_composites::TEAM_BOXSCORE_SIDE_BY_SIDE_WIDTH;
 pub(super) use super::render_composites::{
     render_tabs, render_team_boxscore, tabs_height, team_boxscore_height,
     TEAM_BOXSCORE_SECTION_HEADER_ROWS, TEAM_BOXSCORE_SECTION_TRAILING_BLANK,
 };
+pub(super) use super::render_layout::{clipped, render_row};
 
 // Test-only re-exports: these names have no production caller outside
 // `render_tests.rs` (which sees them via this module's `use super::*`), so
 // they're gated to avoid an unused-import warning on non-test builds.
 #[cfg(test)]
-pub(super) use super::render_composites::{render_bottom_border, render_section_header, render_tab_bar, TEAM_BOXSCORE_WIDTH};
+pub(super) use super::render_composites::{
+    render_bottom_border, render_section_header, render_tab_bar, TEAM_BOXSCORE_WIDTH,
+};
 #[cfg(test)]
 pub(super) use super::render_layout::get_preferred_width;
 #[cfg(test)]

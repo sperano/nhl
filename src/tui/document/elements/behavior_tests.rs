@@ -32,8 +32,7 @@ fn test_heading_element_height() {
 
 #[test]
 fn test_link_element_height() {
-    let elem =
-        DocumentElement::link("link1", "Click me", LinkTarget::Anchor("test".to_string()));
+    let elem = DocumentElement::link("link1", "Click me", LinkTarget::Anchor("test".to_string()));
     assert_eq!(elem.height(), 1);
 }
 
@@ -173,8 +172,7 @@ fn test_render_heading_level_1() {
 
 #[test]
 fn test_render_link() {
-    let elem =
-        DocumentElement::link("test_link", "Click", LinkTarget::Anchor("test".to_string()));
+    let elem = DocumentElement::link("test_link", "Click", LinkTarget::Anchor("test".to_string()));
     let mut buf = Buffer::empty(Rect::new(0, 0, 20, 5));
     let config = DisplayConfig::default();
     let ctx = RenderContext::focused(&config);
@@ -192,11 +190,8 @@ fn test_render_link() {
 
 #[test]
 fn test_render_focused_link() {
-    let elem = DocumentElement::focused_link(
-        "test_link",
-        "Click",
-        LinkTarget::Anchor("test".to_string()),
-    );
+    let elem =
+        DocumentElement::focused_link("test_link", "Click", LinkTarget::Anchor("test".to_string()));
     let mut buf = Buffer::empty(Rect::new(0, 0, 20, 5));
     let config = DisplayConfig::default();
     let ctx = RenderContext::focused(&config);

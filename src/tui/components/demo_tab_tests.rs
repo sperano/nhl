@@ -127,9 +127,7 @@ fn test_activate_link_team() {
 
     // Should return PushDocument action for TeamDetail
     match effect {
-        Effect::Action(Action::PushDocument(StackedDocument::TeamDetail {
-            abbrev, ..
-        })) => {
+        Effect::Action(Action::PushDocument(StackedDocument::TeamDetail { abbrev, .. })) => {
             assert_eq!(abbrev, "BOS");
         }
         _ => panic!("Expected PushDocument(TeamDetail), got {:?}", effect),
@@ -163,8 +161,7 @@ fn test_activate_link_player() {
     // Should return PushDocument action for PlayerDetail
     match effect {
         Effect::Action(Action::PushDocument(StackedDocument::PlayerDetail {
-            player_id,
-            ..
+            player_id, ..
         })) => {
             assert_eq!(player_id, 8477492);
         }

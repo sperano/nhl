@@ -170,7 +170,11 @@ impl ScoreBox {
     /// Renders the top (`╔══...╤══╗`) or bottom (`╚══...╧══╝`) double-line border.
     fn render_border(buf: &mut Buffer, x: u16, y: u16, bc: &BoxChars, style: Style, top: bool) {
         let (left, junction, right) = if top {
-            (bc.double_top_left, bc.double_top_junction, bc.double_top_right)
+            (
+                bc.double_top_left,
+                bc.double_top_junction,
+                bc.double_top_right,
+            )
         } else {
             (
                 bc.double_bottom_left,

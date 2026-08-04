@@ -72,7 +72,9 @@ fn link_focusable_cell(
             last_name: last_name.clone(),
         }),
         CellValue::TeamLink {
-            team_abbrev, season, ..
+            team_abbrev,
+            season,
+            ..
         } => LinkTarget::Push(StackedDocument::TeamDetail {
             abbrev: team_abbrev.clone(),
             season: *season,

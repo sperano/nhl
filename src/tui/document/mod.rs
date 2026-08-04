@@ -38,7 +38,7 @@ pub use factory::build_stacked_document;
 pub use focus::{FocusableElement, FocusableId, RowPosition};
 pub use handlers::handle_stacked_document_key;
 pub use link::LinkTarget;
-pub use view::{DocumentRenderCache, DocumentView, DocumentWidgetParams, render_document_widget};
+pub use view::{render_document_widget, DocumentRenderCache, DocumentView, DocumentWidgetParams};
 pub use viewport::Viewport;
 
 /// Focus context passed when building a document

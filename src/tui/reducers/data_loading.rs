@@ -148,8 +148,7 @@ fn apply_standings_error(
 
     // Clear standings focusable data in component state on error
     use crate::tui::components::standings_tab::StandingsTabState;
-    if let Some(standings_state) =
-        component_states.get_mut::<StandingsTabState>(STANDINGS_TAB_PATH)
+    if let Some(standings_state) = component_states.get_mut::<StandingsTabState>(STANDINGS_TAB_PATH)
     {
         standings_state.doc_nav.focusables.clear();
     }
@@ -363,13 +362,10 @@ fn apply_team_roster_loaded(
     // Focusable metadata is populated on-demand by handle_stacked_document_key
     Arc::make_mut(&mut new_state.data.team_roster_stats)
         .insert((team_abbrev.clone(), resolved_season), payload.stats);
-    new_state
-        .data
-        .loading
-        .remove(&LoadingKey::TeamRosterStats(
-            team_abbrev.clone(),
-            requested_season,
-        ));
+    new_state.data.loading.remove(&LoadingKey::TeamRosterStats(
+        team_abbrev.clone(),
+        requested_season,
+    ));
     // A "latest" request has now resolved to a concrete season: give every
     // pending TeamDetail entry for this team its identity, so season cycling
     // and the loading-key lookup have a real id.
@@ -392,7 +388,9 @@ fn handle_team_roster_loaded(
     let mut new_state = state;
 
     match result {
-        Ok(payload) => apply_team_roster_loaded(&mut new_state, team_abbrev, requested_season, payload),
+        Ok(payload) => {
+            apply_team_roster_loaded(&mut new_state, team_abbrev, requested_season, payload)
+        }
         Err(e) => {
             debug!(
                 "DATA: Failed to load team roster for {}: {}",

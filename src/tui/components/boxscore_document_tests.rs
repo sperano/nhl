@@ -2,9 +2,9 @@ use super::*;
 use crate::config::{DisplayConfig, RenderContext};
 use crate::tui::document::FocusContext;
 use nhl_api::{
-    Boxscore, BoxscoreTeam, GameClock, GameScheduleState, GameState, GoalieDecision,
-    GoalieStats, LocalizedString, PeriodDescriptor, PeriodType, PlayerByGameStats, Position,
-    Season, SkaterStats, TeamPlayerStats,
+    Boxscore, BoxscoreTeam, GameClock, GameScheduleState, GameState, GoalieDecision, GoalieStats,
+    LocalizedString, PeriodDescriptor, PeriodType, PlayerByGameStats, Position, Season,
+    SkaterStats, TeamPlayerStats,
 };
 
 /// Create a test skater with minimal data

@@ -454,7 +454,13 @@ fn event_loop(
             &mut screenshot_requested,
         )?;
         #[cfg(not(feature = "development"))]
-        render_step(terminal, runtime, doc_cache, &mut dirty, &mut last_render_at)?;
+        render_step(
+            terminal,
+            runtime,
+            doc_cache,
+            &mut dirty,
+            &mut last_render_at,
+        )?;
 
         // If actions were processed, continue loop immediately to check for more
         // This ensures UI updates immediately when async data arrives
@@ -467,7 +473,12 @@ fn event_loop(
         }
 
         #[cfg(feature = "development")]
-        let outcome = animate_and_poll_key(runtime, &mut dirty, last_render_at, &mut screenshot_requested)?;
+        let outcome = animate_and_poll_key(
+            runtime,
+            &mut dirty,
+            last_render_at,
+            &mut screenshot_requested,
+        )?;
         #[cfg(not(feature = "development"))]
         let outcome = animate_and_poll_key(runtime, &mut dirty, last_render_at)?;
 

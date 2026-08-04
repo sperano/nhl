@@ -15,7 +15,9 @@ pub(crate) mod colors {
 }
 
 /// Get color and label for an event type
-pub(crate) fn get_event_color_and_label(event_type: &PlayEventType) -> (&'static str, &'static str) {
+pub(crate) fn get_event_color_and_label(
+    event_type: &PlayEventType,
+) -> (&'static str, &'static str) {
     match event_type {
         PlayEventType::Goal => (colors::GREEN, "GOAL"),
         PlayEventType::Penalty => (colors::RED, "PENALTY"),
@@ -224,7 +226,10 @@ fn format_penalty_verbose(pbp: &PlayByPlay, details: &PlayEventDetails) -> (Stri
 }
 
 /// Format assists in compact form
-pub(crate) fn format_assists_compact(pbp: &PlayByPlay, details: &nhl_api::PlayEventDetails) -> String {
+pub(crate) fn format_assists_compact(
+    pbp: &PlayByPlay,
+    details: &nhl_api::PlayEventDetails,
+) -> String {
     let mut assists = vec![];
 
     if let Some(id) = details.assist1_player_id {
@@ -238,7 +243,10 @@ pub(crate) fn format_assists_compact(pbp: &PlayByPlay, details: &nhl_api::PlayEv
 }
 
 /// Format assists in verbose form (with totals)
-pub(crate) fn format_assists_verbose(pbp: &PlayByPlay, details: &nhl_api::PlayEventDetails) -> String {
+pub(crate) fn format_assists_verbose(
+    pbp: &PlayByPlay,
+    details: &nhl_api::PlayEventDetails,
+) -> String {
     let mut assists = vec![];
 
     if let Some(id) = details.assist1_player_id {

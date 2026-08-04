@@ -202,15 +202,7 @@ fn test_autoscroll_to_focus_scrolls_down() {
         scroll_offset: 0,
         viewport_height: 10,
         // Element 5 is at y=20
-        focusables: uniform_focusables(&[
-            (0, 1),
-            (2, 1),
-            (4, 1),
-            (6, 1),
-            (8, 1),
-            (20, 1),
-            (22, 1),
-        ]),
+        focusables: uniform_focusables(&[(0, 1), (2, 1), (4, 1), (6, 1), (8, 1), (20, 1), (22, 1)]),
         ..Default::default()
     };
 
@@ -228,15 +220,7 @@ fn test_autoscroll_to_focus_scrolls_up() {
         scroll_offset: 10,
         viewport_height: 10,
         // Element 0 is at y=0
-        focusables: uniform_focusables(&[
-            (0, 1),
-            (2, 1),
-            (4, 1),
-            (6, 1),
-            (8, 1),
-            (20, 1),
-            (22, 1),
-        ]),
+        focusables: uniform_focusables(&[(0, 1), (2, 1), (4, 1), (6, 1), (8, 1), (20, 1), (22, 1)]),
         ..Default::default()
     };
 

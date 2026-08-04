@@ -16,8 +16,7 @@ fn test_game_details_loaded_stores_game_info() {
     // Verify the function signature exists and handles both Ok and Err cases
     let result_ok: Result<nhl_api::GameMatchup, Arc<nhl_api::NHLApiError>> =
         Err(Arc::new(nhl_api::NHLApiError::Other("test".to_string())));
-    let (new_state, _effect) =
-        handle_game_details_loaded(state.clone(), TEST_GAME_ID, result_ok);
+    let (new_state, _effect) = handle_game_details_loaded(state.clone(), TEST_GAME_ID, result_ok);
 
     // Verify loading key is removed on error
     assert!(!new_state
@@ -50,8 +49,7 @@ fn test_schedule_loaded_populates_scores_link_targets() {
 
     let schedule = create_mock_schedule(None);
     let expected_game_id = schedule.games[0].id;
-    let (_state, _effect) =
-        handle_schedule_loaded(AppState::default(), Ok(schedule), &mut store);
+    let (_state, _effect) = handle_schedule_loaded(AppState::default(), Ok(schedule), &mut store);
 
     let scores = store.get::<ScoresTabState>(SCORES_TAB_PATH).unwrap();
     let nav = &scores.doc_nav;
@@ -222,8 +220,7 @@ fn test_game_details_success_clears_generic_error() {
     assert!(errored_state.system.status_is_error);
 
     let game_matchup = create_mock_game_matchup(1);
-    let (recovered_state, _effect) =
-        handle_game_details_loaded(errored_state, 1, Ok(game_matchup));
+    let (recovered_state, _effect) = handle_game_details_loaded(errored_state, 1, Ok(game_matchup));
 
     assert!(!recovered_state.system.status_is_error);
     assert_eq!(
@@ -247,10 +244,7 @@ fn roster_payload(season: i32, seasons: Option<Vec<i32>>) -> TeamRosterStatsPayl
     }
 }
 
-fn team_detail_entry(
-    abbrev: &str,
-    season: Option<i32>,
-) -> crate::tui::state::DocumentStackEntry {
+fn team_detail_entry(abbrev: &str, season: Option<i32>) -> crate::tui::state::DocumentStackEntry {
     crate::tui::state::DocumentStackEntry::new(StackedDocument::TeamDetail {
         abbrev: abbrev.to_string(),
         season,

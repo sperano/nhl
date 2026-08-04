@@ -11,9 +11,9 @@ use crate::component_message_impl;
 use crate::config::Config;
 #[cfg(test)]
 use crate::config::RenderContext;
-use crate::tui::component::{Component, Effect, Element};
 #[cfg(test)]
 use crate::tui::component::ElementWidget;
+use crate::tui::component::{Component, Effect, Element};
 use crate::tui::components::{SettingsDocument, TabItem, TabbedPanel, TabbedPanelProps};
 #[cfg(test)]
 use crate::tui::document::FocusableElement;
@@ -29,13 +29,13 @@ use crate::tui::SettingsCategory;
 
 #[path = "settings_tab_view.rs"]
 mod settings_tab_view;
-use settings_tab_view::{wrap_with_modal, SettingsTabWidget};
-#[cfg(test)]
-use settings_tab_view::get_focusable_ids_for_category;
 #[cfg(test)]
 use ratatui::buffer::Buffer;
 #[cfg(test)]
 use ratatui::layout::Rect;
+#[cfg(test)]
+use settings_tab_view::get_focusable_ids_for_category;
+use settings_tab_view::{wrap_with_modal, SettingsTabWidget};
 
 /// Props for SettingsTab component
 #[derive(Clone)]
@@ -179,9 +179,7 @@ impl Component for SettingsTab {
             SettingsTabMsg::NavigateCategoryRight(config) => {
                 Self::handle_navigate_category_right(state, config)
             }
-            SettingsTabMsg::ActivateSetting(config) => {
-                Self::handle_activate_setting(state, config)
-            }
+            SettingsTabMsg::ActivateSetting(config) => Self::handle_activate_setting(state, config),
             SettingsTabMsg::Modal(modal_msg) => Self::handle_modal_msg(state, modal_msg),
 
             // Common messages already handled above

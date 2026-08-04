@@ -56,7 +56,10 @@ fn stacked_document_key(state: AppState, key: crossterm::event::KeyEvent) -> (Ap
 /// already loaded or already in flight.
 fn boxscore_fetch_effect(new_state: &mut AppState, game_id: i64) -> Effect {
     if !new_state.data.boxscores.contains_key(&game_id)
-        && !new_state.data.loading.contains(&LoadingKey::Boxscore(game_id))
+        && !new_state
+            .data
+            .loading
+            .contains(&LoadingKey::Boxscore(game_id))
     {
         debug!(
             "DOCUMENT_STACK: Requesting boxscore fetch for game_id={}",
@@ -153,7 +156,9 @@ fn push_document(state: AppState, doc: StackedDocument) -> (AppState, Effect) {
     // Return fetch effect directly based on document type
     // This eliminates the need for runtime to compare old/new state
     let fetch_effect = match &doc {
-        StackedDocument::Boxscore { game_id, .. } => boxscore_fetch_effect(&mut new_state, *game_id),
+        StackedDocument::Boxscore { game_id, .. } => {
+            boxscore_fetch_effect(&mut new_state, *game_id)
+        }
         StackedDocument::TeamDetail { abbrev, season } => {
             team_detail_fetch_effect(&mut new_state, abbrev, *season)
         }

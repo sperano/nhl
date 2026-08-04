@@ -90,7 +90,10 @@ impl DocumentElement {
                 link_target,
                 ..
             } => out.push(Self::score_box_focusable(
-                *game_id, score_box, link_target, y_offset,
+                *game_id,
+                score_box,
+                link_target,
+                y_offset,
             )),
             Self::Indented { element, .. } => {
                 // Delegate to inner element (margin doesn't affect focusable collection)
@@ -103,7 +106,12 @@ impl DocumentElement {
         }
     }
 
-    fn link_focusable(display: &str, target: &LinkTarget, id: &str, y_offset: u16) -> FocusableElement {
+    fn link_focusable(
+        display: &str,
+        target: &LinkTarget,
+        id: &str,
+        y_offset: u16,
+    ) -> FocusableElement {
         FocusableElement {
             id: FocusableId::link(id),
             y: y_offset,
@@ -190,7 +198,11 @@ impl DocumentElement {
 /// `y_offset`. Shared by the composite variants (`Custom`, `Table`,
 /// `TeamBoxscore`) that carry pre-computed focusable elements relative to
 /// their own top-left corner.
-fn push_adjusted_focusable(focusable: &[FocusableElement], y_offset: u16, out: &mut Vec<FocusableElement>) {
+fn push_adjusted_focusable(
+    focusable: &[FocusableElement],
+    y_offset: u16,
+    out: &mut Vec<FocusableElement>,
+) {
     for elem in focusable {
         let mut adjusted = elem.clone();
         adjusted.y += y_offset;
@@ -279,7 +291,13 @@ impl DocumentElement {
 
     /// Render `element` shifted right by `margin`, dropping it entirely if
     /// the area is too narrow to hold any margin at all.
-    fn render_indented(element: &DocumentElement, margin: u16, area: Rect, buf: &mut Buffer, ctx: &RenderContext) {
+    fn render_indented(
+        element: &DocumentElement,
+        margin: u16,
+        area: Rect,
+        buf: &mut Buffer,
+        ctx: &RenderContext,
+    ) {
         if area.width > margin {
             let indented_area =
                 Rect::new(area.x + margin, area.y, area.width - margin, area.height);

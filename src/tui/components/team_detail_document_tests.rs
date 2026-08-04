@@ -120,12 +120,8 @@ fn test_document_builds_with_data() {
     let standing = create_test_standing();
     let club_stats = create_test_club_stats();
 
-    let doc = TeamDetailDocumentContent::new(
-        "TST".to_string(),
-        Some(standing),
-        Some(club_stats),
-        true,
-    );
+    let doc =
+        TeamDetailDocumentContent::new("TST".to_string(), Some(standing), Some(club_stats), true);
 
     let elements = doc.build(&FocusContext::default());
 
@@ -157,12 +153,8 @@ fn test_focusable_positions() {
     let standing = create_test_standing();
     let club_stats = create_test_club_stats();
 
-    let doc = TeamDetailDocumentContent::new(
-        "TST".to_string(),
-        Some(standing),
-        Some(club_stats),
-        true,
-    );
+    let doc =
+        TeamDetailDocumentContent::new("TST".to_string(), Some(standing), Some(club_stats), true);
 
     let positions = doc.focusables(&FocusContext::default());
 
@@ -175,12 +167,8 @@ fn test_focusable_ids() {
     let standing = create_test_standing();
     let club_stats = create_test_club_stats();
 
-    let doc = TeamDetailDocumentContent::new(
-        "TST".to_string(),
-        Some(standing),
-        Some(club_stats),
-        true,
-    );
+    let doc =
+        TeamDetailDocumentContent::new("TST".to_string(), Some(standing), Some(club_stats), true);
 
     let ids = doc.focusables(&FocusContext::default());
 
@@ -365,9 +353,9 @@ fn test_historical_season_hides_record_line() {
         false,
     );
 
-    let has_record = doc.build(&FocusContext::default()).iter().any(|e| {
-        matches!(e, DocumentElement::Text { content, .. } if content.starts_with("Record:"))
-    });
+    let has_record = doc.build(&FocusContext::default()).iter().any(
+        |e| matches!(e, DocumentElement::Text { content, .. } if content.starts_with("Record:")),
+    );
     assert!(!has_record, "record line describes the current season only");
 }
 

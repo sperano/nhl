@@ -61,8 +61,7 @@ fn test_get_next_screenshot_counter_ignores_old_format() {
     use std::fs;
 
     // Create a temporary directory for testing
-    let temp_dir =
-        env::temp_dir().join(format!("nhl_screenshot_test_2_{}", std::process::id()));
+    let temp_dir = env::temp_dir().join(format!("nhl_screenshot_test_2_{}", std::process::id()));
     let _ = fs::remove_dir_all(&temp_dir); // Remove if exists from previous run
     fs::create_dir(&temp_dir).unwrap();
     let original_dir = env::current_dir().unwrap();

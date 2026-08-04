@@ -498,9 +498,7 @@ fn test_activate_team_pushes_team_detail_document() {
     let effect = standings_tab.update(StandingsTabMsg::ActivateTeam, &mut state);
 
     match effect {
-        Effect::Action(Action::PushDocument(StackedDocument::TeamDetail {
-            abbrev, ..
-        })) => {
+        Effect::Action(Action::PushDocument(StackedDocument::TeamDetail { abbrev, .. })) => {
             assert_eq!(abbrev, "BOS");
         }
         _ => panic!("Expected PushDocument(TeamDetail) action, got {:?}", effect),

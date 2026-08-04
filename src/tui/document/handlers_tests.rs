@@ -383,10 +383,7 @@ fn test_player_with_seasons(player_id: i64) -> PlayerLanding {
     test_player_landing(player_id, Some(seasons))
 }
 
-fn test_player_landing(
-    player_id: i64,
-    season_totals: Option<Vec<SeasonTotal>>,
-) -> PlayerLanding {
+fn test_player_landing(player_id: i64, season_totals: Option<Vec<SeasonTotal>>) -> PlayerLanding {
     PlayerLanding {
         player_id: player_id.into(),
         is_active: true,
@@ -554,8 +551,7 @@ fn boxscore_activate_pushes_first_home_forward_after_boundary() {
 
     match activate_at(&doc, &data, 4) {
         Effect::Action(Action::PushDocument(StackedDocument::PlayerDetail {
-            player_id,
-            ..
+            player_id, ..
         })) => {
             assert_eq!(player_id, 2001);
         }
@@ -699,8 +695,7 @@ fn team_detail_activate_pushes_mid_scoring_skater() {
 
     match activate_at(&doc, &data, 1) {
         Effect::Action(Action::PushDocument(StackedDocument::PlayerDetail {
-            player_id,
-            ..
+            player_id, ..
         })) => assert_eq!(player_id, 300),
         other => panic!("expected Effect::Action(PushDocument(PlayerDetail)), got {other:?}"),
     }
@@ -734,8 +729,7 @@ fn team_detail_activate_pushes_last_goalie() {
     // Boundary: focus at the last focusable index.
     match activate_at(&doc, &data, 4) {
         Effect::Action(Action::PushDocument(StackedDocument::PlayerDetail {
-            player_id,
-            ..
+            player_id, ..
         })) => assert_eq!(player_id, 400),
         other => panic!("expected Effect::Action(PushDocument(PlayerDetail)), got {other:?}"),
     }
@@ -756,8 +750,7 @@ fn team_detail_activate_out_of_range_returns_none() {
 #[test]
 fn team_detail_sync_fills_focusables_from_roster() {
     let doc = test_team_detail_doc("TST");
-    let data =
-        data_with_roster_and_standings("TST", test_club_stats(), vec![test_standing("TST")]);
+    let data = data_with_roster_and_standings("TST", test_club_stats(), vec![test_standing("TST")]);
 
     let nav = sync_metadata(&doc, &data);
 
@@ -772,8 +765,7 @@ fn team_detail_sync_fills_focusables_from_roster() {
 fn team_detail_sync_ignores_non_matching_standing() {
     let doc = test_team_detail_doc("TST");
     // Standings present, but none match this document's abbrev.
-    let data =
-        data_with_roster_and_standings("TST", test_club_stats(), vec![test_standing("OTH")]);
+    let data = data_with_roster_and_standings("TST", test_club_stats(), vec![test_standing("OTH")]);
 
     let nav = sync_metadata(&doc, &data);
 
@@ -874,9 +866,7 @@ fn player_detail_activate_pushes_team_detail_for_first_season() {
     let data = data_with_player(1, test_player_with_seasons(1));
 
     match activate_at(&doc, &data, 0) {
-        Effect::Action(Action::PushDocument(StackedDocument::TeamDetail {
-            abbrev, ..
-        })) => {
+        Effect::Action(Action::PushDocument(StackedDocument::TeamDetail { abbrev, .. })) => {
             assert_eq!(abbrev, "EDM");
         }
         other => panic!("expected Effect::Action(PushDocument(TeamDetail)), got {other:?}"),
@@ -889,9 +879,7 @@ fn player_detail_activate_pushes_team_detail_for_second_season() {
     let data = data_with_player(1, test_player_with_seasons(1));
 
     match activate_at(&doc, &data, 1) {
-        Effect::Action(Action::PushDocument(StackedDocument::TeamDetail {
-            abbrev, ..
-        })) => {
+        Effect::Action(Action::PushDocument(StackedDocument::TeamDetail { abbrev, .. })) => {
             assert_eq!(abbrev, "TOR");
         }
         other => panic!("expected Effect::Action(PushDocument(TeamDetail)), got {other:?}"),
@@ -974,9 +962,7 @@ fn player_detail_activate_focus_index_mismatch_is_fixed() {
     assert_eq!(nav.focusables.len(), 1);
 
     match activate_at(&doc, &data, 0) {
-        Effect::Action(Action::PushDocument(StackedDocument::TeamDetail {
-            abbrev, ..
-        })) => {
+        Effect::Action(Action::PushDocument(StackedDocument::TeamDetail { abbrev, .. })) => {
             assert_eq!(abbrev, "EDM");
         }
         other => {
@@ -1076,8 +1062,7 @@ fn handle_key_enter_activates_focused_skater() {
 
     match effect {
         Effect::Action(Action::PushDocument(StackedDocument::PlayerDetail {
-            player_id,
-            ..
+            player_id, ..
         })) => assert_eq!(player_id, 200),
         _ => panic!("expected Effect::Action(PushDocument(PlayerDetail))"),
     }

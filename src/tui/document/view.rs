@@ -12,7 +12,7 @@ use crate::config::{DisplayConfig, RenderContext};
 use crate::formatting::BoxChars;
 use crate::tui::widgets::{LoadingAnimation, StandaloneWidget};
 
-use super::{Document, FocusContext, FocusableId, Viewport, render_elements_to_buffer};
+use super::{render_elements_to_buffer, Document, FocusContext, FocusableId, Viewport};
 
 /// Build a document's element tree and render it to a full-height offscreen
 /// buffer, with focus highlighting (e.g. `Link` vs `focused_link`, a table's

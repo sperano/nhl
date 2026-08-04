@@ -26,9 +26,10 @@ fn handle_toggle_boolean(state: AppState, key: String) -> (AppState, Effect) {
         "use_unicode" => {
             new_state.system.config.display.use_unicode =
                 !new_state.system.config.display.use_unicode;
-            new_state.system.config.display.box_chars = crate::formatting::BoxChars::from_use_unicode(
-                new_state.system.config.display.use_unicode,
-            );
+            new_state.system.config.display.box_chars =
+                crate::formatting::BoxChars::from_use_unicode(
+                    new_state.system.config.display.use_unicode,
+                );
             save_config_effect(new_state.system.config.clone())
         }
         "western_teams_first" => {

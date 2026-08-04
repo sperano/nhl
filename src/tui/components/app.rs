@@ -154,12 +154,10 @@ impl App {
                 contents.scores = self.render_scores_tab_with_states(state, component_states);
             }
             Tab::Standings => {
-                contents.standings =
-                    self.render_standings_tab_with_states(state, component_states);
+                contents.standings = self.render_standings_tab_with_states(state, component_states);
             }
             Tab::Settings => {
-                contents.settings =
-                    self.render_settings_tab_with_states(state, component_states);
+                contents.settings = self.render_settings_tab_with_states(state, component_states);
             }
             #[cfg(feature = "development")]
             Tab::Demo => {

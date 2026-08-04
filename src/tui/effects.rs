@@ -103,7 +103,9 @@ impl DataEffects {
                     // Best-effort: a failed season-list fetch degrades to
                     // seasons staying unknown, not a roster load failure.
                     let seasons = if fetch_seasons {
-                        fetch_regular_season_ids(client.as_ref(), &abbrev).await.ok()
+                        fetch_regular_season_ids(client.as_ref(), &abbrev)
+                            .await
+                            .ok()
                     } else {
                         None
                     };

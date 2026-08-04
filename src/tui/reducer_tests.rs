@@ -212,8 +212,7 @@ fn test_set_status_message_without_error() {
 #[test]
 fn test_toggle_boolean_returns_save_effect() {
     let state = AppState::default();
-    let action =
-        Action::SettingsAction(SettingsAction::ToggleBoolean("use_unicode".to_string()));
+    let action = Action::SettingsAction(SettingsAction::ToggleBoolean("use_unicode".to_string()));
 
     let (new_state, effect) = test_reduce(state.clone(), action);
 
@@ -232,8 +231,7 @@ fn test_toggle_boolean_use_unicode_updates_box_chars() {
     let mut state = AppState::default();
     state.system.config.display.use_unicode = true;
 
-    let action =
-        Action::SettingsAction(SettingsAction::ToggleBoolean("use_unicode".to_string()));
+    let action = Action::SettingsAction(SettingsAction::ToggleBoolean("use_unicode".to_string()));
 
     let (new_state, _) = test_reduce(state, action);
 

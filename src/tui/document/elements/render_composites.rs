@@ -177,7 +177,14 @@ fn render_boxscore_section(
 
 /// Draw one empty bordered line (just the left/right `│`), skipped entirely
 /// if `y` has run past the available area.
-fn render_boxscore_blank_line(x: u16, y: u16, width: u16, bottom: u16, buf: &mut Buffer, ctx: &RenderContext) {
+fn render_boxscore_blank_line(
+    x: u16,
+    y: u16,
+    width: u16,
+    bottom: u16,
+    buf: &mut Buffer,
+    ctx: &RenderContext,
+) {
     if y >= bottom {
         return;
     }
@@ -314,7 +321,13 @@ fn render_section_header_prefix(
 }
 
 /// Render bottom border: ╘═══════════════════════════════════════════════╛
-pub(super) fn render_bottom_border(x: u16, y: u16, width: u16, buf: &mut Buffer, ctx: &RenderContext) {
+pub(super) fn render_bottom_border(
+    x: u16,
+    y: u16,
+    width: u16,
+    buf: &mut Buffer,
+    ctx: &RenderContext,
+) {
     let bc = ctx.box_chars();
     let border_style = ctx.boxchar_style();
 
@@ -464,7 +477,14 @@ fn render_tab_labels(
 
 /// Line 2 of the tab bar: a horizontal rule with tee connectors dropped at
 /// each tab boundary, underneath the dividers drawn by [`render_tab_labels`].
-fn render_tab_separator(tab_widths: &[u16], x: u16, y: u16, width: u16, buf: &mut Buffer, ctx: &RenderContext) {
+fn render_tab_separator(
+    tab_widths: &[u16],
+    x: u16,
+    y: u16,
+    width: u16,
+    buf: &mut Buffer,
+    ctx: &RenderContext,
+) {
     let bc = ctx.box_chars();
     let border_style = ctx.boxchar_style();
     let sep_char = bc.horizontal.chars().next().unwrap_or('─');

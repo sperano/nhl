@@ -250,7 +250,14 @@ impl BigScore {
     }
 
     /// Renders the centered SOG and venue lines below the digit grid.
-    fn render_footer(&self, buf: &mut Buffer, text_style: Style, area: Rect, x: u16, digits_y: u16) {
+    fn render_footer(
+        &self,
+        buf: &mut Buffer,
+        text_style: Style,
+        area: Rect,
+        x: u16,
+        digits_y: u16,
+    ) {
         // Row 6: blank line (implicit)
         // Row 7: SOG line centered
         let sog_text = format!("SOG: {} - {}", self.away_sog, self.home_sog);
@@ -288,8 +295,18 @@ impl StandaloneWidget for BigScore {
         // Rows 2-5: Big digits with team names
         let layout = self.compute_layout(area, x, y);
 
-        buf.set_string(layout.away_name_x, layout.name_row, &self.away_name, text_style);
-        buf.set_string(layout.home_name_x, layout.name_row, &self.home_name, text_style);
+        buf.set_string(
+            layout.away_name_x,
+            layout.name_row,
+            &self.away_name,
+            text_style,
+        );
+        buf.set_string(
+            layout.home_name_x,
+            layout.name_row,
+            &self.home_name,
+            text_style,
+        );
 
         self.render_digits_grid(buf, text_style, &layout);
         self.render_footer(buf, text_style, area, x, layout.digits_y);
