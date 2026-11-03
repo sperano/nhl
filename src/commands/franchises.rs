@@ -90,7 +90,7 @@ mod tests {
     #[test]
     fn test_format_franchises_handles_unicode_names_without_panicking() {
         let franchises = vec![Franchise {
-            id: 99,
+            id: 99.into(),
             full_name: "Montréal Canadiens Ünïcode".to_string(),
             team_common_name: "Canadiens".to_string(),
             team_place_name: "Montréal".to_string(),

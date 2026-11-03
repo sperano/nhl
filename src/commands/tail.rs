@@ -3,6 +3,7 @@
 //! Shows recent plays from a game with optional follow mode for live updates.
 
 use crate::data_provider::NHLDataProvider;
+use crate::formatting::format_optional;
 use anyhow::{Context, Result};
 use nhl_api::{PlayByPlay, PlayEvent, PlayEventType};
 use std::collections::HashSet;
@@ -174,9 +175,9 @@ fn print_game_ended_message(pbp: &PlayByPlay) {
         "\n{}Game ended: {} {} - {} {}{}",
         colors::BOLD,
         pbp.away_team.abbrev,
-        pbp.away_team.score,
+        format_optional(pbp.away_team.score),
         pbp.home_team.abbrev,
-        pbp.home_team.score,
+        format_optional(pbp.home_team.score),
         colors::RESET
     );
 }
@@ -203,9 +204,9 @@ fn print_header(pbp: &PlayByPlay) {
         pbp.home_team.abbrev,
         status,
         pbp.away_team.abbrev,
-        pbp.away_team.score,
+        format_optional(pbp.away_team.score),
         pbp.home_team.abbrev,
-        pbp.home_team.score,
+        format_optional(pbp.home_team.score),
         colors::RESET
     );
     println!();

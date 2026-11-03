@@ -7,6 +7,7 @@ use nhl_api::{PlayerLanding, Position, SeasonTotal};
 
 use super::table::TableWidget;
 use crate::config::RenderContext;
+use crate::formatting::format_optional;
 use crate::team_abbrev::common_name_to_abbrev;
 use crate::tui::component::{Component, Element, ElementWidget};
 use crate::tui::document::{
@@ -111,7 +112,7 @@ impl PlayerDetailDocumentContent {
                 CellValue::Text(s.team_name.default.clone())
             }),
             ColumnDef::new("GP", 4, Alignment::Right, |s: &SeasonTotal| {
-                CellValue::Text(s.games_played.to_string())
+                CellValue::Text(format_optional(s.games_played))
             }),
             ColumnDef::new("G", 3, Alignment::Right, |s: &SeasonTotal| {
                 CellValue::Text(s.goals.unwrap_or(0).to_string())
@@ -154,7 +155,7 @@ impl PlayerDetailDocumentContent {
                 CellValue::Text(s.team_name.default.clone())
             }),
             ColumnDef::new("GP", 4, Alignment::Right, |s: &SeasonTotal| {
-                CellValue::Text(s.games_played.to_string())
+                CellValue::Text(format_optional(s.games_played))
             }),
             // Note: SeasonTotal doesn't include goalie-specific stats (W, L, GAA, SV%)
             // Those would need to come from a different API endpoint

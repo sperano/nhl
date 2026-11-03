@@ -20,6 +20,7 @@
 
 use crate::big_digits::{get_digit, BIG_DIGIT_HEIGHT, BIG_DIGIT_WIDTH};
 use crate::config::RenderContext;
+use crate::formatting::format_optional;
 use ratatui::{buffer::Buffer, layout::Rect, style::Style};
 
 use super::score_box::ScoreBoxStatus;
@@ -63,10 +64,10 @@ pub struct BigScore {
     pub away_score: i32,
     /// Home team score
     pub home_score: i32,
-    /// Away team shots on goal
-    pub away_sog: i32,
-    /// Home team shots on goal
-    pub home_sog: i32,
+    /// Away team shots on goal (`None` when the API sends none)
+    pub away_sog: Option<i32>,
+    /// Home team shots on goal (`None` when the API sends none)
+    pub home_sog: Option<i32>,
     /// Game status (e.g., "Final", "1st 09:27")
     pub status: ScoreBoxStatus,
     /// Venue name (e.g., "TD Garden")
@@ -83,10 +84,10 @@ pub struct BigScoreParams {
     pub away_score: i32,
     /// Home team score
     pub home_score: i32,
-    /// Away team shots on goal
-    pub away_sog: i32,
-    /// Home team shots on goal
-    pub home_sog: i32,
+    /// Away team shots on goal (`None` when the API sends none)
+    pub away_sog: Option<i32>,
+    /// Home team shots on goal (`None` when the API sends none)
+    pub home_sog: Option<i32>,
     /// Game status (e.g., "Final", "1st 09:27")
     pub status: ScoreBoxStatus,
     /// Venue name (e.g., "TD Garden")
@@ -260,7 +261,11 @@ impl BigScore {
     ) {
         // Row 6: blank line (implicit)
         // Row 7: SOG line centered
-        let sog_text = format!("SOG: {} - {}", self.away_sog, self.home_sog);
+        let sog_text = format!(
+            "SOG: {} - {}",
+            format_optional(self.away_sog),
+            format_optional(self.home_sog)
+        );
         let sog_width = sog_text.chars().count() as u16;
         let sog_x = x + (area.width.saturating_sub(sog_width)) / 2;
         let sog_row = digits_y + BIG_DIGIT_HEIGHT + 1;

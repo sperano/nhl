@@ -2,7 +2,7 @@
 use async_trait::async_trait;
 use nhl_api::{
     Boxscore, ClubStats, DailySchedule, Franchise, GameDate, GameId, GameMatchup, GameType,
-    NHLApiError, PlayByPlay, PlayerGameLog, PlayerId, PlayerLanding, PlayerSearchResult,
+    NHLApiError, PlayByPlay, PlayerGameLog, PlayerId, PlayerLanding, PlayerSearchResult, Season,
     SeasonGameTypes, Standing,
 };
 
@@ -28,7 +28,7 @@ pub trait NHLDataProvider: Send + Sync {
     async fn club_stats(
         &self,
         team_abbrev: &str,
-        season: i32,
+        season: Season,
         game_type: GameType,
     ) -> Result<ClubStats, NHLApiError>;
 
@@ -53,14 +53,14 @@ pub trait NHLDataProvider: Send + Sync {
     async fn player_game_log(
         &self,
         player_id: PlayerId,
-        season: i32,
+        season: Season,
         game_type: GameType,
     ) -> Result<PlayerGameLog, NHLApiError>;
 
     /// Get league standings for a specific season
     async fn league_standings_for_season(
         &self,
-        season_id: i64,
+        season: Season,
     ) -> Result<Vec<Standing>, NHLApiError>;
 
     /// Get league standings for a specific date
@@ -96,7 +96,7 @@ impl NHLDataProvider for nhl_api::Client {
     async fn club_stats(
         &self,
         team_abbrev: &str,
-        season: i32,
+        season: Season,
         game_type: GameType,
     ) -> Result<ClubStats, NHLApiError> {
         self.club_stats(team_abbrev, season, game_type).await
@@ -128,7 +128,7 @@ impl NHLDataProvider for nhl_api::Client {
     async fn player_game_log(
         &self,
         player_id: PlayerId,
-        season: i32,
+        season: Season,
         game_type: GameType,
     ) -> Result<PlayerGameLog, NHLApiError> {
         self.player_game_log(player_id, season, game_type).await
@@ -136,9 +136,9 @@ impl NHLDataProvider for nhl_api::Client {
 
     async fn league_standings_for_season(
         &self,
-        season_id: i64,
+        season: Season,
     ) -> Result<Vec<Standing>, NHLApiError> {
-        self.league_standings_for_season(season_id).await
+        self.league_standings_for_season(season).await
     }
 
     async fn league_standings_for_date(

@@ -94,7 +94,7 @@ impl ScoreBoxesDocument {
     /// Scores from `game_info` if available (live/final data), else from the schedule fixture
     fn score_box_scores(&self, game: &nhl_api::ScheduleGame) -> (Option<i32>, Option<i32>) {
         if let Some(info) = self.game_info.get(&game.id.into()) {
-            (Some(info.away_team.score), Some(info.home_team.score))
+            (info.away_team.score, info.home_team.score)
         } else {
             (game.away_team.score, game.home_team.score)
         }
@@ -171,14 +171,8 @@ impl ScoreBoxesDocument {
     /// uses for display, so the pushed `StackedDocument::Boxscore` always
     /// matches what's on screen.
     fn build_link_target(&self, game: &nhl_api::ScheduleGame) -> LinkTarget {
-        let (away_score, home_score) = if let Some(info) = self.game_info.get(&game.id.into()) {
-            (info.away_team.score, info.home_team.score)
-        } else {
-            (
-                game.away_team.score.unwrap_or(0),
-                game.home_team.score.unwrap_or(0),
-            )
-        };
+        let (away_score, home_score) = self.score_box_scores(game);
+        let (away_score, home_score) = (away_score.unwrap_or(0), home_score.unwrap_or(0));
 
         LinkTarget::Push(StackedDocument::Boxscore {
             game_id: game.id.into(),
@@ -268,6 +262,7 @@ mod tests {
             game_date: Some("2024-01-15".to_string()),
             start_time_utc: "2024-01-15T20:00:00Z".to_string(),
             game_state: ApiGameState::Final,
+            game_schedule_state: nhl_api::GameScheduleState::Ok,
             away_team: ScheduleTeam {
                 id: 1.into(),
                 abbrev: away.to_string(),

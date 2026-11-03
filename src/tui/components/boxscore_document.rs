@@ -7,6 +7,7 @@ use nhl_api::{Boxscore, GoalieStats, SkaterStats};
 
 use super::table::TableWidget;
 use crate::config::RenderContext;
+use crate::formatting::format_optional;
 use crate::tui::component::{Component, Element, ElementWidget};
 use crate::tui::document::{
     render_document_widget, Document, DocumentBuilder, DocumentElement, DocumentWidgetParams,
@@ -82,8 +83,9 @@ impl BoxscoreDocumentContent {
             vec![DocumentElement::big_score(BigScoreParams {
                 away_name: boxscore.away_team.common_name.default.clone(),
                 home_name: boxscore.home_team.common_name.default.clone(),
-                away_score: boxscore.away_team.score,
-                home_score: boxscore.home_team.score,
+                // Big digits need a number: before puck drop the API sends no score
+                away_score: boxscore.away_team.score.unwrap_or(0),
+                home_score: boxscore.home_team.score.unwrap_or(0),
                 away_sog: boxscore.away_team.sog,
                 home_sog: boxscore.home_team.sog,
                 status,
@@ -93,11 +95,11 @@ impl BoxscoreDocumentContent {
             let score_text = format!(
                 "{}: {}  |  {}: {}  (SOG: {} - {})",
                 boxscore.away_team.abbrev,
-                boxscore.away_team.score,
+                format_optional(boxscore.away_team.score),
                 boxscore.home_team.abbrev,
-                boxscore.home_team.score,
-                boxscore.away_team.sog,
-                boxscore.home_team.sog,
+                format_optional(boxscore.home_team.score),
+                format_optional(boxscore.away_team.sog),
+                format_optional(boxscore.home_team.sog),
             );
             vec![
                 DocumentElement::heading(2, "SCORE"),
@@ -298,7 +300,7 @@ fn skater_possession_columns() -> Vec<ColumnDef<SkaterStats>> {
             CellValue::Text(s.shifts.to_string())
         }),
         ColumnDef::new("TOI", 6, Alignment::Right, |s: &SkaterStats| {
-            CellValue::Text(s.toi.clone())
+            CellValue::Text(format_optional(s.toi.as_deref()))
         }),
     ]
 }
@@ -346,13 +348,13 @@ fn goalie_identity_columns(checkmark: String) -> Vec<ColumnDef<GoalieStats>> {
 fn goalie_shot_columns() -> Vec<ColumnDef<GoalieStats>> {
     vec![
         ColumnDef::new("SA", 3, Alignment::Right, |g: &GoalieStats| {
-            CellValue::Text(g.shots_against.to_string())
+            CellValue::Text(format_optional(g.shots_against))
         }),
         ColumnDef::new("GA", 2, Alignment::Right, |g: &GoalieStats| {
-            CellValue::Text(g.goals_against.to_string())
+            CellValue::Text(format_optional(g.goals_against))
         }),
         ColumnDef::new("SV", 3, Alignment::Right, |g: &GoalieStats| {
-            CellValue::Text(g.saves.to_string())
+            CellValue::Text(format_optional(g.saves))
         }),
         ColumnDef::new("SV%", 5, Alignment::Right, |g: &GoalieStats| {
             if let Some(pct) = g.save_pctg {
@@ -362,16 +364,16 @@ fn goalie_shot_columns() -> Vec<ColumnDef<GoalieStats>> {
             }
         }),
         ColumnDef::new("ES", 6, Alignment::Right, |g: &GoalieStats| {
-            CellValue::Text(g.even_strength_shots_against.clone())
+            CellValue::Text(format_optional(g.even_strength_shots_against.as_deref()))
         }),
         ColumnDef::new("PP", 4, Alignment::Right, |g: &GoalieStats| {
-            CellValue::Text(g.power_play_shots_against.clone())
+            CellValue::Text(format_optional(g.power_play_shots_against.as_deref()))
         }),
         ColumnDef::new("SH", 4, Alignment::Right, |g: &GoalieStats| {
-            CellValue::Text(g.shorthanded_shots_against.clone())
+            CellValue::Text(format_optional(g.shorthanded_shots_against.as_deref()))
         }),
         ColumnDef::new("TOI", 7, Alignment::Right, |g: &GoalieStats| {
-            CellValue::Text(g.toi.clone())
+            CellValue::Text(format_optional(g.toi.as_deref()))
         }),
         ColumnDef::new("PIM", 3, Alignment::Right, |g: &GoalieStats| {
             if let Some(pim) = g.pim {
@@ -383,12 +385,12 @@ fn goalie_shot_columns() -> Vec<ColumnDef<GoalieStats>> {
     ]
 }
 
-/// Missing period type (historical data) is treated as regulation.
+/// Missing (historical data) or unrecognized period types are treated as regulation.
 fn format_period_text(number: &i32, period_type: Option<nhl_api::PeriodType>) -> String {
-    match period_type.unwrap_or(nhl_api::PeriodType::Regulation) {
-        nhl_api::PeriodType::Regulation => format!("{}", number),
-        nhl_api::PeriodType::Overtime => "OT".to_string(),
-        nhl_api::PeriodType::Shootout => "SO".to_string(),
+    match period_type {
+        Some(nhl_api::PeriodType::Overtime) => "OT".to_string(),
+        Some(nhl_api::PeriodType::Shootout) => "SO".to_string(),
+        _ => format!("{}", number),
     }
 }
 
@@ -402,26 +404,24 @@ fn boxscore_to_status(boxscore: &Boxscore) -> ScoreBoxStatus {
                 &boxscore.period_descriptor.number,
                 boxscore.period_descriptor.period_type,
             );
-            let time = if boxscore.clock.time_remaining.is_empty() {
-                None
-            } else {
-                Some(boxscore.clock.time_remaining.clone())
-            };
+            let clock = boxscore.clock.as_ref();
+            let time = clock
+                .map(|c| c.time_remaining.clone())
+                .filter(|t| !t.is_empty());
             ScoreBoxStatus::Live {
                 period,
                 time,
-                intermission: boxscore.clock.in_intermission,
+                intermission: clock.is_some_and(|c| c.in_intermission),
             }
         }
         nhl_api::GameState::Final | nhl_api::GameState::Off => ScoreBoxStatus::Final {
             overtime: boxscore.period_descriptor.period_type == Some(nhl_api::PeriodType::Overtime),
             shootout: boxscore.period_descriptor.period_type == Some(nhl_api::PeriodType::Shootout),
         },
-        nhl_api::GameState::Postponed | nhl_api::GameState::Suspended => {
-            ScoreBoxStatus::Scheduled {
-                start_time: "TBD".to_string(),
-            }
-        }
+        // Postponed, suspended, or a state this version does not know yet
+        _ => ScoreBoxStatus::Scheduled {
+            start_time: "TBD".to_string(),
+        },
     }
 }
 

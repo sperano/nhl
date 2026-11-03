@@ -7,7 +7,7 @@ use nhl::tui;
 use nhl::dev::mock_client::MockClient;
 
 use clap::{Parser, Subcommand, ValueEnum};
-use nhl_api::Client;
+use nhl_api::{Client, Season};
 use std::sync::Arc;
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
@@ -67,9 +67,9 @@ impl GroupBy {
 enum Commands {
     /// Display NHL standings
     Standings {
-        /// Season year (optional, defaults to current standings)
+        /// Season, as 20242025 or 2024-2025 (optional, defaults to current standings)
         #[arg(short, long)]
-        season: Option<i64>,
+        season: Option<Season>,
 
         /// Date in YYYY-MM-DD format (optional)
         #[arg(short, long)]

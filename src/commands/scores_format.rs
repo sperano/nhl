@@ -50,10 +50,12 @@ impl PeriodScores {
 }
 
 /// Format period text (e.g., "1st Period", "Overtime", "Shootout")
-/// Missing period type (historical data) is treated as regulation.
+/// Missing (historical data) or unrecognized period types are treated as regulation.
 pub fn format_period_text(period_type: Option<PeriodType>, period_number: i32) -> String {
-    match period_type.unwrap_or(PeriodType::Regulation) {
-        PeriodType::Regulation => {
+    match period_type {
+        Some(PeriodType::Overtime) => "Overtime".to_string(),
+        Some(PeriodType::Shootout) => "Shootout".to_string(),
+        _ => {
             let ordinal = match period_number {
                 1 => "1st",
                 2 => "2nd",
@@ -62,8 +64,6 @@ pub fn format_period_text(period_type: Option<PeriodType>, period_number: i32) -
             };
             format!("{} Period", ordinal)
         }
-        PeriodType::Overtime => "Overtime".to_string(),
-        PeriodType::Shootout => "Shootout".to_string(),
     }
 }
 
@@ -390,10 +390,10 @@ fn track_period_slot(
 /// Index within `away_periods`/`home_periods` where this period's score belongs.
 fn period_score_index(period_type: Option<PeriodType>, period_num: usize) -> usize {
     match period_type {
-        // Missing period type (historical data) is treated as regulation
-        Some(PeriodType::Regulation) | None => (period_num - 1).min(PERIOD_3_INDEX), // P1=0, P2=1, P3=2
         Some(PeriodType::Overtime) => OVERTIME_INDEX,
         Some(PeriodType::Shootout) => SHOOTOUT_INDEX,
+        // Missing (historical data) or unrecognized period types are treated as regulation
+        _ => (period_num - 1).min(PERIOD_3_INDEX), // P1=0, P2=1, P3=2
     }
 }
 

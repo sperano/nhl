@@ -2,6 +2,7 @@ use crate::commands::parse_game_date;
 use crate::commands::scores_format::extract_period_scores;
 use crate::config;
 use crate::data_provider::NHLDataProvider;
+use crate::formatting::format_optional;
 use anyhow::{Context, Result};
 use nhl_api::{GameClock, GameMatchup, GameState, ScheduleGame};
 
@@ -113,6 +114,7 @@ fn short_status_label(state: GameState) -> &'static str {
         GameState::Future | GameState::PreGame => "SCHEDULED",
         GameState::Postponed => "POSTPONED",
         GameState::Suspended => "SUSPENDED",
+        _ => state.code(),
     }
 }
 
@@ -159,9 +161,9 @@ fn format_score_summary_line(matchup: &GameMatchup) -> String {
     format!(
         "{:<team_width$} {:>2}{:^status_width$}{:>2}  {:<team_width$}",
         matchup.away_team.abbrev,
-        matchup.away_team.score,
+        format_optional(matchup.away_team.score),
         short_status_label(matchup.game_state),
-        matchup.home_team.score,
+        format_optional(matchup.home_team.score),
         matchup.home_team.abbrev,
         team_width = TEAM_ABBREV_WIDTH,
         status_width = STATUS_LABEL_WIDTH
@@ -177,8 +179,8 @@ fn format_period_score_rows(
     matchup: &GameMatchup,
     away_abbrev: &str,
     home_abbrev: &str,
-    away_score: i32,
-    home_score: i32,
+    away_score: Option<i32>,
+    home_score: Option<i32>,
     max_period: i32,
 ) -> String {
     let mut output = String::new();
@@ -299,7 +301,7 @@ fn format_period_row(
     team_abbrev: &str,
     periods: &[i32],
     has_data: bool,
-    total_score: i32,
+    total_score: Option<i32>,
     max_period: i32,
 ) -> String {
     let mut row = format!(
@@ -328,7 +330,11 @@ fn format_period_row(
         row.push_str(&cell(SHOOTOUT_PERIOD_NUMBER, SHOOTOUT_INDEX));
     }
 
-    row.push_str(&format!("{:^width$}", total_score, width = TOTAL_COL_WIDTH));
+    row.push_str(&format!(
+        "{:^width$}",
+        format_optional(total_score),
+        width = TOTAL_COL_WIDTH
+    ));
     row
 }
 
@@ -393,6 +399,7 @@ fn format_game_status(state: GameState, period: i32, clock: Option<&GameClock>) 
         GameState::Future | GameState::PreGame => "Scheduled".to_string(),
         GameState::Postponed => "Postponed".to_string(),
         GameState::Suspended => "Suspended".to_string(),
+        _ => state.name().to_string(),
     }
 }
 

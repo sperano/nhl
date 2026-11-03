@@ -19,8 +19,8 @@ fn sample_player(name: &str, team: Option<&str>) -> PlayerSearchResult {
     }
 }
 
-fn sample_game_log(home_road_flag: HomeRoad, pim: Option<i32>) -> GameLog {
-    GameLog {
+fn sample_game_log(home_road_flag: HomeRoad, pim: Option<i32>) -> SkaterGameLog {
+    SkaterGameLog {
         game_id: 2024020500.into(),
         game_date: "2024-12-28".to_string(),
         team_abbrev: "EDM".to_string(),
@@ -58,7 +58,7 @@ fn sample_boxscore_skater() -> SkaterStats {
         power_play_goals: 1,
         sog: 5,
         faceoff_winning_pctg: 0.6,
-        toi: "21:45".to_string(),
+        toi: Some("21:45".to_string()),
         blocked_shots: 1,
         shifts: 24,
         giveaways: 2,
@@ -116,36 +116,42 @@ fn test_filter_matching_players_ambiguous_query_returns_multiple() {
 #[test]
 fn test_get_season_for_date_october_starts_new_season() {
     let date = GameDate::Date(NaiveDate::from_ymd_opt(2024, 10, 15).unwrap());
-    assert_eq!(get_season_for_date(&date), 20242025);
+    assert_eq!(get_season_for_date(&date).unwrap().id(), 20242025);
 }
 
 #[test]
 fn test_get_season_for_date_december_uses_current_year_start() {
     let date = GameDate::Date(NaiveDate::from_ymd_opt(2024, 12, 31).unwrap());
-    assert_eq!(get_season_for_date(&date), 20242025);
+    assert_eq!(get_season_for_date(&date).unwrap().id(), 20242025);
 }
 
 #[test]
 fn test_get_season_for_date_september_uses_previous_year_start() {
     let date = GameDate::Date(NaiveDate::from_ymd_opt(2025, 9, 30).unwrap());
-    assert_eq!(get_season_for_date(&date), 20242025);
+    assert_eq!(get_season_for_date(&date).unwrap().id(), 20242025);
 }
 
 #[test]
 fn test_get_season_for_date_april_uses_previous_year_start() {
     let date = GameDate::Date(NaiveDate::from_ymd_opt(2025, 4, 1).unwrap());
-    assert_eq!(get_season_for_date(&date), 20242025);
+    assert_eq!(get_season_for_date(&date).unwrap().id(), 20242025);
 }
 
 #[test]
 fn test_get_season_for_date_now_matches_todays_month_boundary() {
     let today = chrono::Local::now().date_naive();
-    let expected = if today.month() >= 10 {
+    let expected = if today.month() >= SEASON_START_MONTH {
         today.year() * 10000 + (today.year() + 1)
     } else {
         (today.year() - 1) * 10000 + today.year()
     };
-    assert_eq!(get_season_for_date(&GameDate::Now), expected);
+    assert_eq!(get_season_for_date(&GameDate::Now).unwrap().id(), expected);
+}
+
+#[test]
+fn test_get_season_for_date_rejects_year_before_season_range() {
+    let date = GameDate::Date(NaiveDate::from_ymd_opt(0, 4, 1).unwrap());
+    assert!(get_season_for_date(&date).is_err());
 }
 
 // --- format_plus_minus ---

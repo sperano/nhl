@@ -225,8 +225,8 @@ pub fn create_division_team(
     Standing {
         conference_abbrev: Some(conference.to_string()),
         conference_name: Some(conference.to_string()),
-        division_abbrev: division.to_string(),
-        division_name: division.to_string(),
+        division_abbrev: Some(division.to_string()),
+        division_name: Some(division.to_string()),
         team_name: LocalizedString {
             default: name.to_string(),
         },
@@ -238,6 +238,7 @@ pub fn create_division_team(
         },
         team_logo: format!("https://assets.nhle.com/logos/nhl/svg/{}_light.svg", abbrev),
         wins,
+        ties: 0,
         losses,
         ot_losses,
         points,

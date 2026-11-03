@@ -4,7 +4,7 @@ use crate::data_provider::NHLDataProvider;
 use crate::formatting::format_header;
 use crate::tui::helpers::StandingsSorting;
 use anyhow::{Context, Result};
-use nhl_api::Standing;
+use nhl_api::{Season, Standing};
 use std::collections::BTreeMap;
 
 // Layout Constants
@@ -197,7 +197,7 @@ fn format_division_view(
     let mut grouped: BTreeMap<String, Vec<_>> = BTreeMap::new();
     for standing in sorted_standings {
         grouped
-            .entry(standing.division_name.clone())
+            .entry(standing.division_name.clone().unwrap_or_default())
             .or_default()
             .push(standing);
     }
@@ -367,7 +367,7 @@ fn format_wildcard_conference(
 fn division_teams_sorted(standings: &[Standing], division_name: &str) -> Vec<Standing> {
     let mut teams: Vec<_> = standings
         .iter()
-        .filter(|s| s.division_name == division_name)
+        .filter(|s| s.division_name.as_deref() == Some(division_name))
         .cloned()
         .collect();
     teams.sort_by_points_desc();
@@ -438,7 +438,7 @@ pub fn format_standings_by_group(
 
 pub async fn run(
     client: &dyn NHLDataProvider,
-    season: Option<i64>,
+    season: Option<Season>,
     date: Option<String>,
     by: GroupBy,
     config: &Config,

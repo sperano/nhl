@@ -17,8 +17,8 @@ fn test_single_digit_scores() {
         home_name: "Sabres".to_string(),
         away_score: 3,
         home_score: 2,
-        away_sog: 30,
-        home_sog: 25,
+        away_sog: Some(30),
+        home_sog: Some(25),
         status: final_status(),
         venue: "TD Garden".to_string(),
     });
@@ -50,8 +50,8 @@ fn test_score_10_4() {
         home_name: "Sabres".to_string(),
         away_score: 10,
         home_score: 4,
-        away_sog: 40,
-        home_sog: 20,
+        away_sog: Some(40),
+        home_sog: Some(20),
         status: final_status(),
         venue: "TD Garden".to_string(),
     });
@@ -83,8 +83,8 @@ fn test_score_4_10() {
         home_name: "Sabres".to_string(),
         away_score: 4,
         home_score: 10,
-        away_sog: 20,
-        home_sog: 40,
+        away_sog: Some(20),
+        home_sog: Some(40),
         status: final_status(),
         venue: "TD Garden".to_string(),
     });
@@ -116,8 +116,8 @@ fn test_score_10_10() {
         home_name: "Sabres".to_string(),
         away_score: 10,
         home_score: 10,
-        away_sog: 35,
-        home_sog: 35,
+        away_sog: Some(35),
+        home_sog: Some(35),
         status: final_status(),
         venue: "TD Garden".to_string(),
     });
@@ -156,8 +156,8 @@ fn test_preferred_dimensions() {
         home_name: "Sabres".to_string(),
         away_score: 3,
         home_score: 2,
-        away_sog: 30,
-        home_sog: 25,
+        away_sog: Some(30),
+        home_sog: Some(25),
         status: final_status(),
         venue: "KeyBank Center".to_string(),
     });
@@ -171,8 +171,8 @@ fn test_preferred_dimensions() {
         home_name: "Sabres".to_string(),
         away_score: 10,
         home_score: 4,
-        away_sog: 40,
-        home_sog: 20,
+        away_sog: Some(40),
+        home_sog: Some(20),
         status: final_status(),
         venue: "TD Garden".to_string(),
     });
@@ -185,8 +185,8 @@ fn test_preferred_dimensions() {
         home_name: "Sabres".to_string(),
         away_score: 4,
         home_score: 10,
-        away_sog: 20,
-        home_sog: 40,
+        away_sog: Some(20),
+        home_sog: Some(40),
         status: final_status(),
         venue: "TD Garden".to_string(),
     });
@@ -199,10 +199,41 @@ fn test_preferred_dimensions() {
         home_name: "Sabres".to_string(),
         away_score: 10,
         home_score: 10,
-        away_sog: 35,
-        home_sog: 35,
+        away_sog: Some(35),
+        home_sog: Some(35),
         status: final_status(),
         venue: "TD Garden".to_string(),
     });
     assert_eq!(widget_10_10.preferred_width(), Some(68));
+}
+
+#[test]
+fn test_missing_sog_shows_placeholders() {
+    let widget = BigScore::new(BigScoreParams {
+        away_name: "Devils".to_string(),
+        home_name: "Sabres".to_string(),
+        away_score: 3,
+        home_score: 2,
+        away_sog: None,
+        home_sog: None,
+        status: final_status(),
+        venue: "TD Garden".to_string(),
+    });
+    let config = test_config();
+    let buf = render_widget_with_config(&widget, 58, 9, &config);
+
+    assert_buffer(
+        &buf,
+        &[
+            "                          Final                          ",
+            "                                                          ",
+            "                      ▟▀▀▙      ▟▀▀▙                      ",
+            "              Devils   ▄▄▛  ▄▄    ▗▛  Sabres              ",
+            "                         █       ▗▛                       ",
+            "                      ▜▄▄▛      ▄█▄▄                      ",
+            "                                                          ",
+            "                        SOG: - - -                        ",
+            "                        TD Garden                         ",
+        ],
+    );
 }
