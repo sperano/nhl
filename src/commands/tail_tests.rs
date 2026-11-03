@@ -17,7 +17,7 @@ fn play(pbp: &PlayByPlay, event_id: i64) -> PlayEvent {
 }
 
 fn with_situation_code(mut event: PlayEvent, code: &str) -> PlayEvent {
-    event.situation_code = code.to_string();
+    event.situation_code = Some(code.to_string());
     event
 }
 
@@ -300,7 +300,9 @@ fn test_format_situation_tag_home_power_play() {
 #[test]
 fn test_format_situation_tag_empty_net() {
     let pbp = sample_pbp();
-    let event = with_situation_code(play(&pbp, 105), "1550");
+    // Home goalie pulled for an extra attacker at even strength (5v5 + EN).
+    // nhl_api counts the extra attacker, so "1550" is an away power play instead.
+    let event = with_situation_code(play(&pbp, 105), "1560");
     assert_eq!(format_situation_tag(&event), " [EN]");
 }
 

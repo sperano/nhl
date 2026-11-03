@@ -459,7 +459,7 @@ either case.
 
 ## Key Dependencies
 
-- `nhl_api`: NHL API client (local path dependency, `../nhl-api`)
+- `nhl_api`: NHL API client (crates.io dependency, `nhl_api = "0.9.0"` in `Cargo.toml`)
 - `ratatui` (0.29.0): Terminal UI framework
 - `crossterm` (0.28.1): Cross-platform terminal manipulation
 - `tokio` (1.x, `full` features): Async runtime

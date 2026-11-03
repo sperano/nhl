@@ -143,6 +143,7 @@ mod tests {
             game_date: Some("2024-11-03".to_string()),
             start_time_utc: start_time_utc.to_string(),
             game_state,
+            game_schedule_state: nhl_api::GameScheduleState::Ok,
             away_team: ScheduleTeam {
                 id: 1.into(),
                 abbrev: away_abbrev.to_string(),

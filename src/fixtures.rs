@@ -12,7 +12,7 @@ use nhl_api::{
     Handedness, HomeRoad, LocalizedString, PeriodDescriptor, PeriodType, PlayByPlay, PlayEvent,
     PlayEventDetails, PlayEventType, PlayerByGameStats, PlayerGameLog, PlayerLanding,
     PlayerSearchResult, Position, RosterSpot, ScheduleGame, ScheduleTeam, Season, SeasonTotal,
-    SkaterStats, Standing, TeamPlayerStats, ZoneCode,
+    SkaterGameLog, SkaterStats, Standing, TeamPlayerStats, ZoneCode,
 };
 
 /// Create mock standings data - reusing the test data structure
@@ -54,6 +54,7 @@ fn create_mock_game(
         game_date: Some("2024-11-20".to_string()),
         start_time_utc: "2024-11-21T00:00:00Z".to_string(),
         game_state: status,
+        game_schedule_state: GameScheduleState::Ok,
         away_team: ScheduleTeam {
             id: (away_abbrev.chars().map(|c| c as i32).sum::<i32>() as i64).into(),
             abbrev: away_abbrev.to_string(),
@@ -127,7 +128,7 @@ fn create_game_matchup_not_started() -> GameMatchup {
         away_team: create_matchup_team("MTL", "Canadiens", "Montreal", 10, 5, 3, 0, 0),
         home_team: create_matchup_team("BOS", "Bruins", "Boston", 13, 4, 1, 0, 0),
         shootout_in_use: true,
-        max_periods: 5,
+        max_periods: Some(5),
         reg_periods: 3,
         ot_in_use: true,
         ties_in_use: false,
@@ -183,7 +184,7 @@ fn create_game_matchup_in_progress(period: i32) -> GameMatchup {
             "OTT", "Senators", "Ottawa", 9, 7, 2, home_score, shots_home,
         ),
         shootout_in_use: true,
-        max_periods: 5,
+        max_periods: Some(5),
         reg_periods: 3,
         ot_in_use: true,
         ties_in_use: false,
@@ -273,7 +274,7 @@ fn create_game_matchup_final(overtime: bool) -> GameMatchup {
             shots_home,
         ),
         shootout_in_use: true,
-        max_periods: 5,
+        max_periods: Some(5),
         reg_periods: 3,
         ot_in_use: true,
         ties_in_use: false,
@@ -309,8 +310,8 @@ fn create_matchup_team(
         place_name_with_preposition: nhl_api::LocalizedString {
             default: format!("in {}", place),
         },
-        score,
-        sog,
+        score: Some(score),
+        sog: Some(sog),
         logo: format!("https://assets.nhle.com/logos/nhl/svg/{}_light.svg", abbrev),
         dark_logo: format!("https://assets.nhle.com/logos/nhl/svg/{}_dark.svg", abbrev),
     }
@@ -359,7 +360,7 @@ fn mock_skater(
         } else {
             0.0
         },
-        toi: "18:24".to_string(),
+        toi: Some("18:24".to_string()),
         blocked_shots: 1,
         shifts: 22,
         giveaways: 1,
@@ -383,25 +384,29 @@ fn mock_goalie(
         },
         sweater_number,
         position: Some(Position::Goalie),
-        even_strength_shots_against: format!("{}", shots_against - 4),
-        power_play_shots_against: "4".to_string(),
-        shorthanded_shots_against: "0".to_string(),
-        save_shots_against: format!("{}/{}", shots_against - goals_against, shots_against),
+        even_strength_shots_against: Some(format!("{}", shots_against - 4)),
+        power_play_shots_against: Some("4".to_string()),
+        shorthanded_shots_against: Some("0".to_string()),
+        save_shots_against: Some(format!(
+            "{}/{}",
+            shots_against - goals_against,
+            shots_against
+        )),
         save_pctg: Some(f64::from(shots_against - goals_against) / f64::from(shots_against)),
-        even_strength_goals_against: goals_against.saturating_sub(1),
-        power_play_goals_against: goals_against.min(1),
-        shorthanded_goals_against: 0,
+        even_strength_goals_against: Some(goals_against.saturating_sub(1)),
+        power_play_goals_against: Some(goals_against.min(1)),
+        shorthanded_goals_against: Some(0),
         pim: Some(0),
-        goals_against,
-        toi: "58:41".to_string(),
+        goals_against: Some(goals_against),
+        toi: Some("58:41".to_string()),
         starter: Some(true),
         decision: Some(if won {
             GoalieDecision::Win
         } else {
             GoalieDecision::Loss
         }),
-        shots_against,
-        saves: shots_against - goals_against,
+        shots_against: Some(shots_against),
+        saves: Some(shots_against - goals_against),
     }
 }
 
@@ -507,8 +512,8 @@ pub fn create_mock_boxscore(game_id: i64) -> Boxscore {
                 default: "Maple Leafs".to_string(),
             },
             abbrev: "TOR".to_string(),
-            score: if is_live { 2 } else { 3 },
-            sog: if is_live { 20 } else { 32 },
+            score: Some(if is_live { 2 } else { 3 }),
+            sog: Some(if is_live { 20 } else { 32 }),
             logo: "https://assets.nhle.com/logos/nhl/svg/TOR_light.svg".to_string(),
             dark_logo: "https://assets.nhle.com/logos/nhl/svg/TOR_dark.svg".to_string(),
             place_name: LocalizedString {
@@ -524,8 +529,8 @@ pub fn create_mock_boxscore(game_id: i64) -> Boxscore {
                 default: "Senators".to_string(),
             },
             abbrev: "OTT".to_string(),
-            score: if is_live { 3 } else { 4 },
-            sog: if is_live { 18 } else { 28 },
+            score: Some(if is_live { 3 } else { 4 }),
+            sog: Some(if is_live { 18 } else { 28 }),
             logo: "https://assets.nhle.com/logos/nhl/svg/OTT_light.svg".to_string(),
             dark_logo: "https://assets.nhle.com/logos/nhl/svg/OTT_dark.svg".to_string(),
             place_name: LocalizedString {
@@ -536,19 +541,19 @@ pub fn create_mock_boxscore(game_id: i64) -> Boxscore {
             },
         },
         clock: if is_live {
-            GameClock {
+            Some(GameClock {
                 time_remaining: "12:34".to_string(),
                 seconds_remaining: 754,
                 running: true,
                 in_intermission: false,
-            }
+            })
         } else {
-            GameClock {
+            Some(GameClock {
                 time_remaining: "00:00".to_string(),
                 seconds_remaining: 0,
                 running: false,
                 in_intermission: false,
-            }
+            })
         },
         player_by_game_stats: create_mock_player_stats(),
     }
@@ -558,31 +563,31 @@ pub fn create_mock_boxscore(game_id: i64) -> Boxscore {
 pub fn create_mock_franchises() -> Vec<Franchise> {
     vec![
         Franchise {
-            id: 1,
+            id: 1.into(),
             full_name: "Montreal Canadiens".to_string(),
             team_common_name: "Canadiens".to_string(),
             team_place_name: "Montreal".to_string(),
         },
         Franchise {
-            id: 6,
+            id: 6.into(),
             full_name: "Boston Bruins".to_string(),
             team_common_name: "Bruins".to_string(),
             team_place_name: "Boston".to_string(),
         },
         Franchise {
-            id: 10,
+            id: 10.into(),
             full_name: "Toronto Maple Leafs".to_string(),
             team_common_name: "Maple Leafs".to_string(),
             team_place_name: "Toronto".to_string(),
         },
         Franchise {
-            id: 9,
+            id: 9.into(),
             full_name: "Ottawa Senators".to_string(),
             team_common_name: "Senators".to_string(),
             team_place_name: "Ottawa".to_string(),
         },
         Franchise {
-            id: 15,
+            id: 15.into(),
             full_name: "Florida Panthers".to_string(),
             team_common_name: "Panthers".to_string(),
             team_place_name: "Florida".to_string(),
@@ -615,17 +620,17 @@ pub fn create_mock_club_stats(
         goals: points / 2,
         assists: points - points / 2,
         points,
-        plus_minus: 10 - seasons_back * 3,
+        plus_minus: Some(10 - seasons_back * 3),
         penalty_minutes: 20,
-        power_play_goals: points / 8,
-        shorthanded_goals: 0,
+        power_play_goals: Some(points / 8),
+        shorthanded_goals: Some(0),
         game_winning_goals: points / 10,
         overtime_goals: 1,
-        shots: points * 3,
-        shooting_pctg: 0.12,
-        avg_time_on_ice_per_game: 19.5,
-        avg_shifts_per_game: 21.0,
-        faceoff_win_pctg: 0.52,
+        shots: Some(points * 3),
+        shooting_pctg: Some(0.12),
+        avg_time_on_ice_per_game: Some(19.5),
+        avg_shifts_per_game: Some(21.0),
+        faceoff_win_pctg: Some(0.52),
     };
 
     nhl_api::ClubStats {
@@ -647,20 +652,21 @@ pub fn create_mock_club_stats(
             },
             games_played: 55 - seasons_back * 5,
             games_started: 54 - seasons_back * 5,
-            wins: 32 - seasons_back * 4,
-            losses: 16,
-            overtime_losses: 5,
+            wins: Some(32 - seasons_back * 4),
+            losses: Some(16),
+            overtime_losses: Some(5),
             goals_against_average: 2.45 + f64::from(seasons_back) * 0.20,
-            save_percentage: 0.915 - f64::from(seasons_back) * 0.005,
-            shots_against: 1600,
-            saves: 1470,
+            save_percentage: Some(0.915 - f64::from(seasons_back) * 0.005),
+            shots_against: Some(1600),
+            saves: Some(1470),
             goals_against: 130,
             shutouts: 4 - seasons_back.min(4),
             goals: 0,
             assists: 2,
             points: 2,
-            penalty_minutes: 2,
+            penalty_minutes: Some(2),
             time_on_ice: 190_000,
+            ties: None,
         }],
     }
 }
@@ -709,7 +715,7 @@ pub fn create_mock_player_landing(player_id: i64) -> PlayerLanding {
                     default: "Oilers".to_string(),
                 }),
                 sequence: Some(1),
-                games_played: 50,
+                games_played: Some(50),
                 goals: Some(20),
                 assists: Some(55),
                 points: Some(75),
@@ -727,7 +733,7 @@ pub fn create_mock_player_landing(player_id: i64) -> PlayerLanding {
                     default: "Oilers".to_string(),
                 }),
                 sequence: Some(1),
-                games_played: 76,
+                games_played: Some(76),
                 goals: Some(32),
                 assists: Some(68),
                 points: Some(100),
@@ -745,7 +751,7 @@ pub fn create_mock_player_landing(player_id: i64) -> PlayerLanding {
                     default: "Maple Leafs".to_string(),
                 }),
                 sequence: Some(1),
-                games_played: 82,
+                games_played: Some(82),
                 goals: Some(44),
                 assists: Some(60),
                 points: Some(104),
@@ -755,7 +761,7 @@ pub fn create_mock_player_landing(player_id: i64) -> PlayerLanding {
         ]),
         awards: None,
         last_five_games: Some(vec![
-            GameLog {
+            GameLog::Skater(SkaterGameLog {
                 game_id: 2024020500.into(),
                 game_date: "2024-12-28".to_string(),
                 team_abbrev: "EDM".to_string(),
@@ -773,8 +779,8 @@ pub fn create_mock_player_landing(player_id: i64) -> PlayerLanding {
                 game_winning_goals: Some(1),
                 ot_goals: None,
                 pim: Some(0),
-            },
-            GameLog {
+            }),
+            GameLog::Skater(SkaterGameLog {
                 game_id: 2024020480.into(),
                 game_date: "2024-12-26".to_string(),
                 team_abbrev: "EDM".to_string(),
@@ -792,8 +798,8 @@ pub fn create_mock_player_landing(player_id: i64) -> PlayerLanding {
                 game_winning_goals: None,
                 ot_goals: None,
                 pim: Some(2),
-            },
-            GameLog {
+            }),
+            GameLog::Skater(SkaterGameLog {
                 game_id: 2024020460.into(),
                 game_date: "2024-12-23".to_string(),
                 team_abbrev: "EDM".to_string(),
@@ -811,8 +817,8 @@ pub fn create_mock_player_landing(player_id: i64) -> PlayerLanding {
                 game_winning_goals: None,
                 ot_goals: None,
                 pim: Some(0),
-            },
-            GameLog {
+            }),
+            GameLog::Skater(SkaterGameLog {
                 game_id: 2024020440.into(),
                 game_date: "2024-12-21".to_string(),
                 team_abbrev: "EDM".to_string(),
@@ -830,8 +836,8 @@ pub fn create_mock_player_landing(player_id: i64) -> PlayerLanding {
                 game_winning_goals: None,
                 ot_goals: None,
                 pim: Some(0),
-            },
-            GameLog {
+            }),
+            GameLog::Skater(SkaterGameLog {
                 game_id: 2024020420.into(),
                 game_date: "2024-12-19".to_string(),
                 team_abbrev: "EDM".to_string(),
@@ -849,7 +855,7 @@ pub fn create_mock_player_landing(player_id: i64) -> PlayerLanding {
                 game_winning_goals: Some(1),
                 ot_goals: None,
                 pim: Some(2),
-            },
+            }),
         ]),
     }
 }
@@ -920,7 +926,7 @@ pub fn create_mock_player_game_log(
         season: season.try_into().expect("valid mock season id"),
         game_type,
         game_log: vec![
-            GameLog {
+            GameLog::Skater(SkaterGameLog {
                 game_id: 2024020500.into(),
                 game_date: "2024-12-28".to_string(),
                 team_abbrev: "EDM".to_string(),
@@ -938,8 +944,8 @@ pub fn create_mock_player_game_log(
                 game_winning_goals: Some(1),
                 ot_goals: None,
                 pim: Some(0),
-            },
-            GameLog {
+            }),
+            GameLog::Skater(SkaterGameLog {
                 game_id: 2024020480.into(),
                 game_date: "2024-12-26".to_string(),
                 team_abbrev: "EDM".to_string(),
@@ -957,8 +963,8 @@ pub fn create_mock_player_game_log(
                 game_winning_goals: None,
                 ot_goals: None,
                 pim: Some(2),
-            },
-            GameLog {
+            }),
+            GameLog::Skater(SkaterGameLog {
                 game_id: 2024020460.into(),
                 game_date: "2024-12-23".to_string(),
                 team_abbrev: "EDM".to_string(),
@@ -976,8 +982,8 @@ pub fn create_mock_player_game_log(
                 game_winning_goals: None,
                 ot_goals: None,
                 pim: Some(0),
-            },
-            GameLog {
+            }),
+            GameLog::Skater(SkaterGameLog {
                 game_id: 2024020440.into(),
                 game_date: "2024-12-21".to_string(),
                 team_abbrev: "EDM".to_string(),
@@ -995,8 +1001,8 @@ pub fn create_mock_player_game_log(
                 game_winning_goals: None,
                 ot_goals: None,
                 pim: Some(0),
-            },
-            GameLog {
+            }),
+            GameLog::Skater(SkaterGameLog {
                 game_id: 2024020420.into(),
                 game_date: "2024-12-19".to_string(),
                 team_abbrev: "EDM".to_string(),
@@ -1014,7 +1020,7 @@ pub fn create_mock_player_game_log(
                 game_winning_goals: Some(1),
                 ot_goals: None,
                 pim: Some(2),
-            },
+            }),
         ],
     }
 }
@@ -1066,8 +1072,8 @@ pub fn create_mock_play_by_play(game_id: i64) -> PlayByPlay {
                 default: "Maple Leafs".to_string(),
             },
             abbrev: "TOR".to_string(),
-            score: away_score,
-            sog: 28,
+            score: Some(away_score),
+            sog: Some(28),
             logo: "https://assets.nhle.com/logos/nhl/svg/TOR_light.svg".to_string(),
             dark_logo: "https://assets.nhle.com/logos/nhl/svg/TOR_dark.svg".to_string(),
             place_name: LocalizedString {
@@ -1083,8 +1089,8 @@ pub fn create_mock_play_by_play(game_id: i64) -> PlayByPlay {
                 default: "Senators".to_string(),
             },
             abbrev: "OTT".to_string(),
-            score: home_score,
-            sog: 25,
+            score: Some(home_score),
+            sog: Some(25),
             logo: "https://assets.nhle.com/logos/nhl/svg/OTT_light.svg".to_string(),
             dark_logo: "https://assets.nhle.com/logos/nhl/svg/OTT_dark.svg".to_string(),
             place_name: LocalizedString {
@@ -1112,7 +1118,7 @@ pub fn create_mock_play_by_play(game_id: i64) -> PlayByPlay {
             }
         },
         display_period: period,
-        max_periods: 5,
+        max_periods: Some(5),
         game_outcome: Some(GameOutcome {
             last_period_type: Some(PeriodType::Regulation),
         }),
@@ -1401,7 +1407,7 @@ fn create_play_event(
         },
         time_in_period: time_in_period.to_string(),
         time_remaining: time_remaining.to_string(),
-        situation_code: "1551".to_string(),
+        situation_code: Some("1551".to_string()),
         home_team_defending_side: Some(DefendingSide::Right),
         type_code: match event_type {
             PlayEventType::Goal => 505,

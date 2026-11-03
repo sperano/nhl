@@ -58,7 +58,8 @@ fn group_standings_by(
 fn division_standings(
     standings: &[Standing],
 ) -> (Vec<Standing>, Vec<Standing>, Vec<Standing>, Vec<Standing>) {
-    let mut grouped = group_standings_by(standings, |s| s.division_name.clone());
+    let mut grouped =
+        group_standings_by(standings, |s| s.division_name.clone().unwrap_or_default());
     (
         grouped.remove("Atlantic").unwrap_or_default(),
         grouped.remove("Metropolitan").unwrap_or_default(),

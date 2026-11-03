@@ -7,6 +7,7 @@ use nhl_api::{ClubGoalieStats, ClubSkaterStats, ClubStats, Standing};
 
 use super::table::TableWidget;
 use crate::config::RenderContext;
+use crate::formatting::format_optional;
 use crate::tui::helpers::{ClubGoalieStatsSorting, ClubSkaterStatsSorting};
 use crate::tui::{
     component::{Component, Element, ElementWidget},
@@ -141,7 +142,7 @@ impl Document for TeamDetailDocumentContent {
                     standing.losses,
                     standing.ot_losses,
                     standing.points,
-                    standing.division_name,
+                    standing.division_name.as_deref().unwrap_or("Unknown"),
                     standing.conference_name.as_deref().unwrap_or("Unknown")
                 );
                 builder = builder.text(&record);
@@ -222,7 +223,7 @@ fn skater_columns() -> Vec<ColumnDef<ClubSkaterStats>> {
             CellValue::Text(s.points.to_string())
         }),
         ColumnDef::new("+/-", 4, Alignment::Right, |s: &ClubSkaterStats| {
-            CellValue::Text(format!("{:+}", s.plus_minus))
+            CellValue::Text(format_optional(s.plus_minus.map(|pm| format!("{:+}", pm))))
         }),
         ColumnDef::new("PIM", 4, Alignment::Right, |s: &ClubSkaterStats| {
             CellValue::Text(s.penalty_minutes.to_string())
@@ -246,19 +247,21 @@ fn goalie_columns() -> Vec<ColumnDef<ClubGoalieStats>> {
             CellValue::Text(g.games_played.to_string())
         }),
         ColumnDef::new("W", 3, Alignment::Right, |g: &ClubGoalieStats| {
-            CellValue::Text(g.wins.to_string())
+            CellValue::Text(format_optional(g.wins))
         }),
         ColumnDef::new("L", 3, Alignment::Right, |g: &ClubGoalieStats| {
-            CellValue::Text(g.losses.to_string())
+            CellValue::Text(format_optional(g.losses))
         }),
         ColumnDef::new("OTL", 3, Alignment::Right, |g: &ClubGoalieStats| {
-            CellValue::Text(g.overtime_losses.to_string())
+            CellValue::Text(format_optional(g.overtime_losses))
         }),
         ColumnDef::new("GAA", 5, Alignment::Right, |g: &ClubGoalieStats| {
             CellValue::Text(format!("{:.2}", g.goals_against_average))
         }),
         ColumnDef::new("SV%", 5, Alignment::Right, |g: &ClubGoalieStats| {
-            CellValue::Text(format!("{:.3}", g.save_percentage))
+            CellValue::Text(format_optional(
+                g.save_percentage.map(|p| format!("{:.3}", p)),
+            ))
         }),
         ColumnDef::new("SO", 3, Alignment::Right, |g: &ClubGoalieStats| {
             CellValue::Text(g.shutouts.to_string())

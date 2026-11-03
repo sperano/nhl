@@ -1,6 +1,7 @@
 use super::*;
 use crate::dev::mock_client::MockClient;
 use crate::fixtures;
+use crate::formatting::MISSING_STAT;
 use nhl_api::{GoalieStats, LocalizedString, Position, SkaterStats};
 
 fn sample_skater(sweater_number: i32, name: &str, position: Option<Position>) -> SkaterStats {
@@ -20,7 +21,7 @@ fn sample_skater(sweater_number: i32, name: &str, position: Option<Position>) ->
         power_play_goals: 0,
         sog: 4,
         faceoff_winning_pctg: 0.0,
-        toi: "18:30".to_string(),
+        toi: Some("18:30".to_string()),
         blocked_shots: 0,
         shifts: 20,
         giveaways: 0,
@@ -36,21 +37,21 @@ fn sample_goalie(sweater_number: i32, name: &str, save_pctg: Option<f64>) -> Goa
             default: name.to_string(),
         },
         position: Some(Position::Goalie),
-        even_strength_shots_against: "20".to_string(),
-        power_play_shots_against: "5".to_string(),
-        shorthanded_shots_against: "1".to_string(),
-        save_shots_against: "24".to_string(),
+        even_strength_shots_against: Some("20".to_string()),
+        power_play_shots_against: Some("5".to_string()),
+        shorthanded_shots_against: Some("1".to_string()),
+        save_shots_against: Some("24".to_string()),
         save_pctg,
-        even_strength_goals_against: 1,
-        power_play_goals_against: 1,
-        shorthanded_goals_against: 0,
+        even_strength_goals_against: Some(1),
+        power_play_goals_against: Some(1),
+        shorthanded_goals_against: Some(0),
         pim: None,
-        goals_against: 2,
-        toi: "60:00".to_string(),
+        goals_against: Some(2),
+        toi: Some("60:00".to_string()),
         starter: Some(true),
         decision: None,
-        shots_against: 26,
-        saves: 24,
+        shots_against: Some(26),
+        saves: Some(24),
     }
 }
 
@@ -123,6 +124,35 @@ fn test_format_team_stats_goalie_with_no_save_pctg_renders_dash() {
 }
 
 #[test]
+fn test_format_team_stats_missing_goalie_and_skater_stats_render_dashes() {
+    // Older games omit a backup goalie's stat line and skaters' TOI.
+    let display = DisplayConfig::default();
+    let mut skater = sample_skater(9, "Old Timer", Some(Position::Center));
+    skater.toi = None;
+    let mut goalie = sample_goalie(1, "Backup Goalie", None);
+    goalie.shots_against = None;
+    goalie.saves = None;
+    goalie.goals_against = None;
+    let stats = nhl_api::TeamPlayerStats {
+        forwards: vec![skater],
+        defense: vec![],
+        goalies: vec![goalie],
+    };
+
+    let mut output = String::new();
+    format_team_stats(&mut output, "MTL", &stats, &display);
+
+    let skater_row = output.lines().find(|l| l.contains("Old Timer")).unwrap();
+    assert!(skater_row.trim_end().ends_with(MISSING_STAT));
+    let goalie_row = output
+        .lines()
+        .find(|l| l.contains("Backup Goalie"))
+        .unwrap();
+    let goalie_stats: Vec<&str> = goalie_row.split_whitespace().skip(3).collect();
+    assert_eq!(goalie_stats, [MISSING_STAT; 4]);
+}
+
+#[test]
 fn test_format_team_stats_empty_rosters_only_render_headers() {
     let display = DisplayConfig::default();
     let stats = nhl_api::TeamPlayerStats {
@@ -170,20 +200,60 @@ fn test_format_boxscore_shows_time_when_clock_is_running() {
 
     let output = format_boxscore(&boxscore, &display);
 
-    assert!(boxscore.clock.running);
+    assert!(boxscore.clock.as_ref().unwrap().running);
     assert!(output.contains("Time: 12:34"));
 }
 
 #[test]
 fn test_format_boxscore_omits_time_during_intermission_when_clock_stopped() {
     let mut boxscore = fixtures::create_mock_boxscore(2024020005);
-    boxscore.clock.running = false;
-    boxscore.clock.in_intermission = true;
+    let clock = boxscore.clock.as_mut().unwrap();
+    clock.running = false;
+    clock.in_intermission = true;
     let display = DisplayConfig::default();
 
     let output = format_boxscore(&boxscore, &display);
 
     assert!(!output.contains("Time:"));
+}
+
+#[test]
+fn test_format_boxscore_shows_time_when_clock_stopped_outside_intermission() {
+    // A stopped clock between whistles (not an intermission) still shows the time.
+    let mut boxscore = fixtures::create_mock_boxscore(2024020005);
+    let clock = boxscore.clock.as_mut().unwrap();
+    clock.time_remaining = "07:42".to_string();
+    clock.running = false;
+    clock.in_intermission = false;
+    let display = DisplayConfig::default();
+
+    let output = format_boxscore(&boxscore, &display);
+
+    assert!(output.contains("Time: 07:42"));
+}
+
+#[test]
+fn test_format_boxscore_scheduled_game_without_clock_or_score() {
+    // Before puck drop the API sends no clock, score or SOG.
+    let mut boxscore = fixtures::create_mock_boxscore(2024020005);
+    boxscore.clock = None;
+    boxscore.away_team.score = None;
+    boxscore.away_team.sog = None;
+    boxscore.home_team.score = None;
+    boxscore.home_team.sog = None;
+    let display = DisplayConfig::default();
+
+    let output = format_boxscore(&boxscore, &display);
+
+    assert!(!output.contains("Time:"));
+    let away_line = format!(
+        "{:<label_w$} {:>score_w$}",
+        boxscore.away_team.abbrev,
+        MISSING_STAT,
+        label_w = BOXSCORE_LABEL_WIDTH,
+        score_w = BOXSCORE_SCORE_WIDTH
+    );
+    assert_eq!(output.matches(&away_line).count(), 2, "{output}");
 }
 
 #[test]
@@ -213,4 +283,35 @@ async fn test_run_returns_ok_and_prints_boxscore() {
     let result = run(&client, 2024020005, &config).await;
 
     assert!(result.is_ok());
+}
+
+#[cfg(feature = "game_stats")]
+#[test]
+fn test_format_faceoff_pct_row_shows_percentages_and_fraction() {
+    let away = TeamGameStats::default().with_faceoffs(nhl_api::FaceoffTotals {
+        wins: 13,
+        total: 35,
+    });
+    let home = TeamGameStats::default().with_faceoffs(nhl_api::FaceoffTotals {
+        wins: 22,
+        total: 35,
+    });
+
+    let row = format_faceoff_pct_row(&away, &home, BOXSCORE_STAT_BAR_WIDTH);
+
+    assert!(row.contains("37.1%"), "{row}");
+    assert!(row.contains("13/35"), "{row}");
+    assert!(row.contains("62.9%"), "{row}");
+}
+
+#[cfg(feature = "game_stats")]
+#[test]
+fn test_format_faceoff_pct_row_without_faceoffs_renders_dashes() {
+    // The boxscore carries no faceoff counts, so the totals are absent.
+    let stats = TeamGameStats::default();
+
+    let row = format_faceoff_pct_row(&stats, &stats, BOXSCORE_STAT_BAR_WIDTH);
+
+    let values: Vec<&str> = row.split_whitespace().skip(2).collect();
+    assert_eq!(values, [MISSING_STAT; 3]);
 }

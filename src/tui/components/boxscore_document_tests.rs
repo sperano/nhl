@@ -1,5 +1,6 @@
 use super::*;
 use crate::config::{DisplayConfig, RenderContext};
+use crate::formatting::MISSING_STAT;
 use crate::tui::document::FocusContext;
 use nhl_api::{
     Boxscore, BoxscoreTeam, GameClock, GameScheduleState, GameState, GoalieDecision, GoalieStats,
@@ -25,7 +26,7 @@ fn create_test_skater(name: &str, sweater_number: i32, position: Position) -> Sk
         power_play_goals: 0,
         sog: 4,
         faceoff_winning_pctg: 0.5,
-        toi: "15:30".to_string(),
+        toi: Some("15:30".to_string()),
         blocked_shots: 1,
         shifts: 20,
         giveaways: 1,
@@ -42,21 +43,21 @@ fn create_test_goalie(name: &str, sweater_number: i32) -> GoalieStats {
         },
         sweater_number,
         position: Some(Position::Goalie),
-        even_strength_shots_against: "20".to_string(),
-        power_play_shots_against: "5".to_string(),
-        shorthanded_shots_against: "0".to_string(),
-        save_shots_against: "25".to_string(),
+        even_strength_shots_against: Some("20".to_string()),
+        power_play_shots_against: Some("5".to_string()),
+        shorthanded_shots_against: Some("0".to_string()),
+        save_shots_against: Some("25".to_string()),
         save_pctg: Some(0.920),
-        even_strength_goals_against: 1,
-        power_play_goals_against: 1,
-        shorthanded_goals_against: 0,
+        even_strength_goals_against: Some(1),
+        power_play_goals_against: Some(1),
+        shorthanded_goals_against: Some(0),
         pim: Some(0),
-        goals_against: 2,
-        toi: "60:00".to_string(),
+        goals_against: Some(2),
+        toi: Some("60:00".to_string()),
         starter: Some(true),
         decision: Some(GoalieDecision::Win),
-        shots_against: 25,
-        saves: 23,
+        shots_against: Some(25),
+        saves: Some(23),
     }
 }
 
@@ -105,8 +106,8 @@ fn create_test_boxscore() -> Boxscore {
                 default: "Devils".to_string(),
             },
             abbrev: "NJD".to_string(),
-            score: 3,
-            sog: 30,
+            score: Some(3),
+            sog: Some(30),
             logo: String::new(),
             dark_logo: String::new(),
             place_name: LocalizedString {
@@ -122,8 +123,8 @@ fn create_test_boxscore() -> Boxscore {
                 default: "Sabres".to_string(),
             },
             abbrev: "BUF".to_string(),
-            score: 2,
-            sog: 25,
+            score: Some(2),
+            sog: Some(25),
             logo: String::new(),
             dark_logo: String::new(),
             place_name: LocalizedString {
@@ -133,12 +134,12 @@ fn create_test_boxscore() -> Boxscore {
                 default: "Buffalo".to_string(),
             },
         },
-        clock: GameClock {
+        clock: Some(GameClock {
             time_remaining: "00:00".to_string(),
             seconds_remaining: 0,
             running: false,
             in_intermission: false,
-        },
+        }),
         player_by_game_stats: PlayerByGameStats {
             away_team: TeamPlayerStats {
                 forwards: away_forwards,
@@ -339,4 +340,127 @@ fn test_boxscore_renders() {
 
     // Should render without panic
     assert_eq!(*buf.area(), area);
+}
+
+fn cell_text<T>(columns: &[ColumnDef<T>], header: &str, row: &T) -> String {
+    let column = columns
+        .iter()
+        .find(|column| column.header == header)
+        .unwrap_or_else(|| panic!("no column with header {header}"));
+    (column.cell_fn)(row).display_text().to_string()
+}
+
+fn boxscore_in_state(game_state: GameState) -> Boxscore {
+    let mut boxscore = create_test_boxscore();
+    boxscore.game_state = game_state;
+    boxscore
+}
+
+#[test]
+fn test_boxscore_to_status_live_without_clock_has_no_time() {
+    let mut boxscore = boxscore_in_state(GameState::Live);
+    boxscore.clock = None;
+
+    let status = boxscore_to_status(&boxscore);
+
+    assert_eq!(
+        status,
+        ScoreBoxStatus::Live {
+            period: "3".to_string(),
+            time: None,
+            intermission: false,
+        }
+    );
+}
+
+#[test]
+fn test_boxscore_to_status_postponed_and_suspended_show_tbd_start() {
+    for game_state in [GameState::Postponed, GameState::Suspended] {
+        let status = boxscore_to_status(&boxscore_in_state(game_state));
+
+        assert_eq!(
+            status,
+            ScoreBoxStatus::Scheduled {
+                start_time: "TBD".to_string()
+            },
+            "{game_state:?}"
+        );
+    }
+}
+
+fn boxscore_without_score_or_sog() -> Boxscore {
+    let mut boxscore = create_test_boxscore();
+    for team in [&mut boxscore.away_team, &mut boxscore.home_team] {
+        team.score = None;
+        team.sog = None;
+    }
+    boxscore
+}
+
+#[test]
+fn test_score_text_without_score_or_sog_renders_dashes() {
+    let doc =
+        BoxscoreDocumentContent::new(2024020001, boxscore_without_score_or_sog(), TeamView::Away);
+    let focus = FocusContext {
+        use_unicode: false,
+        ..FocusContext::default()
+    };
+
+    let texts: Vec<String> = doc
+        .build_score(&focus)
+        .into_iter()
+        .filter_map(|element| match element {
+            DocumentElement::Text { content, .. } => Some(content),
+            _ => None,
+        })
+        .collect();
+
+    assert_eq!(texts, ["NJD: -  |  BUF: -  (SOG: - - -)"]);
+}
+
+#[test]
+fn test_big_score_without_score_or_sog_uses_zero_scores_and_no_sog() {
+    let doc =
+        BoxscoreDocumentContent::new(2024020001, boxscore_without_score_or_sog(), TeamView::Away);
+
+    let elements = doc.build_score(&FocusContext::default());
+
+    let [DocumentElement::BigScoreElement { big_score }] = elements.as_slice() else {
+        panic!("expected a single big score element, got {elements:?}");
+    };
+    assert_eq!(big_score.away_score, 0);
+    assert_eq!(big_score.home_score, 0);
+    assert_eq!(big_score.away_sog, None);
+    assert_eq!(big_score.home_sog, None);
+}
+
+#[test]
+fn test_goalie_shot_columns_missing_stats_render_dashes() {
+    let columns = goalie_shot_columns();
+    let mut goalie = create_test_goalie("A. Goalie", 30);
+    goalie.shots_against = None;
+    goalie.goals_against = None;
+    goalie.saves = None;
+    goalie.even_strength_shots_against = None;
+    goalie.toi = None;
+
+    for header in ["SA", "GA", "SV", "ES", "TOI"] {
+        assert_eq!(
+            cell_text(&columns, header, &goalie),
+            MISSING_STAT,
+            "{header}"
+        );
+    }
+}
+
+#[test]
+fn test_skater_possession_columns_missing_toi_renders_dash() {
+    let columns = skater_possession_columns();
+    let mut skater = create_test_skater("A. Forward1", 10, Position::Center);
+
+    assert_eq!(cell_text(&columns, "TOI", &skater), "15:30");
+
+    skater.toi = None;
+
+    assert_eq!(cell_text(&columns, "TOI", &skater), MISSING_STAT);
 }

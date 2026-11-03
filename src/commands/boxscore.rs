@@ -1,6 +1,6 @@
 use crate::config::{Config, DisplayConfig};
 use crate::data_provider::NHLDataProvider;
-use crate::formatting::format_header;
+use crate::formatting::{format_header, format_optional};
 #[cfg(feature = "game_stats")]
 use crate::layout_constants::BOXSCORE_STAT_BAR_WIDTH;
 use crate::layout_constants::{BOXSCORE_LABEL_WIDTH, BOXSCORE_SCORE_WIDTH};
@@ -33,7 +33,7 @@ fn format_skater_stats(
             player.assists,
             player.points,
             player.plus_minus,
-            player.toi
+            format_optional(player.toi.as_deref())
         ));
     }
 }
@@ -60,9 +60,9 @@ fn format_goalie_stats(
             "{:<3} {:<20} {:>4} {:>6} {:>6} {:>6}\n",
             goalie.sweater_number,
             goalie.name.default,
-            goalie.shots_against,
-            goalie.saves,
-            goalie.goals_against,
+            format_optional(goalie.shots_against),
+            format_optional(goalie.saves),
+            format_optional(goalie.goals_against),
             sv_pct
         ));
     }
@@ -117,16 +117,22 @@ fn format_faceoff_pct_row(
     home_stats: &TeamGameStats,
     bar_width: usize,
 ) -> String {
-    let away_fo_pct = away_stats.faceoff_percentage();
-    let home_fo_pct = home_stats.faceoff_percentage();
+    let percentage = |stats: &TeamGameStats| {
+        format_optional(stats.faceoff_percentage().map(|pct| format!("{:.1}%", pct)))
+    };
+    let away_fraction = away_stats
+        .faceoffs
+        .as_ref()
+        .map(|faceoffs| format!("{}/{}", faceoffs.wins, faceoffs.total));
     format!(
-        "{:<label_w$} {:>score_w$.1}%  {:^bar_w$}  {:<score_w$.1}%\n",
+        "{:<label_w$} {:>pct_w$}  {:^bar_w$}  {:<pct_w$}\n",
         "Face-off %",
-        away_fo_pct,
-        format!("{}/{}", away_stats.faceoff_wins, away_stats.faceoff_total),
-        home_fo_pct,
+        percentage(away_stats),
+        format_optional(away_fraction),
+        percentage(home_stats),
         label_w = BOXSCORE_LABEL_WIDTH,
-        score_w = BOXSCORE_SCORE_WIDTH,
+        // The percentage sign takes one column past the score width
+        pct_w = BOXSCORE_SCORE_WIDTH + 1,
         bar_w = bar_width
     )
 }
@@ -226,8 +232,12 @@ fn format_game_header(output: &mut String, boxscore: &Boxscore, display: &Displa
         "Status: {} | Period: {}\n",
         boxscore.game_state, boxscore.period_descriptor.number
     ));
-    if boxscore.clock.running || !boxscore.clock.in_intermission {
-        output.push_str(&format!("Time: {}\n", boxscore.clock.time_remaining));
+    let shown_clock = boxscore
+        .clock
+        .as_ref()
+        .filter(|clock| clock.running || !clock.in_intermission);
+    if let Some(clock) = shown_clock {
+        output.push_str(&format!("Time: {}\n", clock.time_remaining));
     }
 }
 
@@ -237,9 +247,9 @@ fn format_team_stat_section(
     output: &mut String,
     label: &str,
     away_abbrev: &str,
-    away_value: i32,
+    away_value: Option<i32>,
     home_abbrev: &str,
-    home_value: i32,
+    home_value: Option<i32>,
     display: &DisplayConfig,
 ) {
     let section_header = format!(
@@ -256,14 +266,14 @@ fn format_team_stat_section(
     output.push_str(&format!(
         "{:<label_w$} {:>score_w$}\n",
         away_abbrev,
-        away_value,
+        format_optional(away_value),
         label_w = BOXSCORE_LABEL_WIDTH,
         score_w = BOXSCORE_SCORE_WIDTH
     ));
     output.push_str(&format!(
         "{:<label_w$} {:>score_w$}\n",
         home_abbrev,
-        home_value,
+        format_optional(home_value),
         label_w = BOXSCORE_LABEL_WIDTH,
         score_w = BOXSCORE_SCORE_WIDTH
     ));

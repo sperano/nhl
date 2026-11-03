@@ -1,5 +1,6 @@
 use super::*;
 use crate::config::{DisplayConfig, RenderContext};
+use crate::formatting::MISSING_STAT;
 use crate::tui::document::FocusContext;
 use nhl_api::{ClubGoalieStats, ClubSkaterStats, LocalizedString, Position, Season};
 use ratatui::{buffer::Buffer, layout::Rect};
@@ -28,17 +29,17 @@ fn create_test_skater(
         goals,
         assists,
         points,
-        plus_minus: 5,
+        plus_minus: Some(5),
         penalty_minutes: 10,
-        power_play_goals: 2,
-        shorthanded_goals: 0,
+        power_play_goals: Some(2),
+        shorthanded_goals: Some(0),
         game_winning_goals: 1,
         overtime_goals: 0,
-        shots: 50,
-        shooting_pctg: 0.15,
-        avg_time_on_ice_per_game: 18.5,
-        avg_shifts_per_game: 22.0,
-        faceoff_win_pctg: 0.52,
+        shots: Some(50),
+        shooting_pctg: Some(0.15),
+        avg_time_on_ice_per_game: Some(18.5),
+        avg_shifts_per_game: Some(22.0),
+        faceoff_win_pctg: Some(0.52),
     }
 }
 
@@ -60,19 +61,20 @@ fn create_test_goalie(
         },
         games_played: gp,
         games_started: gp,
-        wins,
-        losses: 5,
-        overtime_losses: 2,
+        wins: Some(wins),
+        ties: None,
+        losses: Some(5),
+        overtime_losses: Some(2),
         goals_against_average: 2.50,
-        save_percentage: 0.915,
-        shots_against: 500,
-        saves: 457,
+        save_percentage: Some(0.915),
+        shots_against: Some(500),
+        saves: Some(457),
         goals_against: 43,
         shutouts: 2,
         goals: 0,
         assists: 1,
         points: 1,
-        penalty_minutes: 0,
+        penalty_minutes: Some(0),
         time_on_ice: 1500,
     }
 }
@@ -81,8 +83,8 @@ fn create_test_standing() -> Standing {
     Standing {
         conference_abbrev: Some("Eastern".to_string()),
         conference_name: Some("Eastern".to_string()),
-        division_abbrev: "Atlantic".to_string(),
-        division_name: "Atlantic".to_string(),
+        division_abbrev: Some("Atlantic".to_string()),
+        division_name: Some("Atlantic".to_string()),
         team_name: LocalizedString {
             default: "Test Team".to_string(),
         },
@@ -94,6 +96,7 @@ fn create_test_standing() -> Standing {
         },
         team_logo: String::new(),
         wins: 10,
+        ties: 0,
         losses: 5,
         ot_losses: 2,
         points: 22,
@@ -366,4 +369,76 @@ fn test_id_embeds_season() {
 
     let expected = format!("team_detail_TST_{}", create_test_club_stats().season.id());
     assert_eq!(doc.id(), expected);
+}
+
+fn cell_text<T>(columns: &[ColumnDef<T>], header: &str, row: &T) -> String {
+    let column = columns
+        .iter()
+        .find(|column| column.header == header)
+        .unwrap_or_else(|| panic!("no column with header {header}"));
+    (column.cell_fn)(row).display_text().to_string()
+}
+
+#[test]
+fn test_goalie_columns_missing_record_stats_render_dashes() {
+    let columns = goalie_columns();
+    let mut goalie = create_test_goalie(3, "Bob", "Johnson", 15, 8);
+    goalie.wins = None;
+    goalie.losses = None;
+    goalie.overtime_losses = None;
+    goalie.save_percentage = None;
+
+    for header in ["W", "L", "OTL", "SV%"] {
+        assert_eq!(cell_text(&columns, header, &goalie), MISSING_STAT);
+    }
+}
+
+#[test]
+fn test_goalie_columns_present_record_stats_render_numbers() {
+    let columns = goalie_columns();
+    let goalie = create_test_goalie(3, "Bob", "Johnson", 15, 8);
+
+    assert_eq!(cell_text(&columns, "W", &goalie), "8");
+    assert_eq!(cell_text(&columns, "L", &goalie), "5");
+    assert_eq!(cell_text(&columns, "OTL", &goalie), "2");
+    assert_eq!(cell_text(&columns, "SV%", &goalie), "0.915");
+}
+
+#[test]
+fn test_skater_columns_plus_minus_is_signed_or_dash() {
+    let columns = skater_columns();
+    let cells: Vec<String> = [Some(-2), Some(3), None]
+        .into_iter()
+        .map(|plus_minus| {
+            let mut skater =
+                create_test_skater(1, "John", "Doe", Position::Center, (20, 10, 15, 25));
+            skater.plus_minus = plus_minus;
+            cell_text(&columns, "+/-", &skater)
+        })
+        .collect();
+
+    assert_eq!(cells, ["-2", "+3", MISSING_STAT]);
+}
+
+#[test]
+fn test_record_line_uses_unknown_when_division_is_missing() {
+    let mut standing = create_test_standing();
+    standing.division_name = None;
+    let doc = TeamDetailDocumentContent::new("TST".to_string(), Some(standing), None, true);
+
+    let record = doc
+        .build(&FocusContext::default())
+        .into_iter()
+        .find_map(|element| match element {
+            DocumentElement::Text { content, .. } if content.starts_with("Record:") => {
+                Some(content)
+            }
+            _ => None,
+        })
+        .expect("record line must render for the current season");
+
+    assert_eq!(
+        record,
+        "Record: 10-5-2 (22 pts) | Division: Unknown | Conference: Eastern"
+    );
 }

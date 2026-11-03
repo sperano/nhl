@@ -1,4 +1,5 @@
 use super::*;
+use crate::formatting::MISSING_STAT;
 use nhl_api::{
     AssistSummary, DefendingSide, GameScheduleState, GameSummary, GoalSummary, LocalizedString,
     MatchupTeam, PeriodDescriptor, PeriodScoring, PeriodType, Season,
@@ -17,8 +18,8 @@ fn make_matchup_team(abbrev: &str, score: i32) -> MatchupTeam {
         place_name_with_preposition: LocalizedString {
             default: abbrev.to_string(),
         },
-        score,
-        sog: 0,
+        score: Some(score),
+        sog: Some(0),
         logo: String::new(),
         dark_logo: String::new(),
     }
@@ -26,7 +27,7 @@ fn make_matchup_team(abbrev: &str, score: i32) -> MatchupTeam {
 
 fn make_goal(_period_num: i32, is_home: bool, away_score: i32, home_score: i32) -> GoalSummary {
     GoalSummary {
-        situation_code: "1551".to_string(),
+        situation_code: Some("1551".to_string()),
         event_id: 1,
         strength: "ev".to_string(),
         player_id: 1.into(),
@@ -51,7 +52,7 @@ fn make_goal(_period_num: i32, is_home: bool, away_score: i32, home_score: i32) 
         home_score,
         leading_team_abbrev: None,
         time_in_period: "05:00".to_string(),
-        shot_type: "wrist".to_string(),
+        shot_type: Some("wrist".to_string()),
         goal_modifier: "none".to_string(),
         assists: Vec::<AssistSummary>::new(),
         home_team_defending_side: Some(DefendingSide::Left),
@@ -96,7 +97,7 @@ fn make_matchup(
         away_team: make_matchup_team("AWY", away_score),
         home_team: make_matchup_team("HME", home_score),
         shootout_in_use: true,
-        max_periods: 5,
+        max_periods: Some(5),
         reg_periods: 3,
         ot_in_use: true,
         ties_in_use: false,
@@ -118,6 +119,7 @@ fn make_schedule_game(
         game_date: Some("2024-11-20".to_string()),
         start_time_utc: "2024-11-21T00:00:00Z".to_string(),
         game_state,
+        game_schedule_state: nhl_api::GameScheduleState::Ok,
         away_team: nhl_api::ScheduleTeam {
             id: 1.into(),
             abbrev: away_abbrev.to_string(),
@@ -232,7 +234,7 @@ fn test_build_period_header_with_shootout() {
 fn test_format_period_row_shows_real_scores_up_to_current_period() {
     // Real per-period data: 1 goal in P1, 0 in P2, 2 in P3
     let periods = vec![1, 0, 2];
-    let row = format_period_row("TOR", &periods, true, 3, 3);
+    let row = format_period_row("TOR", &periods, true, Some(3), 3);
 
     // No more placeholder dashes for periods that have already happened.
     assert!(row.contains('1'));
@@ -244,7 +246,7 @@ fn test_format_period_row_shows_real_scores_up_to_current_period() {
 fn test_format_period_row_dashes_for_future_periods() {
     // Currently in period 1; periods 2 and 3 haven't happened yet.
     let periods = vec![1, 0, 0];
-    let row = format_period_row("TOR", &periods, true, 1, 1);
+    let row = format_period_row("TOR", &periods, true, Some(1), 1);
 
     // Column layout: team(15) + gap(3) + P1(5) + P2(5) + P3(5) + T(7)
     let p2_start = TEAM_ABBREV_WIDTH + PERIOD_HEADER_GAP + PERIOD_COL_WIDTH;
@@ -257,10 +259,44 @@ fn test_format_period_row_dashes_for_future_periods() {
 
 #[test]
 fn test_format_period_row_no_data_shows_all_dashes() {
-    let row = format_period_row("TOR", &[], false, 3, 3);
+    let row = format_period_row("TOR", &[], false, Some(3), 3);
     let team_and_gap = TEAM_ABBREV_WIDTH + PERIOD_HEADER_GAP;
     let period_columns = &row[team_and_gap..team_and_gap + PERIOD_COL_WIDTH * 3];
     assert!(!period_columns.chars().any(|c| c.is_ascii_digit()));
+}
+
+#[test]
+fn test_format_period_row_missing_total_renders_dash_in_total_column() {
+    let row = format_period_row("TOR", &[1, 0, 0], true, None, 1);
+
+    let total_column: String = row
+        .chars()
+        .skip(row.chars().count() - TOTAL_COL_WIDTH)
+        .collect();
+    assert_eq!(total_column.trim(), MISSING_STAT);
+}
+
+#[test]
+fn test_format_score_summary_line_missing_scores_render_dashes() {
+    let mut matchup = make_matchup(
+        GameState::Future,
+        1,
+        PeriodType::Regulation,
+        0,
+        0,
+        None,
+        None,
+    );
+    matchup.away_team.score = None;
+    matchup.home_team.score = None;
+
+    let line = format_score_summary_line(&matchup);
+
+    let columns: Vec<&str> = line.split_whitespace().collect();
+    assert_eq!(
+        columns,
+        ["AWY", MISSING_STAT, "SCHEDULED", MISSING_STAT, "HME"]
+    );
 }
 
 #[test]

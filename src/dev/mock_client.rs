@@ -63,7 +63,7 @@ impl NHLDataProvider for MockClient {
     async fn club_stats(
         &self,
         team_abbrev: &str,
-        season: i32,
+        season: Season,
         game_type: GameType,
     ) -> Result<ClubStats, NHLApiError> {
         info!(
@@ -72,7 +72,7 @@ impl NHLDataProvider for MockClient {
         );
         Ok(fixtures::create_mock_club_stats(
             team_abbrev,
-            season,
+            season.id(),
             game_type,
         ))
     }
@@ -122,7 +122,7 @@ impl NHLDataProvider for MockClient {
     async fn player_game_log(
         &self,
         player_id: PlayerId,
-        season: i32,
+        season: Season,
         game_type: GameType,
     ) -> Result<PlayerGameLog, NHLApiError> {
         info!(
@@ -131,19 +131,16 @@ impl NHLDataProvider for MockClient {
         );
         Ok(fixtures::create_mock_player_game_log(
             player_id.into(),
-            season,
+            season.id(),
             game_type,
         ))
     }
 
     async fn league_standings_for_season(
         &self,
-        season_id: i64,
+        season: Season,
     ) -> Result<Vec<Standing>, NHLApiError> {
-        info!(
-            "MockClient: Returning mock standings for season {}",
-            season_id
-        );
+        info!("MockClient: Returning mock standings for season {}", season);
         // Just return current mock standings for any season
         Ok(fixtures::create_mock_standings())
     }

@@ -1,5 +1,6 @@
 use super::*;
 use crate::config::{DisplayConfig, RenderContext};
+use crate::formatting::MISSING_STAT;
 use crate::tui::document::FocusableId;
 use nhl_api::{Handedness, LocalizedString, Season, SeasonTotal};
 use ratatui::buffer::Buffer;
@@ -47,7 +48,7 @@ fn create_test_player(player_id: i64, position: Position) -> PlayerLanding {
                     default: "Maple Leafs".to_string(),
                 }),
                 sequence: Some(1),
-                games_played: 82,
+                games_played: Some(82),
                 goals: Some(40),
                 assists: Some(50),
                 points: Some(90),
@@ -65,7 +66,7 @@ fn create_test_player(player_id: i64, position: Position) -> PlayerLanding {
                     default: "Maple Leafs".to_string(),
                 }),
                 sequence: Some(1),
-                games_played: 78,
+                games_played: Some(78),
                 goals: Some(35),
                 assists: Some(45),
                 points: Some(80),
@@ -223,7 +224,7 @@ fn test_season_column_formats_year_range() {
         },
         team_common_name: None,
         sequence: Some(1),
-        games_played: 82,
+        games_played: Some(82),
         goals: Some(40),
         assists: Some(50),
         points: Some(90),
@@ -237,6 +238,42 @@ fn test_season_column_formats_year_range() {
     ] {
         let cell = (columns[0].cell_fn)(&season);
         assert_eq!(cell.display_text(), "2023-2024");
+    }
+}
+
+#[test]
+fn test_games_played_column_renders_dash_when_missing_in_both_tables() {
+    let season_with = |games_played: Option<i32>| SeasonTotal {
+        season: Season::new(2023),
+        game_type: nhl_api::GameType::RegularSeason,
+        league_abbrev: "NHL".to_string(),
+        team_name: LocalizedString {
+            default: "Toronto Maple Leafs".to_string(),
+        },
+        team_common_name: None,
+        sequence: Some(1),
+        games_played,
+        goals: Some(40),
+        assists: Some(50),
+        points: Some(90),
+        plus_minus: Some(10),
+        pim: Some(20),
+    };
+
+    for columns in [
+        PlayerDetailDocumentContent::skater_season_columns(),
+        PlayerDetailDocumentContent::goalie_season_columns(),
+    ] {
+        let gp = columns
+            .iter()
+            .find(|column| column.header == "GP")
+            .expect("season table must have a GP column");
+
+        let missing = (gp.cell_fn)(&season_with(None));
+        let present = (gp.cell_fn)(&season_with(Some(82)));
+
+        assert_eq!(missing.display_text(), MISSING_STAT);
+        assert_eq!(present.display_text(), "82");
     }
 }
 

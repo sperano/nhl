@@ -1,7 +1,7 @@
 use super::*;
 use crate::dev::mock_client::MockClient;
 use chrono::NaiveDate;
-use nhl_api::{HomeRoad, Position};
+use nhl_api::{GoalieGameLog, HomeRoad, Position};
 
 fn sample_player(name: &str, team: Option<&str>) -> PlayerSearchResult {
     PlayerSearchResult {
@@ -19,8 +19,8 @@ fn sample_player(name: &str, team: Option<&str>) -> PlayerSearchResult {
     }
 }
 
-fn sample_game_log(home_road_flag: HomeRoad, pim: Option<i32>) -> GameLog {
-    GameLog {
+fn sample_game_log(home_road_flag: HomeRoad, pim: Option<i32>) -> SkaterGameLog {
+    SkaterGameLog {
         game_id: 2024020500.into(),
         game_date: "2024-12-28".to_string(),
         team_abbrev: "EDM".to_string(),
@@ -58,7 +58,7 @@ fn sample_boxscore_skater() -> SkaterStats {
         power_play_goals: 1,
         sog: 5,
         faceoff_winning_pctg: 0.6,
-        toi: "21:45".to_string(),
+        toi: Some("21:45".to_string()),
         blocked_shots: 1,
         shifts: 24,
         giveaways: 2,
@@ -116,36 +116,42 @@ fn test_filter_matching_players_ambiguous_query_returns_multiple() {
 #[test]
 fn test_get_season_for_date_october_starts_new_season() {
     let date = GameDate::Date(NaiveDate::from_ymd_opt(2024, 10, 15).unwrap());
-    assert_eq!(get_season_for_date(&date), 20242025);
+    assert_eq!(get_season_for_date(&date).unwrap().id(), 20242025);
 }
 
 #[test]
 fn test_get_season_for_date_december_uses_current_year_start() {
     let date = GameDate::Date(NaiveDate::from_ymd_opt(2024, 12, 31).unwrap());
-    assert_eq!(get_season_for_date(&date), 20242025);
+    assert_eq!(get_season_for_date(&date).unwrap().id(), 20242025);
 }
 
 #[test]
 fn test_get_season_for_date_september_uses_previous_year_start() {
     let date = GameDate::Date(NaiveDate::from_ymd_opt(2025, 9, 30).unwrap());
-    assert_eq!(get_season_for_date(&date), 20242025);
+    assert_eq!(get_season_for_date(&date).unwrap().id(), 20242025);
 }
 
 #[test]
 fn test_get_season_for_date_april_uses_previous_year_start() {
     let date = GameDate::Date(NaiveDate::from_ymd_opt(2025, 4, 1).unwrap());
-    assert_eq!(get_season_for_date(&date), 20242025);
+    assert_eq!(get_season_for_date(&date).unwrap().id(), 20242025);
 }
 
 #[test]
 fn test_get_season_for_date_now_matches_todays_month_boundary() {
     let today = chrono::Local::now().date_naive();
-    let expected = if today.month() >= 10 {
+    let expected = if today.month() >= SEASON_START_MONTH {
         today.year() * 10000 + (today.year() + 1)
     } else {
         (today.year() - 1) * 10000 + today.year()
     };
-    assert_eq!(get_season_for_date(&GameDate::Now), expected);
+    assert_eq!(get_season_for_date(&GameDate::Now).unwrap().id(), expected);
+}
+
+#[test]
+fn test_get_season_for_date_rejects_year_before_season_range() {
+    let date = GameDate::Date(NaiveDate::from_ymd_opt(0, 4, 1).unwrap());
+    assert!(get_season_for_date(&date).is_err());
 }
 
 // --- format_plus_minus ---
@@ -231,6 +237,83 @@ fn test_format_player_game_stats_no_sweater_number_omits_hash() {
     let output = format_player_game_stats(&player, &log, None, &BoxChars::unicode());
 
     assert!(!output.contains('#'));
+}
+
+// --- goalie_not_supported_message ---
+
+#[test]
+fn test_goalie_not_supported_message_names_player_and_date() {
+    let message = goalie_not_supported_message("Igor Shesterkin", "2024-11-20");
+
+    assert_eq!(
+        message,
+        "Game stats for goalies are not supported yet (Igor Shesterkin on 2024-11-20)"
+    );
+}
+
+// --- select_game_log_entry ---
+
+const GOALIE_GAME_DATE: &str = "2024-11-20";
+
+fn sample_goalie_game_log() -> GoalieGameLog {
+    GoalieGameLog {
+        game_id: 2024020300.into(),
+        game_date: GOALIE_GAME_DATE.to_string(),
+        team_abbrev: "NYR".to_string(),
+        home_road_flag: HomeRoad::Road,
+        opponent_abbrev: "BOS".to_string(),
+        games_started: 1,
+        decision: None,
+        shots_against: 30,
+        goals_against: 2,
+        save_pctg: Some(0.933),
+        shutouts: 0,
+        goals: 0,
+        assists: 0,
+        toi: "60:00".to_string(),
+        pim: None,
+    }
+}
+
+#[test]
+fn test_select_game_log_entry_returns_skater_entry_for_its_date() {
+    let skater = sample_game_log(HomeRoad::Home, Some(0));
+    let entries = vec![
+        GameLog::Goalie(sample_goalie_game_log()),
+        GameLog::Skater(skater.clone()),
+    ];
+
+    assert_eq!(
+        select_game_log_entry(&entries, &skater.game_date),
+        GameLogSelection::Skater(&skater)
+    );
+}
+
+#[test]
+fn test_select_game_log_entry_returns_goalie_for_goalie_entry() {
+    let entries = vec![
+        GameLog::Skater(sample_game_log(HomeRoad::Home, Some(0))),
+        GameLog::Goalie(sample_goalie_game_log()),
+    ];
+
+    assert_eq!(
+        select_game_log_entry(&entries, GOALIE_GAME_DATE),
+        GameLogSelection::Goalie
+    );
+}
+
+#[test]
+fn test_select_game_log_entry_returns_no_game_without_entry_for_date() {
+    let entries = vec![GameLog::Goalie(sample_goalie_game_log())];
+
+    assert_eq!(
+        select_game_log_entry(&entries, "2024-01-01"),
+        GameLogSelection::NoGame
+    );
+    assert_eq!(
+        select_game_log_entry(&[], GOALIE_GAME_DATE),
+        GameLogSelection::NoGame
+    );
 }
 
 // --- run() integration via MockClient ---

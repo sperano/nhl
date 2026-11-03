@@ -405,8 +405,8 @@ mod tests {
                         home_name: "Sabres".to_string(),
                         away_score: 4,
                         home_score: 3,
-                        away_sog: 30,
-                        home_sog: 28,
+                        away_sog: Some(30),
+                        home_sog: Some(28),
                         status: ScoreBoxStatus::Final {
                             overtime: true,
                             shootout: false,

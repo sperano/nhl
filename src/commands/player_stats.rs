@@ -4,7 +4,13 @@ use crate::data_provider::NHLDataProvider;
 use crate::formatting::BoxChars;
 use anyhow::{bail, Context, Result};
 use chrono::Datelike;
-use nhl_api::{GameDate, GameLog, GameState, GameType, PlayerSearchResult, SkaterStats};
+use nhl_api::{
+    GameDate, GameLog, GameState, GameType, PlayerSearchResult, Season, SkaterGameLog, SkaterStats,
+};
+
+/// First month of an NHL season (October); earlier months belong to the season that
+/// started the previous year.
+const SEASON_START_MONTH: u32 = 10;
 
 /// Run the player-stats command
 ///
@@ -18,7 +24,7 @@ pub async fn run(
     // Parse the date
     let game_date = parse_game_date(date)?;
     let date_str = game_date.to_api_string();
-    let season = get_season_for_date(&game_date);
+    let season = get_season_for_date(&game_date)?;
 
     let player = find_player(client, player_name).await?;
 
@@ -28,10 +34,16 @@ pub async fn run(
         .await
         .context("Failed to fetch player game log")?;
 
-    // Find the game for the specified date
-    let Some(log_stats) = game_log.game_log.iter().find(|g| g.game_date == date_str) else {
-        println!("No data for {} on {}", player.name, date_str);
-        return Ok(());
+    let log_stats = match select_game_log_entry(&game_log.game_log, &date_str) {
+        GameLogSelection::Skater(log_stats) => log_stats,
+        GameLogSelection::NoGame => {
+            println!("No data for {} on {}", player.name, date_str);
+            return Ok(());
+        }
+        GameLogSelection::Goalie => {
+            println!("{}", goalie_not_supported_message(&player.name, &date_str));
+            return Ok(());
+        }
     };
 
     let boxscore_stats = fetch_boxscore_stats_for_player(client, &game_date, &player).await?;
@@ -39,6 +51,34 @@ pub async fn run(
     print_player_game_stats(&player, log_stats, boxscore_stats.as_ref(), config);
 
     Ok(())
+}
+
+/// The player's game-log entry for the requested date, as `run` handles it.
+#[derive(Debug, PartialEq)]
+enum GameLogSelection<'a> {
+    /// No game on that date.
+    NoGame,
+    /// A goalie's entry, which isn't supported yet.
+    Goalie,
+    Skater(&'a SkaterGameLog),
+}
+
+/// Find the game-log entry dated `date_str` and classify it.
+fn select_game_log_entry<'a>(entries: &'a [GameLog], date_str: &str) -> GameLogSelection<'a> {
+    match entries.iter().find(|g| g.game_date() == date_str) {
+        None => GameLogSelection::NoGame,
+        Some(entry) => entry
+            .as_skater()
+            .map_or(GameLogSelection::Goalie, GameLogSelection::Skater),
+    }
+}
+
+/// Message shown when the player's game log entry is a goalie's, which isn't supported yet.
+fn goalie_not_supported_message(player_name: &str, date_str: &str) -> String {
+    format!(
+        "Game stats for goalies are not supported yet ({} on {})",
+        player_name, date_str
+    )
 }
 
 /// Search for a player by name and resolve to a single match.
@@ -184,27 +224,25 @@ fn filter_matching_players<'a>(
 /// NHL seasons run from October to June, so:
 /// - Oct-Dec of year Y = season YYYYYYYY+1 (e.g., Oct 2024 = 20242025)
 /// - Jan-Sep of year Y = season YYYY-1YYYY (e.g., Apr 2025 = 20242025)
-fn get_season_for_date(date: &GameDate) -> i32 {
+fn get_season_for_date(date: &GameDate) -> Result<Season> {
     let naive_date = match date {
         GameDate::Now => chrono::Local::now().date_naive(),
         GameDate::Date(d) => *d,
     };
 
     let year = naive_date.year();
-    let month = naive_date.month();
-
-    if month >= 10 {
-        // October-December: season starts this year
-        year * 10000 + (year + 1)
+    let start_year = if naive_date.month() >= SEASON_START_MONTH {
+        year
     } else {
-        // January-September: season started last year
-        (year - 1) * 10000 + year
-    }
+        year - 1
+    };
+    let start_year = u16::try_from(start_year).context("Date outside the NHL season range")?;
+    Ok(Season::new(start_year))
 }
 
 fn print_player_game_stats(
     player: &PlayerSearchResult,
-    log_stats: &GameLog,
+    log_stats: &SkaterGameLog,
     boxscore_stats: Option<&SkaterStats>,
     config: &Config,
 ) {
@@ -220,7 +258,7 @@ fn print_player_game_stats(
 /// unit-tested without capturing stdout.
 fn format_player_game_stats(
     player: &PlayerSearchResult,
-    log_stats: &GameLog,
+    log_stats: &SkaterGameLog,
     boxscore_stats: Option<&SkaterStats>,
     box_chars: &BoxChars,
 ) -> String {
@@ -292,7 +330,7 @@ fn format_player_header_box(content: &str, box_chars: &BoxChars) -> String {
 /// Extracted from `print_skater_stats` so the two formatting branches (with and
 /// without boxscore-derived stats) can be unit-tested without capturing stdout.
 fn format_skater_stats_table(
-    log: &GameLog,
+    log: &SkaterGameLog,
     boxscore: Option<&SkaterStats>,
     box_chars: &BoxChars,
 ) -> String {
@@ -304,7 +342,7 @@ fn format_skater_stats_table(
 
 /// Full stats table including boxscore-derived stats (hits, blocks, FO%, giveaways, takeaways).
 fn format_skater_stats_table_with_boxscore(
-    log: &GameLog,
+    log: &SkaterGameLog,
     bs: &SkaterStats,
     box_chars: &BoxChars,
 ) -> String {
@@ -337,7 +375,7 @@ fn format_skater_stats_table_with_boxscore(
 }
 
 /// Basic stats table when boxscore data isn't available.
-fn format_skater_stats_table_basic(log: &GameLog, box_chars: &BoxChars) -> String {
+fn format_skater_stats_table_basic(log: &SkaterGameLog, box_chars: &BoxChars) -> String {
     let pim = log.pim.unwrap_or(0);
     let mut output = String::new();
 
