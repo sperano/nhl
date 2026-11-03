@@ -5,7 +5,7 @@ use crate::formatting::BoxChars;
 use anyhow::{bail, Context, Result};
 use chrono::Datelike;
 use nhl_api::{
-    GameDate, GameState, GameType, PlayerSearchResult, Season, SkaterGameLog, SkaterStats,
+    GameDate, GameLog, GameState, GameType, PlayerSearchResult, Season, SkaterGameLog, SkaterStats,
 };
 
 /// First month of an NHL season (October); earlier months belong to the season that
@@ -34,14 +34,16 @@ pub async fn run(
         .await
         .context("Failed to fetch player game log")?;
 
-    // Find the game for the specified date
-    let Some(log_entry) = game_log.game_log.iter().find(|g| g.game_date() == date_str) else {
-        println!("No data for {} on {}", player.name, date_str);
-        return Ok(());
-    };
-    let Some(log_stats) = log_entry.as_skater() else {
-        println!("{}", goalie_not_supported_message(&player.name, &date_str));
-        return Ok(());
+    let log_stats = match select_game_log_entry(&game_log.game_log, &date_str) {
+        GameLogSelection::Skater(log_stats) => log_stats,
+        GameLogSelection::NoGame => {
+            println!("No data for {} on {}", player.name, date_str);
+            return Ok(());
+        }
+        GameLogSelection::Goalie => {
+            println!("{}", goalie_not_supported_message(&player.name, &date_str));
+            return Ok(());
+        }
     };
 
     let boxscore_stats = fetch_boxscore_stats_for_player(client, &game_date, &player).await?;
@@ -49,6 +51,26 @@ pub async fn run(
     print_player_game_stats(&player, log_stats, boxscore_stats.as_ref(), config);
 
     Ok(())
+}
+
+/// The player's game-log entry for the requested date, as `run` handles it.
+#[derive(Debug, PartialEq)]
+enum GameLogSelection<'a> {
+    /// No game on that date.
+    NoGame,
+    /// A goalie's entry, which isn't supported yet.
+    Goalie,
+    Skater(&'a SkaterGameLog),
+}
+
+/// Find the game-log entry dated `date_str` and classify it.
+fn select_game_log_entry<'a>(entries: &'a [GameLog], date_str: &str) -> GameLogSelection<'a> {
+    match entries.iter().find(|g| g.game_date() == date_str) {
+        None => GameLogSelection::NoGame,
+        Some(entry) => entry
+            .as_skater()
+            .map_or(GameLogSelection::Goalie, GameLogSelection::Skater),
+    }
 }
 
 /// Message shown when the player's game log entry is a goalie's, which isn't supported yet.

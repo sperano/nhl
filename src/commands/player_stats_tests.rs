@@ -1,7 +1,7 @@
 use super::*;
 use crate::dev::mock_client::MockClient;
 use chrono::NaiveDate;
-use nhl_api::{HomeRoad, Position};
+use nhl_api::{GoalieGameLog, HomeRoad, Position};
 
 fn sample_player(name: &str, team: Option<&str>) -> PlayerSearchResult {
     PlayerSearchResult {
@@ -248,6 +248,71 @@ fn test_goalie_not_supported_message_names_player_and_date() {
     assert_eq!(
         message,
         "Game stats for goalies are not supported yet (Igor Shesterkin on 2024-11-20)"
+    );
+}
+
+// --- select_game_log_entry ---
+
+const GOALIE_GAME_DATE: &str = "2024-11-20";
+
+fn sample_goalie_game_log() -> GoalieGameLog {
+    GoalieGameLog {
+        game_id: 2024020300.into(),
+        game_date: GOALIE_GAME_DATE.to_string(),
+        team_abbrev: "NYR".to_string(),
+        home_road_flag: HomeRoad::Road,
+        opponent_abbrev: "BOS".to_string(),
+        games_started: 1,
+        decision: None,
+        shots_against: 30,
+        goals_against: 2,
+        save_pctg: Some(0.933),
+        shutouts: 0,
+        goals: 0,
+        assists: 0,
+        toi: "60:00".to_string(),
+        pim: None,
+    }
+}
+
+#[test]
+fn test_select_game_log_entry_returns_skater_entry_for_its_date() {
+    let skater = sample_game_log(HomeRoad::Home, Some(0));
+    let entries = vec![
+        GameLog::Goalie(sample_goalie_game_log()),
+        GameLog::Skater(skater.clone()),
+    ];
+
+    assert_eq!(
+        select_game_log_entry(&entries, &skater.game_date),
+        GameLogSelection::Skater(&skater)
+    );
+}
+
+#[test]
+fn test_select_game_log_entry_returns_goalie_for_goalie_entry() {
+    let entries = vec![
+        GameLog::Skater(sample_game_log(HomeRoad::Home, Some(0))),
+        GameLog::Goalie(sample_goalie_game_log()),
+    ];
+
+    assert_eq!(
+        select_game_log_entry(&entries, GOALIE_GAME_DATE),
+        GameLogSelection::Goalie
+    );
+}
+
+#[test]
+fn test_select_game_log_entry_returns_no_game_without_entry_for_date() {
+    let entries = vec![GameLog::Goalie(sample_goalie_game_log())];
+
+    assert_eq!(
+        select_game_log_entry(&entries, "2024-01-01"),
+        GameLogSelection::NoGame
+    );
+    assert_eq!(
+        select_game_log_entry(&[], GOALIE_GAME_DATE),
+        GameLogSelection::NoGame
     );
 }
 
