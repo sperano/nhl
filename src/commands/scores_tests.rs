@@ -1,4 +1,5 @@
 use super::*;
+use crate::formatting::MISSING_STAT;
 use nhl_api::{
     AssistSummary, DefendingSide, GameScheduleState, GameSummary, GoalSummary, LocalizedString,
     MatchupTeam, PeriodDescriptor, PeriodScoring, PeriodType, Season,
@@ -262,6 +263,40 @@ fn test_format_period_row_no_data_shows_all_dashes() {
     let team_and_gap = TEAM_ABBREV_WIDTH + PERIOD_HEADER_GAP;
     let period_columns = &row[team_and_gap..team_and_gap + PERIOD_COL_WIDTH * 3];
     assert!(!period_columns.chars().any(|c| c.is_ascii_digit()));
+}
+
+#[test]
+fn test_format_period_row_missing_total_renders_dash_in_total_column() {
+    let row = format_period_row("TOR", &[1, 0, 0], true, None, 1);
+
+    let total_column: String = row
+        .chars()
+        .skip(row.chars().count() - TOTAL_COL_WIDTH)
+        .collect();
+    assert_eq!(total_column.trim(), MISSING_STAT);
+}
+
+#[test]
+fn test_format_score_summary_line_missing_scores_render_dashes() {
+    let mut matchup = make_matchup(
+        GameState::Future,
+        1,
+        PeriodType::Regulation,
+        0,
+        0,
+        None,
+        None,
+    );
+    matchup.away_team.score = None;
+    matchup.home_team.score = None;
+
+    let line = format_score_summary_line(&matchup);
+
+    let columns: Vec<&str> = line.split_whitespace().collect();
+    assert_eq!(
+        columns,
+        ["AWY", MISSING_STAT, "SCHEDULED", MISSING_STAT, "HME"]
+    );
 }
 
 #[test]

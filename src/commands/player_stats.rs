@@ -40,10 +40,7 @@ pub async fn run(
         return Ok(());
     };
     let Some(log_stats) = log_entry.as_skater() else {
-        println!(
-            "Game stats for goalies are not supported yet ({} on {})",
-            player.name, date_str
-        );
+        println!("{}", goalie_not_supported_message(&player.name, &date_str));
         return Ok(());
     };
 
@@ -52,6 +49,14 @@ pub async fn run(
     print_player_game_stats(&player, log_stats, boxscore_stats.as_ref(), config);
 
     Ok(())
+}
+
+/// Message shown when the player's game log entry is a goalie's, which isn't supported yet.
+fn goalie_not_supported_message(player_name: &str, date_str: &str) -> String {
+    format!(
+        "Game stats for goalies are not supported yet ({} on {})",
+        player_name, date_str
+    )
 }
 
 /// Search for a player by name and resolve to a single match.

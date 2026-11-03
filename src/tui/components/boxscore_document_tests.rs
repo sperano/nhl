@@ -1,5 +1,6 @@
 use super::*;
 use crate::config::{DisplayConfig, RenderContext};
+use crate::formatting::MISSING_STAT;
 use crate::tui::document::FocusContext;
 use nhl_api::{
     Boxscore, BoxscoreTeam, GameClock, GameScheduleState, GameState, GoalieDecision, GoalieStats,
@@ -339,4 +340,127 @@ fn test_boxscore_renders() {
 
     // Should render without panic
     assert_eq!(*buf.area(), area);
+}
+
+fn cell_text<T>(columns: &[ColumnDef<T>], header: &str, row: &T) -> String {
+    let column = columns
+        .iter()
+        .find(|column| column.header == header)
+        .unwrap_or_else(|| panic!("no column with header {header}"));
+    (column.cell_fn)(row).display_text().to_string()
+}
+
+fn boxscore_in_state(game_state: GameState) -> Boxscore {
+    let mut boxscore = create_test_boxscore();
+    boxscore.game_state = game_state;
+    boxscore
+}
+
+#[test]
+fn test_boxscore_to_status_live_without_clock_has_no_time() {
+    let mut boxscore = boxscore_in_state(GameState::Live);
+    boxscore.clock = None;
+
+    let status = boxscore_to_status(&boxscore);
+
+    assert_eq!(
+        status,
+        ScoreBoxStatus::Live {
+            period: "3".to_string(),
+            time: None,
+            intermission: false,
+        }
+    );
+}
+
+#[test]
+fn test_boxscore_to_status_postponed_and_suspended_show_tbd_start() {
+    for game_state in [GameState::Postponed, GameState::Suspended] {
+        let status = boxscore_to_status(&boxscore_in_state(game_state));
+
+        assert_eq!(
+            status,
+            ScoreBoxStatus::Scheduled {
+                start_time: "TBD".to_string()
+            },
+            "{game_state:?}"
+        );
+    }
+}
+
+fn boxscore_without_score_or_sog() -> Boxscore {
+    let mut boxscore = create_test_boxscore();
+    for team in [&mut boxscore.away_team, &mut boxscore.home_team] {
+        team.score = None;
+        team.sog = None;
+    }
+    boxscore
+}
+
+#[test]
+fn test_score_text_without_score_or_sog_renders_dashes() {
+    let doc =
+        BoxscoreDocumentContent::new(2024020001, boxscore_without_score_or_sog(), TeamView::Away);
+    let focus = FocusContext {
+        use_unicode: false,
+        ..FocusContext::default()
+    };
+
+    let texts: Vec<String> = doc
+        .build_score(&focus)
+        .into_iter()
+        .filter_map(|element| match element {
+            DocumentElement::Text { content, .. } => Some(content),
+            _ => None,
+        })
+        .collect();
+
+    assert_eq!(texts, ["NJD: -  |  BUF: -  (SOG: - - -)"]);
+}
+
+#[test]
+fn test_big_score_without_score_or_sog_uses_zero_scores_and_no_sog() {
+    let doc =
+        BoxscoreDocumentContent::new(2024020001, boxscore_without_score_or_sog(), TeamView::Away);
+
+    let elements = doc.build_score(&FocusContext::default());
+
+    let [DocumentElement::BigScoreElement { big_score }] = elements.as_slice() else {
+        panic!("expected a single big score element, got {elements:?}");
+    };
+    assert_eq!(big_score.away_score, 0);
+    assert_eq!(big_score.home_score, 0);
+    assert_eq!(big_score.away_sog, None);
+    assert_eq!(big_score.home_sog, None);
+}
+
+#[test]
+fn test_goalie_shot_columns_missing_stats_render_dashes() {
+    let columns = goalie_shot_columns();
+    let mut goalie = create_test_goalie("A. Goalie", 30);
+    goalie.shots_against = None;
+    goalie.goals_against = None;
+    goalie.saves = None;
+    goalie.even_strength_shots_against = None;
+    goalie.toi = None;
+
+    for header in ["SA", "GA", "SV", "ES", "TOI"] {
+        assert_eq!(
+            cell_text(&columns, header, &goalie),
+            MISSING_STAT,
+            "{header}"
+        );
+    }
+}
+
+#[test]
+fn test_skater_possession_columns_missing_toi_renders_dash() {
+    let columns = skater_possession_columns();
+    let mut skater = create_test_skater("A. Forward1", 10, Position::Center);
+
+    assert_eq!(cell_text(&columns, "TOI", &skater), "15:30");
+
+    skater.toi = None;
+
+    assert_eq!(cell_text(&columns, "TOI", &skater), MISSING_STAT);
 }

@@ -218,6 +218,21 @@ fn test_format_boxscore_omits_time_during_intermission_when_clock_stopped() {
 }
 
 #[test]
+fn test_format_boxscore_shows_time_when_clock_stopped_outside_intermission() {
+    // A stopped clock between whistles (not an intermission) still shows the time.
+    let mut boxscore = fixtures::create_mock_boxscore(2024020005);
+    let clock = boxscore.clock.as_mut().unwrap();
+    clock.time_remaining = "07:42".to_string();
+    clock.running = false;
+    clock.in_intermission = false;
+    let display = DisplayConfig::default();
+
+    let output = format_boxscore(&boxscore, &display);
+
+    assert!(output.contains("Time: 07:42"));
+}
+
+#[test]
 fn test_format_boxscore_scheduled_game_without_clock_or_score() {
     // Before puck drop the API sends no clock, score or SOG.
     let mut boxscore = fixtures::create_mock_boxscore(2024020005);

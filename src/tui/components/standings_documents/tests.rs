@@ -458,3 +458,23 @@ fn test_division_standings_respects_western_first_config() {
         _ => panic!("Expected Row element"),
     }
 }
+
+#[test]
+fn test_division_standings_excludes_teams_without_a_division() {
+    let mut standings = create_test_standings();
+    let mut unassigned = standings.remove(0);
+    unassigned.division_name = None;
+    let atlantic = standings
+        .iter()
+        .find(|s| s.division_name.as_deref() == Some("Atlantic"))
+        .expect("fixture has Atlantic teams")
+        .clone();
+
+    let (atlantic_teams, metropolitan, central, pacific) =
+        division_standings(&[unassigned, atlantic.clone()]);
+
+    assert_eq!(atlantic_teams, [atlantic]);
+    assert!(metropolitan.is_empty());
+    assert!(central.is_empty());
+    assert!(pacific.is_empty());
+}

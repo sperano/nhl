@@ -239,6 +239,18 @@ fn test_format_player_game_stats_no_sweater_number_omits_hash() {
     assert!(!output.contains('#'));
 }
 
+// --- goalie_not_supported_message ---
+
+#[test]
+fn test_goalie_not_supported_message_names_player_and_date() {
+    let message = goalie_not_supported_message("Igor Shesterkin", "2024-11-20");
+
+    assert_eq!(
+        message,
+        "Game stats for goalies are not supported yet (Igor Shesterkin on 2024-11-20)"
+    );
+}
+
 // --- run() integration via MockClient ---
 
 #[tokio::test]
